@@ -1,0 +1,147 @@
+# Copyright 2024 Google LLC
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     https://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#!/bin/sh -e
+set -eu
+
+FILETYPES_DIR="$(dirname "$0")/filetypes"
+SUPPORTED_EXTS='string containing extensions'
+
+# Prints usage and quits
+usage() {
+    if [ -n "${2-}" ]; then
+        echo "$2" >&2
+    fi
+    cat >&2 <<USAGE
+USAGE: $0 [FROM_REV [FROM_DIR] [TO_REV [TO_DIR]]]
+Compares all files matching the following:$SUPPORTED_EXTS
+  FROM_REV - The revision to compare from.
+             If unspecified, assumes origin/HEAD (the latest pushed commit).
+  FROM_DIR - The directory to compare from.
+             If unspecified, assumes the current directory.
+  TO_REV   - The revision to compare to.
+             Can only be specified if FROM_REV is specified.
+             If unspecified, assumes the current working tree (your checkout).
+  TO_DIR   - The directory to compare to.
+             Can only be specified if TO_DIR is specified.
+             If unspecified, assumes the same proj as FROM_DIR.
+USAGE
+    exit "${1-0}"
+}
+
+# Grabs the specified revision (or working tree) and generates a PDF
+# $1: the from revision, or the empty string to use the working tree
+# $2: the path to compare in the from revision
+# $3: the to revision, or the empty string to use the working tree
+# $4: the path to compare in the to revision
+difffile() {
+    ext="$(echo "$2" | sed -n "$SUPPORTED_EXTS")"
+    test -n "$ext" || return 0
+    if [ -z "$1" ]; then
+        from="$2"
+        test -f "$from" || from=''
+    else
+        from="$TEMP_DIR/from.${2##*/}"
+        git show "$1:$2" > "$from" 2>/dev/null || from=''
+    fi
+    if [ -z "$from" ]; then
+        echo "$2 does not exist in ${1:-the working tree}"
+        return 1
+    fi
+    if [ -z "$3" ]; then
+        to="$4"
+        test -f "$to" || to=''
+    else
+        to="$TEMP_DIR/to.${4##*/}"
+        git show "$3:$4" > "$to" 2>/dev/null || to=''
+    fi
+    if [ -z "$to" ]; then
+        echo "$4 does not exist in ${3:-the working tree}"
+        return 1
+    fi
+    "$FILETYPES_DIR/$ext.py" "$from" "$to" || return
+}
+
+# Lists all files from the chosen revision, stripping out $2
+# You can add $2 to each line to reproduce the original path
+# $1: the revision, or the empty string to use the working tree
+# $2: the directory to compare
+listfiles() {
+    if [ -z "$1" ]; then
+        git ls-files --cached --exclude-standard -- "$2"
+    else
+        git ls-tree --name-only -r "$1" "$2"
+    fi | {
+        str="$2"
+        while read -r file; do
+            # FIXME: This prefix handling is totally broken.
+            file="./$file"
+            printf '%s\n' "${file#$str}"
+        done
+    }
+}
+
+
+# Get parameters
+FROM_REV=''
+FROM_DIR=''
+TO_REV=''
+TO_DIR=''
+while [ "$#" != 0 ]; do
+    if [ "$1" = -h ]; then
+        usage 0
+    elif [ -e "$1" ]; then
+        if [ -z "$FROM_DIR" ]; then
+            FROM_DIR="$1"
+        elif [ -z "$TO_DIR" ]; then
+            TO_DIR="$1"
+        else
+            usage 2
+        fi
+    elif [ -z "$FROM_REV" ]; then
+        FROM_REV="$1"
+    elif [ -z "$TO_REV" ]; then
+        TO_REV="$1"
+    else
+        usage 2
+    fi
+    shift
+done
+: "${FROM_REV:=origin/HEAD}"
+: "${FROM_DIR:=.}"
+: "${TO_DIR:="$FROM_DIR"}"
+# FIXME: this prefix handling is totally broken
+if [ "$FROM_DIR" != '.' ]; then
+    FROM_DIR="./${FROM_DIR#./}"
+fi
+if [ "$TO_DIR" != '.' ]; then
+    TO_DIR="./${TO_DIR#./}"
+fi
+FROM_DIR="${FROM_DIR%/}"
+TO_DIR="${TO_DIR%/}"
+
+TEMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEMP_DIR"' INT HUP 0
+
+# Get a list of all files in both revisions
+{
+    listfiles "$FROM_REV" "$FROM_DIR"
+    listfiles "$TO_REV" "$TO_DIR"
+} | sort -u | {
+    ret=0
+    while read -r file; do
+        difffile "$FROM_REV" "$FROM_DIR$file" "$TO_REV" "$TO_DIR$file" || ret=$?
+    done
+    exit "$ret"
+} || exit "$?"

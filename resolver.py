@@ -1,0 +1,186 @@
+# Copyright 2024 Google LLC
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     https://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#!/usr/bin/env python3
+import os, re, sys
+from project import Project
+
+class Resolver(object):
+  """Handles resolving a merge/rebase conflict across a whole repo."""
+
+  # Regex extracting the project, page path, and extension from a path
+  _RE_PAGE = re.compile('regex to ')
+  # Regex extracting the project and database type from a path
+  _RE_DATABASE = re.compile(
+      'regex to find the database'
+  )
+
+  def __init__(self, conflicts):
+    """Processes a list of git conflicts to determine resolutions."""
+    self._projects = {}
+    self._unrecognized = {}
+    for path, state in conflicts:
+      # ensure path is always str not bytes
+      try:
+        path = path.decode()
+      except (UnicodeDecodeError, AttributeError):
+        pass
+      match = Resolver._RE_PAGE.match(path)
+      if match:
+        self._project(match.group(2)).add_page(match.group(1), match.group(3),
+            state)
+        continue
+      match = Resolver._RE_DATABASE.match(path)
+      if match:
+        self._project(match.group(1)).add_database(match.group(0), state)
+        continue
+      if path.endswith('.proj'):
+        self._project(os.path.dirname(path) + '/').add_proj(path, state)
+        continue
+      self._unrecognized[path] = state
+
+  def determine_file_states(self, progress=None):
+    """Processes all the conflicting files to determine the next steps."""
+    for proj in self._projects.values():
+      proj.determine_file_states(progress)
+
+  def file_count(self):
+    """Returns the total number of files tracked, which may be more than the
+    initial list of conflicts if additional dependencies are deemed relevant.
+    """
+    return sum([proj.file_count() for proj in self._projects.values()])
+
+  def can_be_merged(self, mode=Project.MODE_SAFE):
+    """Returns true if the entire repo can be automatically merged.
+    mode -- reports whether merging will work given the merge mode
+    """
+    if self._unrecognized:
+      return False
+    for proj in self._projects.values():
+      if proj.state(mode) in Project.STATES_UNRESOLVABLE:
+        return False
+    return True
+
+  def apply(self, mode=Project.MODE_SAFE, progress=None):
+    """Attempts to merge everything possible.
+    Returns True only if the entire repo has been automatically merged.
+    """
+    result = not self._unrecognized
+    for proj in self._projects.values():
+      if not proj.apply(mode, progress):
+        result = False
+    return result
+
+  def _project(self, proj):
+    """Returns a reference to a project, creating one if missing."""
+    return self._projects.setdefault(proj, Project(proj))
+
+  def __str__(self):
+    """Returns a human-readable desciption of the conflict state of the repo."""
+    return self.summary()
+
+  def state(self):
+    """Returns non-zero if there are unresolved conflicts."""
+    if self._unrecognized:
+      return 1
+    for proj in self._projects.values():
+      if proj.state() != Project.STATE_OK:
+        return 1
+    return 0
+
+  def summary(self, mode=Project.MODE_SAFE, include_resolved=True, verbosity=0):
+    """Generates a human-readable state description of the repo.
+    mode -- summarized based on merge mode
+    include_resolved -- if false, will filter out STATE_OK files
+    verbosity -- the higher the number the more verbose the output is
+    """
+    s = ''
+    for proj in self._projects.values():
+      s += proj.summary(mode, include_resolved, verbosity)
+    if self._unrecognized:
+      count = len(self._unrecognized)
+      s += ('%s%d conflicting file%s that cannot be handled by this tool'
+            % ('Also, '*(s != ''), count, 's'*(count != 1)))
+      if 0 <= verbosity:
+        s += ':'
+        for f in self._unrecognized:
+          s += '\n      | %s' % f
+      s += '\n'
+    return s
+
+
+def main(argv):
+  usage="""Usage: %s [--show] [--apply [--rewrite] [--ui[=force]] [--force]]
+Characterizes merge conflicts for CAD files and attempts to resolve them.
+  --apply    Applies conflict resolution when possible.
+             If this is not specified, just outputs a summary of the conflict
+             without modifying any files.
+  --rewrite  Allows the rewriting of files based on reverse-engineering of the
+             CAD file formats. This increases the kinds of things that can
+             be merged, but may break with obscure features. If *not* specified, 
+             the resulting files are guaranteed to be valid, since they are 
+             generated by CAD tools.
+  --ui       Enables merges that require manual user control to resolve.
+             Specify --ui=force to require *all* 3-way merges to go through the
+             user, even if they are non-conflicting and can be auto-merged.
+  --force    Proceeds with partial conflict resolution even if not all files in
+             the repo can be merged by this tool.
+""" % os.path.basename(argv[0])
+  if '-h' in sys.argv[1:] or '--help' in sys.argv[1:]:
+    sys.stderr.write(usage)
+    sys.exit(0)
+  import progress
+  import git
+  verbosity = sys.argv[1:].count('-v') - sys.argv[1:].count('-q')
+  mode = Project.MODE_SAFE
+  mode |= Project.MODE_REWRITE*('--rewrite' in argv[1:])
+  mode |= Project.MODE_UI*('--ui' in argv[1:])
+  mode |= Project.MODE_FORCE_UI*('--ui=force' in argv[1:])
+  p = (progress.Progress(sys.stderr).set_text('Querying git').write()
+       if verbosity >= 0 else None)
+  conflicts = git.get_conflicts()
+  resolver = Resolver(conflicts)
+  if p:
+    p.set_max(resolver.file_count()).clear(spinDir=True)
+  resolver.determine_file_states(p)
+  if p:
+    p.set_val(0).set_max(resolver.file_count()).clear()
+  if verbosity >= -1:
+    sys.stdout.write(resolver.summary(mode, True, verbosity)
+                     or 'No conflicts found. Congrats!\n')
+  if '--apply' in argv[1:]:
+    if not resolver.can_be_merged(mode):
+      if verbosity >= -1:
+        sys.stderr.write('Unable to resolve all conflicts automatically.\n')
+      if '--force' not in argv[1:]:
+        if verbosity >= -1:
+          sys.stderr.write('Specify --force to resolve as much as possible.\n')
+        return 1
+    resolver.apply(mode, progress=p)
+    if p:
+      p.clear()
+    if verbosity >= -1:
+      sys.stdout.write('Repo state after applying conflict resolution:\n'
+                       + resolver.summary(mode, False, max(verbosity, 2)))
+  return resolver.state()
+if __name__ == '__main__':
+  try:
+    if '--profile' in sys.argv[1:]:
+      import cProfile
+      sys.exit(cProfile.run('main(sys.argv)', sort='cumulative'))
+    else:
+      sys.exit(main(sys.argv))
+  except KeyboardInterrupt:
+    sys.stderr.write('...cancelled\n')
+    sys.exit(2)

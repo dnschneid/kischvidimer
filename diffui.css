@@ -1,0 +1,282 @@
+/* Copyright 2024 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License. */
+
+.navitem {
+    cursor: pointer;
+    overflow-x: hidden;
+    color: rgba(255, 255, 255, 0.75) !important;
+    font-weight: 500;
+    padding: 5px 5px 5px 5px !important;
+}
+
+.navitemeven {
+    background-color: rgba(1, 1, 1, 0.1);
+}
+
+.navitem:not(.currentnavitem):hover {
+    color: black !important;
+}
+
+.resultentry {
+    color: white !important;
+    margin: 10px 10px 10px 10px;
+    padding: 8px 16px 8px 16px;
+    height: auto !important;
+}
+
+.resultentry:hover {
+    background-color: rgba(0, 0, 0, 0.2) !important;
+}
+
+.highlight {
+    filter: url(#highlight);
+}
+
+.resultpages {
+    list-style-type: none;
+    font-size: 0.85em;
+}
+
+.resultpages div {
+    padding-left: 16px;
+}
+
+#tooltiplinks li a {
+    color: blue;
+}
+
+.indeterminate .mdl-checkbox__box-outline:after {
+    position: absolute;
+    content: '';
+    background: grey;
+    display: block;
+    width: 15%;
+    height: 10px;
+    transform: rotate(-90deg);
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+}
+
+#pagebar::-webkit-scrollbar-track {
+    background-color: #37474f;
+}
+
+#pagebar::-webkit-scrollbar {
+    width: 5px;
+    background-color: #37474f;
+}
+
+#pagebar::-webkit-scrollbar-thumb {
+    background-color: black;
+}
+
+#pageul {
+    padding-top: 0;
+    margin-top: 0;
+    margin-bottom: 0
+}
+
+#searchpane::-webkit-scrollbar-track {
+    background-color: #263238;
+}
+
+#searchpane::-webkit-scrollbar {
+    width: 5px;
+    background-color: #263238;
+}
+
+#searchpane::-webkit-scrollbar-thumb {
+    background-color: white;
+}
+
+.difftd {
+    text-align: left !important;
+}
+
+.checktext {
+    white-space: normal;
+    word-break: break-word;
+    text-align: left;
+}
+
+.checkctrl {
+    width: 25px;
+    padding-left: 0 !important;
+}
+
+.innertd {
+    border-bottom-color: rgba(0, 0, 0, 0) !important;
+}
+
+.conflict {
+    background-color: rgba(255, 0, 0, 0.35);
+    border-left: 3px solid red;
+}
+
+.conflict:hover {
+    background-color: rgba(255, 0, 0, 0.15) !important;
+}
+
+.expandmultiple {
+    color: blue;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.expandmultiple:hover {
+    text-decoration: underline;
+}
+
+.collapsedtr {
+    visibility: collapse;
+}
+
+.conflictpagelink {
+    background-color: rgba(255, 0, 0, 0.15);
+}
+
+.conflictpagelink:hover {
+    background-color: rgba(255, 0, 0, 0.35) !important;
+}
+
+.stickyhead {
+    position: sticky !important;
+    z-index: 99999;
+    top: -5px;
+    background-color: white;
+    transform: translate(-1px, 0);
+}
+
+#schematic-title {
+    white-space: nowrap;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+    height: 100%;
+    padding-top: 20px;
+    flex-shrink: 1;
+    margin-right: 15px;
+}
+
+@media screen and (max-width: 1024px) {
+    #mdlheader {
+        width: 100% !important;
+        margin-left: 0 !important;
+    }
+}
+
+.selectedsearch {
+    color: red !important;
+}
+
+*[id^='resultname'] {
+    overflow-wrap: anywhere;
+}
+
+#pageul code {
+    color: grey;
+}
+
+#pagefilterdiv label:after {
+    background-color: yellow !important;
+}
+
+#pagefilterdiv {
+    width: auto;
+    top: -4px;
+    margin-top: -4px;
+    position: sticky;
+    z-index: 10000;
+    border-left: 10px solid rgba(0, 0, 0, 0);
+    border-right: 10px solid rgba(0, 0, 0, 0);
+    background-color: rgb(38, 50, 56);
+}
+
+.themeselect label {
+    width: 150px;
+    float: right;
+}
+
+.themeselect .mdl-radio__label {
+    padding: 4px;
+    border-radius: 4px;
+}
+
+#morematches button:disabled svg {
+    fill: rgba(0, 0, 0, .3) !important;
+}
+
+.mdl-dialog {
+    position: relative;
+    background-color: white;
+    z-index: 1000001;
+    margin: auto;
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.dialogwrapper {
+    display: none;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 1000000;
+    background-color: rgba(0, 0, 0, .15);
+    align-items: center;
+}
+
+.ghost {
+    overflow: auto;
+}
+
+.ghost g rect {
+    fill: var(--c);
+    fill-opacity: 0;
+    stroke: var(--g);
+    stroke-opacity: 1;
+    stroke-width: 12px;
+    transition: fill 0.2s, fill-opacity 0.2s;
+}
+
+.ghost g text {
+    text-anchor: middle;
+    fill: var(--o);
+    fill-opacity: 0.75;
+    transition: fill-opacity 0.25s;
+}
+
+.ghost g {
+    filter: opacity(0.2);
+    overflow: auto;
+    cursor: pointer;
+}
+
+.ghost g:hover {
+    filter: unset !important;
+}
+
+.ghost g:hover rect {
+    fill: var(--w);
+    fill-opacity: 0.1;
+}
+
+.ghost g:hover text {
+    fill-opacity: 1;
+}
+
+#changetablebody>tr {
+    cursor: pointer;
+}
