@@ -1,0 +1,306 @@
+<!-- SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+SPDX-FileCopyrightText: Copyright 2024 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<div class="dialogwrapper" style="display:flex">
+    <div class="mdl-dialog" id="loadingdialog" style="width:400px">
+        <h4 class="mdl-dialog__title">Schematic Loading...</h4>
+        <div class="mdl-dialog__content">
+            <p>
+                Once loaded, navigation will resume.
+            </p>
+        </div>
+    </div>
+</div>
+<div class="dialogwrapper">
+    <div class="mdl-dialog" id="settingsdialog" style="width:360px">
+        <div class="mdl-dialog__title">
+            <h4>Settings</h4>
+        </div>
+        <div class="mdl-dialog__content">
+            <div class="mdl-list" style="color:black">
+                <div class="mdl-list__item">
+                    <div class="mdl-list__item-primary-content"><span style="font-weight:500">Auto-zoom to content:</span>
+                    </div>
+                    <div class="mdl-list__item-secondary-action">
+                        <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect" for="zoomcontentcheckbox"
+                            id="zoomcontentcheckboxlabel">
+                            <input type="checkbox" id="zoomcontentcheckbox" class="mdl-checkbox__input">
+                        </label>
+                    </div>
+                </div>
+                <div class="mdl-list__item">
+                    <div class="mdl-list__item-primary-content"><span style="font-weight:500">Show zoom controls:</span>
+                    </div>
+                    <div class="mdl-list__item-secondary-action">
+                        <label class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect" for="zoomcontrolcheckbox"
+                            id="zoomcontrolcheckboxlabel">
+                            <input type="checkbox" id="zoomcontrolcheckbox" class="mdl-checkbox__input">
+                        </label>
+                    </div>
+                </div>
+                <div class="mdl-list__item">
+                    <div class="mdl-list__item-primary-content"><span style="font-weight:500">Theme:</span></div>
+                    <div class="mdl-list__item-secondary-action themeselect"></div>
+                </div>
+                <div class="mdl-list__item">
+                    <button type="button" class="mdl-button mdl-button--raised" id="xprobe">Start cross-probe</button>
+                </div>
+            </div>
+        </div>
+        <div class="mdl-dialog__actions">
+            <button type="button" class="mdl-button mdl-button--raised" id="applysettings">Apply</button>
+            <button type="button" class="mdl-button" id="closesettings">Close</button>
+        </div>
+    </div>
+</div>
+<div class="dialogwrapper">
+    <div class="mdl-dialog" id="applydiffsdialog" style="width:300px">
+        <div class="mdl-dialog__title">
+            <h4>Apply diff selections</h4>
+        </div>
+        <div class="mdl-dialog__content">
+            <p style="display:none;color:red;font-weight:bold" id="unresolvedWarning"></p>
+        </div>
+        <div class="mdl-dialog__actions mdl-dialog__actions--full-width">
+            <button type="button" class="mdl-button" id="applydiffs">Merge &amp; Submit</button>
+            <button type="button" class="mdl-button" id="closeapplydiffs">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="copy-toast" class="mdl-js-snackbar mdl-snackbar">
+    <div class="mdl-snackbar__text"></div>
+    <button class="mdl-snackbar__action" type="button"></button>
+</div>
+<div class="mdl-layout__container" id="background" style="filter: blur(4px)">
+    <div class="demo-layout mdl-layout mdl-js-layout mdl-layout--fixed-drawer mdl-layout--fixed-header"
+        style="overflow-y:hidden">
+        <header id="mdlheader"
+            class="demo-header mdl-layout__header mdl-color--grey-100 mdl-color-text--grey-600 is-casting-shadow">
+            <div class="mdl-layout__drawer-button">
+                <img src="icons/menu.svg" style="vertical-align:unset" width="28px" height="28px">
+            </div>
+            <div class="mdl-layout__header-row" style="padding-left:20px;padding-right:20px">
+                <span class="mdl-layout-title" id="schematic-title"></span>
+                <div class="mdl-layout-spacer"></div>
+                <div style="margin-right:20px;display:none" class="threewayshown">
+                    <button title="submit resolved diffs" id="submitbutton"
+                        class="mdl-button mdl-js-button mdl-button--fab mdl-js-ripple-effect">
+                        <span>✓</span>
+                        <span class="mdl-button__ripple-container"><span class="mdl-ripple is-animating"
+                                style="width: 160.392px; height: 160.392px; transform: translate(-50%, -50%) translate(15px, 46px);"></span></span></button>
+                </div>
+                <div style="margin-right:20px">
+
+                    <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                        title="change page settings" id="settingsbutton">
+                        <img src="icons/settings.svg" width="24" height="32">
+                    </button>
+                </div>
+
+                <div style="margin-right:20px;display:none">
+                    <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                        title="report feedback" id="feedbackbutton">
+                        <img src="icons/feedback.svg" width="24" height="32">
+                    </button>
+                </div>
+
+                <div style="margin-right:20px">
+                    <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored" title="print"
+                        id="printbutton">
+                        <img src="icons/print.svg" width="24" height="32">
+                    </button>
+                </div>
+
+                <div style="width:1px;height:32px;border-left:1px solid lightgrey">
+                </div>
+                <div>
+                    <button title="show changelist" id="diffbutton" style="display:none; margin-left:20px"
+                        class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored">
+                        <img style="width:25px;height:25px;margin-top:-4px">
+                        <span class="mdl-button__ripple-container"><span class="mdl-ripple is-animating"
+                                style="width: 160.392px; height: 160.392px; transform: translate(-50%, -50%) translate(15px, 46px);"></span></span></button>
+                </div>
+
+                <div class="mdl-textfield mdl-js-textfield mdl-textfield--expandable
+      mdl-textfield--floating-label" id="expandsearch" style="margin-left:20px">
+                    <label class="mdl-button mdl-js-button mdl-button--icon" for="search-expandable"
+                        id="expandsearchbutton" title="search the schematic">
+                        <img src="icons/search.svg" width="24" height="32">
+                    </label>
+                    <div class="mdl-textfield__expandable-holder">
+                        <input class="mdl-textfield__input" type="text" id="search-expandable">
+                    </div>
+                </div>
+            </div>
+
+
+            <div id="tooltip"
+                style="position:absolute;opacity:0.8;display:none;width:auto;height:auto;max-height:500px;overflow-y:auto"
+                class="mdl-card mdl-shadow--16dp ">
+                <div class="mdl-card__title mdl-card--border" style="color:black">
+                    <h2 class="mdl-card__title-text">
+                        <span style="font-weight:bold" id="tooltiptype"></span>:&nbsp;<span id="tooltipname"></span>
+                        <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                            title="link to this element on this page" id="tooltiplink">
+                            <img src="icons/link.svg" style="padding-bottom:5px;width:25px;height:25px">
+                        </button>
+                    </h2>
+                    <h6 class="mdl-card__subtitle-text" style="margin-bottom:0"><span id="tooltipcontext"></span></h6>
+                </div>
+                <div class="mdl-card__supporting-text mdl-card--border" id="propdiv"></div>
+                <div class="mdl-card__supporting-text">
+                    <h5 style="margin-top:0">Where it appears:
+                        <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                            title="prev instance" id="previnstance">
+                            <img src="icons/back.svg" style="padding-bottom:5px;width:25px;height:25px">
+                        </button>
+                        <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                            title="next instance" id="nextinstance">
+                            <img src="icons/forward.svg" style="padding-bottom:5px;width:25px;height:25px">
+                        </button>
+                    </h5>
+                    <ul id="tooltiplinks" style="list-style-type:none;color:blue">
+                    </ul>
+                </div>
+            </div>
+
+            <div id="animationtoolbox" class="mdl-card mdl-shadow--16dp"
+                style="position:absolute;width:480px;height:calc(100% - 65px);top:64px;right:0; display:none">
+                <div class="mdl-card__title">
+                    <h2 class="mdl-card__title-text">Schematic Changelist</h2>
+                </div>
+
+                <div class="mdl-card__supporting-text" style="padding:0;width:100%;overflow-y:auto">
+
+                    <button class="mdl-button mdl-js-button mdl-button--primary" id="reanimate-button"
+                        style="margin-bottom:16px">
+                        Re-animate selected changes
+                    </button>
+
+                    <button class="mdl-button mdl-js-button mdl-button--primary" id="highlight-changes-button"
+                        style="margin-bottom:16px">
+                        Highlight all changes
+                    </button>
+                    <div class="mdl-textfield mdl-js-textfield" style="margin-left:16px;margin-right:16px;width:448px">
+                        <input class="mdl-textfield__input" type="text" id="changefilter">
+                        <label class="mdl-textfield__label" for="changefilter">Filter change groups...</label>
+                    </div>
+                    <div style="overflow-y:scroll;overflow-x:hidden;height:calc(100vh - 250px)" id="changetablediv">
+                        <table class="mdl-data-table mdl-js-data-table mdl-shadow--2dp"
+                            style="width:480px;color:black;table-layout:fixed" id="changetable">
+                            <thead>
+                                <tr>
+                                    <th class="stickyhead" style="width:25px;padding:5px">
+                                        <label
+                                            class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect mdl-data-table__select"
+                                            for="oursall" style="width:25px">
+                                            <input type="checkbox" id="oursall" class="mdl-checkbox__input" checked />
+                                        </label>
+                                    </th>
+                                    <th class="mdl-data-table__cell--non-numeric stickyhead">Changes<span
+                                            class="threewayshown">&nbsp;to apply (OURS)</span></th>
+                                    <th class="threewayshown stickyhead" style="width:25px;padding:5px">
+                                        <label
+                                            class="mdl-checkbox mdl-js-checkbox mdl-js-ripple-effect mdl-data-table__select"
+                                            for="theirsall">
+                                            <input type="checkbox" id="theirsall" class="mdl-checkbox__input" checked />
+                                        </label>
+                                    </th>
+                                    <th class="threewayshown stickyhead" class="mdl-data-table__cell--non-numeric">
+                                        Changes to apply (THEIRS)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="changetablebody" style="bottom:50px;overflow-y:scroll">
+                                <tr>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+            <div id="searchpane" class="mdl-card mdl-shadow--16dp"
+                style="display:none;position:absolute;width:360px;height:calc(100vh - 64px);top:64px;right:0; background-color:#263238;overflow-y:scroll">
+
+                <div id="morematches" style="margin:5px 10px 5px 10px;padding:8px 16px 8px 16px;">
+                    <span id="morematchescount" style="color:white;"></span>
+                    <button disabled class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                        title="next search page" id="nextresults" style="float:right">
+                        <img src="icons/forward.svg" style="fill:white" width="24" height="32">
+                    </button>
+                    <div class="mdl-textfield mdl-js-textfield" style="top:-20px;width:40px;display:inline;float:right;"
+                        id="resultpagenumberdiv">
+                        <input class="mdl-textfield__input" type="number" pattern="[0-9]*" id="resultpagenumber"
+                            style="color:white;text-align:center;border-bottom-color:white">
+                    </div>
+                    <button disabled class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+                        title="previous search page" id="previousresults" style="float:right">
+                        <img src="icons/back.svg" style="fill:white" width="24" height="32">
+                    </button>
+                </div>
+                <div style="color:white;list-style-type:none;" id="matchlist">
+                </div>
+            </div>
+
+        </header>
+        <div class="demo-drawer mdl-layout__drawer mdl-color--blue-grey-900 mdl-color-text--blue-grey-50" id="pagebar">
+
+            <div class="mdl-textfield mdl-js-textfield" id="pagefilterdiv">
+                <input class="mdl-textfield__input" type="text" id="pagefilter" style="border-bottom:1px solid grey">
+                <label class="mdl-textfield__label" for="pagefilter" style="color:lightgrey;">filter pages...</label>
+                <img src="icons/filter.svg" style="fill:lightgrey;position:absolute;right:0;bottom:22px" height="24" width="24">
+            </div>
+            <ul class="mdl-list" id="pageul">
+                <nav id="pagelist" class="mdl-navigation mdl-color--blue-grey-800" style="padding-top:0;width:100%;">
+                </nav>
+            </ul>
+        </div>
+        <main class="mdl-layout__content mdl-color--grey-100" id="svgWrapper">
+            <div id="svgLibrary" style="display:none"></div>
+            <svg style="height:0;position:absolute">
+                <filter id="highlight" x="-20" y="-20" height="40" width="40">
+                    <feMorphology operator="dilate" radius="20" />
+                    <feComponentTransfer result="highlight">
+                        <feFuncR type="discrete" tableValues="1" />
+                        <feFuncG type="discrete" tableValues="1" />
+                        <feFuncB type="discrete" tableValues="0" />
+                        <feFuncA type="table" tableValues="0 0.5 0.5 0.5 0.5 0.5 0.5 0.5" />
+                    </feComponentTransfer>
+                    <feComposite in="SourceGraphic" in2="highlight" operator="over" />
+                </filter>
+            </svg>
+            <div id="svgPage" style="width:100%;height:100%"></div>
+            <div id="zoomcontrols" class="mdl-shadow--2dp"
+                style="display:none;position:absolute;left:0;bottom:0; background-color:white; border-radius: 0 10px 0 0">
+                <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored" title="zoom out"
+                    id="zoomcontrolout">
+                    <img src="icons/zoom_out.svg" height="32" width="24">
+                </button>
+                <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored" title="zoom to fit page"
+                    id="zoomcontrolfit">
+                    <img src="icons/fit_screen.svg" height="32" width="24">
+                </button>
+                <button class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored" title="zoom in"
+                    id="zoomcontrolin">
+                    <img src="icons/zoom_in.svg" height="32" width="24">
+                </button>
+            </div>
+        </main>
+    </div>
+</div>

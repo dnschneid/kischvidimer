@@ -1,11 +1,19 @@
-# webschviewdiffmerge
+<!--
+SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+SPDX-License-Identifier: Apache-2.0
+-->
 
-This repository contains code that allows users to perform the following actions
-on schematic files:
-* View schematic files on the web
-* Diff different versions of the schematic 
-* Merge schematic files edited by multiple users 
+# kischvidimer
 
-The project is currently written with placeholders for CAD-tool specific parsing 
-code. This code will not run as-is and needs parsing code as outlined in the
-filetypes directory to function.
+The KiCad schematic viewer / differ / merger.
+
+(although right now it just views)
+
+## tl;dr
+
+kischvidimer generates a self-contained HTML webapp with your schematic
+embedded. You can view the file locally or host it on a webserver.
+
+## ...and?
+
+naw, that's it for now. Come back when the tool is more complete.

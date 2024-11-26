@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-FileCopyrightText: Copyright 2024 Google LLC
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Parses Kicad worksheet files
+"""
+
+from . import kicad_common
+from .kicad_common import *
+
+# FIXME: check common/drawing_sheet/drawing_sheet.keywords for completeness
+
+ALL_WKS_VARS = {'TITLE', 'ISSUE_DATE', 'REV', 'COMPANY',
+                'LAYER', 'PAPER', 'KICAD_VERSION'
+                }.union({f'COMMENT{i}' for i in range(10)})
+
+def toMM(x, y):
+  return (sexp.Decimal(x)*254/10,
+          sexp.Decimal(y)*254/10)
+
+@sexp.handler("setup")
+class setup(sexp.sexp):
+  def is_pgone(self, context):
+    pn = int(Variables.v(context).resolve(context, Variables.PAGENO) or 0)
+    if pn:
+      return pn == 1
+    for c in reversed(context):
+      if c.type == "kicad_sch" and hasattr(c, "root_path"):
+        return bool(c.root_path)
+    return False
+
+  def page_corners(self, context):
+    paper = ["A4"]
+    for c in reversed(context):
+      if c.type == "kicad_sch":
+        paper = c.get("paper", paper).data
+        break
+    if len(paper) > 2:
+      assert paper[0] == 'User'
+      assert len(paper) == 3
+      size = tuple(paper[1:])
+    else:
+      size = {
+          "A0": (1189, 841),
+          "A1": (841, 594),
+          "A2": (594, 420),
+          "A3": (420, 297),
+          "A4": (297, 210),
+          "A5": (210, 148),
+          "A": toMM(11, 8.5),
+          "B": toMM(17, 11),
+          "C": toMM(22, 17),
+          "D": toMM(34, 22),
+          "E": toMM(44, 34),
+          "USLedger": toMM(17, 11),
+          "USLegal":  toMM(14, 8.5),
+          "USLetter": toMM(11, 8.5),
+          }.get(paper[0])
+      assert size
+      if len(paper) == 2:
+        assert paper[1] == 'portrait'
+        size = (size[1], size[0])
+    lt = (self.get("left_margin", default=[0])[0],
+          self.get("top_margin", default=[0])[0])
+    rb = (size[0] - self.get("right_margin", default=[0])[0],
+          size[1] - self.get("bottom_margin", default=[0])[0])
+    return lt+rb
+
+  @property
+  def textsize(self):
+    ts = self.get("textsize")
+    if ts:
+      assert ts[0] == ts[1]
+      return ts[0]
+    return 1
+
+  @property
+  def thick(self):
+    return self.get("linewidth", default=["wire"])[0]
+
+  @property
+  def textthick(self):
+    return self.get("textlinewidth", default=["wire"])[0]
+
+class Repeatable(Drawable):
+  def is_pg(self):
+    return False
+  def fillsvg(self, svg, diffs, draw, context):
+    if not draw & (Drawable.DRAW_WKS_PG if self.is_pg() else Drawable.DRAW_WKS):
+      return
+    config = None
+    for c in reversed(context):
+      if c.type == "kicad_wks":
+        config = c["setup"][0]
+    assert config
+    is_pgone = config.is_pgone(context)
+    rel = config.page_corners(context)
+    defgrav = 'rb'
+    params = {
+        "thick": config.thick,
+        "textthick": config.textthick,
+        "size": config.textsize,
+        "color": 'SCHEMATIC_DRAWINGSHEET',
+        }
+    posparams = {'rel': rel, 'defgravity': defgrav}
+    if "pos" in self:
+      params["pos"] = self["pos"][0].pos(**posparams)
+    else:
+      params["start"] = self["start"][0].pos(**posparams)
+      params["end"] = self["end"][0].pos(**posparams)
+    variables = Variables.v(context)
+    expandfunc = lambda t: variables.expand(context, t)
+    # Don't render on the wrong page
+    option = self.get("option", default=[None])[0]
+    # If pageno is unknown, assume not page 1
+    if option and (option == "page1only") != is_pgone:
+      # assumes no values other than page1only/notonpage1
+      return
+    repeat = self.get("repeat", default=[1])[0]
+    incrx = self.get("incrx", default=[0])[0]
+    incry = self.get("incry", default=[0])[0]
+    for i in range(repeat):
+      self.fillsvginst(svg, i, params, expandfunc)
+      # Advance!
+      for p in "pos", "start", "end":
+        if p in params:
+          gravity = self[p][0].gravity(default=defgrav)
+          vec = rel_coord(gravity, vect=(incrx, incry))
+          params[p] = (vec[0]+params[p][0],
+                       vec[1]+params[p][1])
+          # Stop early if we've gone beyond the page size
+          if (params[p][0] < rel[0] or params[p][0] > rel[2] or
+              params[p][1] < rel[1] or params[p][1] > rel[3]):
+            return
+
+@sexp.handler("rect")
+class rect(Repeatable):
+  def fillsvginst(self, svg, i, params, expandfunc):
+    svg.rect(
+        pos=params["start"],
+        end=params["end"],
+        color=params["color"],
+        thick=params["thick"],
+        )
+
+@sexp.handler("line")
+class line(Repeatable):
+  def fillsvginst(self, svg, i, params, expandfunc):
+    svg.line(
+        p1=params["start"],
+        p2=params["end"],
+        color=params["color"],
+        thick=params["thick"],
+        )
+
+@sexp.handler("tbtext")
+class tbtext(Repeatable):
+  def is_pg(self):
+    return '${' in self[0]
+  def fillsvginst(self, svg, i, params, expandfunc):
+    text = self[0]
+    incr = self.get("incrlabel", default=[1])[0]
+    if text == "1":
+      text = f"{i*incr+1}"
+    elif text == "A":
+      text = unit_to_alpha(i*incr+1)
+    else:
+      text = expandfunc(text)
+    lr, tb = self.justify
+    svg.text(
+        text=text,
+        pos=params["pos"],
+        size=self.size(params["size"]),
+        color=params["color"],
+        justify=lr,
+        vjustify=tb,
+        rotate=self.get("rotate", default=[0])[0],
+        )
+
+  def size(self, default):
+    if "font" in self and "size" in self["font"][0]:
+      size = self["font"][0]["size"][0]
+      assert size[0] == size[1]
+      return size[0] or default
+    return default
+
+  @property
+  def justify(self):
+    lr = "left"  # unlike the rest of kicad...
+    tb = "middle"
+    if "justify" in self:
+      lr = "middle" if "center" in self["justify"][0] else lr
+      lr = "right" if "right" in self["justify"][0] else lr
+      tb = "top" if "top" in self["justify"][0] else tb
+      tb = "wks_bottom" if "bottom" in self["justify"][0] else tb
+    return (lr, tb)
+
+@sexp.handler("bitmap")
+class bitmap(Repeatable):
+  def fillsvginst(self, svg, i, params, expandfunc):
+    svg.image(
+        pos=params["pos"],
+        scale=self.get("scale", default=[1])[0],
+        data="".join(self["data"][0].data),
+        )
+
+@sexp.handler("kicad_wks")
+class wks(Drawable):
+  """Tracks a kicad_wks file """
+  def wks_hash(self, context):
+    """ calculates and returns the hash for a context. """
+    # FIXME: include worksheet itself in hash?
+    return hash((
+      self["setup"][0].is_pgone(context),
+      self["setup"][0].page_corners(context),
+      ))
+
+
+DEFAULT_WORKSHEET_PATH = "templates/pagelayout_default.kicad_wks"
+DEFAULT_WORKSHEET = "(kicad_wks)"
+
+# rather than supplement the variable expander with these ancient runes, do a
+# pre-processing step to upgrade the file format
+UPGRADE_DICT = {
+    "%%": "%",
+    "%C0": "${COMMENT1}",
+    "%C1": "${COMMENT2}",
+    "%C2": "${COMMENT3}",
+    "%C3": "${COMMENT4}",
+    "%C4": "${COMMENT5}",
+    "%C5": "${COMMENT6}",
+    "%C6": "${COMMENT7}",
+    "%C7": "${COMMENT8}",
+    "%C8": "${COMMENT9}",
+    "%D": "${ISSUE_DATE}",
+    "%F": "${FILENAME}",
+    "%K": "${KICAD_VERSION}",
+    "%L": "${LAYER}",
+    "%N": "${##}",
+    "%P": "${SHEETPATH}",
+    "%R": "${REVISION}",
+    "%S": "${#}",
+    "%T": "${TITLE}",
+    "%Y": "${COMPANY}",
+    "%Z": "${PAPER}",
+    "page_layout": "kicad_wks",
+    }
+
+def kicad_wks(f, fname=None):
+  if f:
+    raw = f.read()
+    if isinstance(raw, bytes):
+      raw = raw.decode()
+    data = sexp.parse(raw)
+    if data[0].type == "page_layout":
+      data = re.sub("|".join(UPGRADE_DICT), lambda m: UPGRADE_DICT.get(m[0]),
+                    raw)
+      data = sexp.parse(data)
+    if isinstance(data[0], wks):
+      return data[0]
+  defpath = os.path.join(os.path.dirname(__file__), DEFAULT_WORKSHEET_PATH)
+  if fname == defpath or not os.path.isfile(defpath):
+    return sexp.parse(DEFAULT_WORKSHEET)
+  return kicad_wks(open(defpath, "r"), defpath)
+
+def main(argv):
+  """USAGE: kicad_wks.py [wksfile [size]]
+  Reads a kicad_wks from stdin or wksfile and renders the border at the chosen
+  size (or A4 if not specified).
+  """
+  s = svg.Svg(theme="default")
+  w = kicad_wks(open(argv[0], "r") if argv else sys.stdin)
+  paper = argv[1] if len(argv) >= 2 else "A4"
+  # Placeholder title block; kicad_sch needed for variable filling
+  fakepage = f'(kicad_sch (paper "{paper}"))'
+  fakepage = sexp.parse(fakepage)[0]
+  params = {
+      "svg": s,
+      "diffs": [],
+      "draw": Drawable.DRAW_ALL,
+      "context": (fakepage,),
+      }
+  w.fillsvg(**params)
+  print(str(s))
+
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+version = 1
+
+# Unmodified Google code
+[[annotations]]
+path = [
+  "diff-project",
+  "kischvidimer/diff.py",
+  "kischvidimer/fileparse.py",
+  "kischvidimer/git.py",
+  "kischvidimer/project.py",
+  "kischvidimer/resolver.py",
+  "kischvidimer/icons/*",
+]
+SPDX-FileCopyrightText  = "Copyright 2024 Google LLC"
+SPDX-License-Identifier = "Apache-2.0"
