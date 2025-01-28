@@ -21,7 +21,20 @@ Parses Kicad worksheet files
 from . import kicad_common
 from .kicad_common import *
 
-# FIXME: check common/drawing_sheet/drawing_sheet.keywords for completeness
+# NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
+# TODO: handle the following?
+# bold
+# color
+# comment
+# drawing_sheet
+# face
+# italic
+# maxheight
+# maxlen
+# name
+# pngdata
+# polygon
+# pts
 
 ALL_WKS_VARS = {'TITLE', 'ISSUE_DATE', 'REV', 'COMPANY',
                 'LAYER', 'PAPER', 'KICAD_VERSION'
@@ -42,6 +55,8 @@ class setup(sexp.sexp):
         return bool(c.root_path)
     return False
 
+  @sexp.uses("paper", "left_margin", "top_margin", "right_margin",
+             "bottom_margin", "portrait")
   def page_corners(self, context):
     paper = ["A4"]
     for c in reversed(context):
@@ -80,6 +95,7 @@ class setup(sexp.sexp):
     return lt+rb
 
   @property
+  @sexp.uses("textsize")
   def textsize(self):
     ts = self.get("textsize")
     if ts:
@@ -88,16 +104,19 @@ class setup(sexp.sexp):
     return 1
 
   @property
+  @sexp.uses("linewidth")
   def thick(self):
     return self.get("linewidth", default=["wire"])[0]
 
   @property
+  @sexp.uses("textlinewidth")
   def textthick(self):
     return self.get("textlinewidth", default=["wire"])[0]
 
 class Repeatable(Drawable):
   def is_pg(self):
     return False
+  @sexp.uses("option", "incrx", "incry", "page1only", "notonpage1", "repeat")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_WKS_PG if self.is_pg() else Drawable.DRAW_WKS):
       return
@@ -170,6 +189,8 @@ class line(Repeatable):
 class tbtext(Repeatable):
   def is_pg(self):
     return '${' in self[0]
+
+  @sexp.uses("incrlabel", "rotate")
   def fillsvginst(self, svg, i, params, expandfunc):
     text = self[0]
     incr = self.get("incrlabel", default=[1])[0]
@@ -190,6 +211,7 @@ class tbtext(Repeatable):
         rotate=self.get("rotate", default=[0])[0],
         )
 
+  @sexp.uses("font", "size")
   def size(self, default):
     if "font" in self and "size" in self["font"][0]:
       size = self["font"][0]["size"][0]
@@ -198,6 +220,7 @@ class tbtext(Repeatable):
     return default
 
   @property
+  @sexp.uses("justify", "left", "middle", "right", "top", "bottom")
   def justify(self):
     lr = "left"  # unlike the rest of kicad...
     tb = "middle"
@@ -210,6 +233,7 @@ class tbtext(Repeatable):
 
 @sexp.handler("bitmap")
 class bitmap(Repeatable):
+  @sexp.uses("data", "scale")
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.image(
         pos=params["pos"],
@@ -259,6 +283,7 @@ UPGRADE_DICT = {
     "page_layout": "kicad_wks",
     }
 
+@sexp.uses("page_layout")
 def kicad_wks(f, fname=None):
   if f:
     raw = f.read()

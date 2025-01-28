@@ -39,6 +39,8 @@ class pin_def(Drawable):
           return (alt[1], alt[2])
     return (self[0], self[1])
 
+  @sexp.uses("clock", "clock_low", "edge_clock_high", "input_low", "inverted",
+             "non_logic", "output_low", "hide", "length")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_PINS:
       return
@@ -220,6 +222,7 @@ class symbol_def(sexp.sexp, Comparable):
     sym = self._sym(diffs, context)
     return max(b.unit for b in sym["symbol"]) > 1
 
+  @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs):
     cfg = {
         "name": {
@@ -242,6 +245,7 @@ class symbol_def(sexp.sexp, Comparable):
         cfg["number"]["hide"] = True
     return cfg
 
+  @sexp.uses("extends")
   def _sym(self, diffs, context):
     # Returns the true symbol (e.g., if extending, returns that one)
     if "extends" in self:

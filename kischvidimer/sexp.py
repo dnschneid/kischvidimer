@@ -90,6 +90,17 @@ def handler(*atoms):
     return cls
   return register_me
 
+# Decorator: use like @sexp.uses('atom1', 'atom2')
+def uses(*atoms):
+  if not hasattr(uses, "_uses"):
+    uses._uses = {}
+  def register_me(fn):
+    for atm in atoms:
+      atm = atom(atm)
+      uses._uses.setdefault(atm, []).append(fn)
+    return fn
+  return register_me
+
 class sexp():
   @classmethod
   def init(cls, data):

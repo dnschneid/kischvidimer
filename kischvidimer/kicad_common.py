@@ -28,9 +28,14 @@ from .diff import Comparable, Diff, Param, difflists, applylists, targetdict
 from . import sexp
 from . import svg
 
+# hack for keyword testing
+if __name__ == '__main__':
+  sexp.handler._handlers.clear()
+
 # FIXME: (uuid "7d02517e-895f-4725-8c48-050f5414907e")
 
 class has_uuid():
+  @sexp.uses("uuid")
   def uuid(self, generate=False):
     if "uuid" in self:
       return self["uuid"][0][0]
@@ -105,6 +110,7 @@ def rotated(pos, deg=None, rad=None):
   return (pos[0]*cos - pos[1]*sin, pos[1]*cos + pos[0]*sin)
 
 
+@sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
 def rel_coord(gravity, rel=None, pos=None, vect=None):
   """ Calculates a relative coordinate or vector based on a gravity and the
   relative pos/size. """
@@ -215,6 +221,7 @@ class Modifier(sexp.sexp, Comparable):
 @sexp.handler("effects")
 class effects(Modifier):
   """ font effects """
+  @sexp.uses("font", "size")
   def get_size(self, diffs):
     # FIXME: diffs
     if "font" in self and "size" in self["font"][0]:
@@ -223,6 +230,7 @@ class effects(Modifier):
       return size[0]
     # FIXME: default size?
     return None
+  @sexp.uses("justify", "left", "right", "top", "bottom")
   def get_justify(self, diffs):
     # FIXME: diffs
     lr = "middle"
@@ -233,9 +241,11 @@ class effects(Modifier):
       tb = "top" if "top" in self["justify"][0] else tb
       tb = "bottom" if "bottom" in self["justify"][0] else tb
     return (lr, tb)
+  @sexp.uses("hide")
   def get_hidden(self, diffs):
     # FIXME: diffs
     return "hide" in self
+  @sexp.uses("href", "mirror")
   def svgargs(self, diffs, context):
     """ Returns a dict of arguments to Svg.text """
     args = {}
@@ -299,9 +309,10 @@ class effects(Modifier):
     args['rotate'] = (rot % 180 + 180*spin) % 360
     return args
 
-@sexp.handler("stroke")
+@sexp.handler("stroke", "default")
 class stroke(Modifier):
   """ stroke effects """
+  @sexp.uses("width", "type", "color")
   def svgargs(self, diffs, context):
     args = {}
     if "width" in self and self["width"][0][0]:
@@ -329,6 +340,7 @@ class color(sexp.sexp, Comparable):
 @sexp.handler("fill")
 class fill(Modifier):
   """ fill properties """
+  @sexp.uses("background", "color")
   def svgargs(self, diffs, context):
     args = {}
     if "type" in self:
@@ -345,6 +357,7 @@ class fill(Modifier):
 @sexp.handler("polyline")
 class polyline(Drawable):
   """ Graphical polyline """
+  @sexp.uses("pts")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
@@ -402,6 +415,7 @@ class arc(Drawable):
 @sexp.handler("circle")
 class circle(Drawable):
   """ Graphical circle """
+  @sexp.uses("radius")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
@@ -514,6 +528,7 @@ class field(Drawable):
   def fillvars(self, variables, diffs, context):
     variables.define(context+(self,), self.name, self.value)
     super().fillvars(variables, diffs, context)
+  @sexp.uses("show_name")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs...
     prop = self.name
@@ -741,3 +756,28 @@ class Variables():
       if not context:
         return orig_variable
       context = context.rpartition("/")[0]
+
+
+def main(argv):
+  # Perform keyword checks to ensure all keywords are handled
+  sexp.handler._handlers.clear()
+  if argv[0] == "wks":
+    import kicad_wks
+  elif argv[0] == "sym":
+    import kicad_sym
+  else:
+    import kicad_sch  # includes kicad_sym and kicad_wks
+  ret = 0
+  for kwfile in argv:
+    if not os.path.isfile(kwfile):
+      continue
+    with open(kwfile, "r") as f:
+      kws = sorted(line.strip() for line in f if line.strip())
+    print(f"{kwfile}:")
+    for kw in kws:
+      if kw not in sexp.handler._handlers and kw not in sexp.uses._uses:
+        print(f"  {kw}")
+        ret = 1
+  return ret
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))

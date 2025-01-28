@@ -18,11 +18,13 @@ from . import kicad_wks
 from .kicad_common import *
 
 # FIXME: check eeschema/schematic.keywords for completeness
+#        on last check, there are around 79 unused atoms
 
 @sexp.handler("title_block")
 class title_block(Drawable):
   """ title_block """
   @property
+  @sexp.uses("title")
   def title(self):
     return self["title"][0][0] if "title" in self else None
 
@@ -30,6 +32,8 @@ class title_block(Drawable):
     # FIXME: diffs
     svg.instantiate_worksheet(draw, context)
 
+  @sexp.uses("company", "comment", "title", "paper", "generator",
+             "generator_version", "rev")
   def fillvars(self, variables, diffs, context):
     # Fill in all variable defaults
     missing_vars = set(kicad_wks.ALL_WKS_VARS)
@@ -72,6 +76,7 @@ class title_block(Drawable):
 @sexp.handler("junction")
 class junction(Drawable):
   """ junction """
+  @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
@@ -129,6 +134,7 @@ class label(Drawable, has_uuid):
     """
     super().fillvars(variables, diffs, context)
 
+  @sexp.uses("shape")
   def shape(self, diffs):
     if self.type == "pin":
       return self[1]
@@ -139,6 +145,7 @@ class label(Drawable, has_uuid):
   def net(self, diffs, context):
     return self[0]
 
+  @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
     if draw & Drawable.DRAW_FG:
       # FIXME: diffs
@@ -262,6 +269,7 @@ class symbol_inst(Drawable, has_uuid):
     """
     super().fillvars(variables, diffs, context)
 
+  @sexp.uses("lib_id")
   def fillsvg(self, svg, diffs, draw, context):
     # Decide what to draw
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
@@ -300,9 +308,11 @@ class symbol_inst(Drawable, has_uuid):
   def rot(self, diffs):
     return self["at"][0].rot(diffs)
 
+  @sexp.uses("mirror")
   def mirror(self, diffs):
     return self.get("mirror", default=[None])[0]
 
+  @sexp.uses("x", "y")
   def rot_mirror(self, diffs):
     # Returns a simplified rot + mirror, where mirror is never "y"
     mirror = self.mirror(diffs)
@@ -422,6 +432,7 @@ class sheet(Drawable, has_uuid):
 @sexp.handler("instances")
 class instances(sexp.sexp, Comparable):
   """ Tracks instances of a sheet or symbol """
+  @sexp.uses("project")
   def paths(self, project=None):
     """ Returns a dict of instance to path elements """
     if not "project" in self:
@@ -475,6 +486,7 @@ class sch(Drawable):  # ignore the uuid for the most part
     return self["title_block"][0].title if "title_block" in self else None
 
   @property
+  @sexp.uses("sheet_instances")
   def root_path(self):
     # Returns the path element if this is a root sheet; None otherwise
     # NOTE: if this ever stops working (eg sheet_instances is removed), a
