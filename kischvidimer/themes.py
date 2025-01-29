@@ -73,6 +73,45 @@ def get(theme=None):
       #"SCHEMATIC_PAGE_LIMITS":  'var(-- )',  # Page limits
       #"OP_VOLTAGES":            'var(-- )',  # Operating point voltages
       #"OP_CURRENTS":            'var(-- )',  # Operating point currents
+
+      # Quirk mappings
+      # INTERSHEET_REFS doesn't appear to exist in the theme
+      # it just uses globlabel. Other label fields use "fields"
+      "intersheet_refs":        'globlabel',
+      # For some reason NOTES_BACKGROUND is zero. KiCad uses NOTES instead
+      "notes_background":       'notes',
+
+      # Theme mappings
+      # The names in plugin themes are different from internal names
+      "anchor":            "SCHEMATIC_ANCHOR",
+      "aux_items":         "SCHEMATIC_AUX_ITEMS",
+      "background":        "SCHEMATIC_BACKGROUND",
+      "component_body":    "DEVICE_BACKGROUND",
+      "component_outline": "DEVICE",
+      "cursor":            "SCHEMATIC_CURSOR",
+      "erc_error":         "ERC_ERR",
+      "erc_warning":       "ERC_WARN",
+      "grid":              "SCHEMATIC_GRID",
+      "grid_axes":         "SCHEMATIC_GRID_AXES",
+      "label_global":      "GLOBLABEL",
+      "label_hier":        "HIERLABEL",
+      "label_local":       "LOCLABEL",
+      "netclass_flag":     "NETCLASS_REFS",
+      "rule_area":         "RULE_AREAS",
+      "no_connect":        "NOCONNECT",
+      "note":              "NOTES",
+      "private_note":      "PRIVATE_NOTES",
+      "note_background":   "NOTES_BACKGROUND",
+      "pin_name":          "PINNAM",
+      "pin_number":        "PINNUM",
+      "reference":         "REFERENCEPART",
+      "shadow":            "SELECTION_SHADOWS",
+      "sheet_filename":    "SHEETFILENAME",
+      "sheet_fields":      "SHEETFIELDS",
+      "sheet_label":       "SHEETLABEL",
+      "sheet_name":        "SHEETNAME",
+      "value":             "VALUEPART",
+      "worksheet":         "SCHEMATIC_DRAWINGSHEET",
   }
   if theme:
     if isinstance(theme, str):
@@ -110,7 +149,6 @@ default = (
     ( 'NOCONNECT',              (   0,   0, 132 ) ),
     ( 'NOTES',                  (   0,   0, 194 ) ),
     ( 'PRIVATE_NOTES',          (  72,  72, 255 ) ),
-    ( 'NOTES_BACKGROUND',       (   0,   0,   0,   0 ) ),
     ( 'PIN',                    ( 132,   0,   0 ) ),
     ( 'PINNAM',                 (   0, 100, 100 ) ),
     ( 'PINNUM',                 ( 169,   0,   0 ) ),
@@ -127,11 +165,6 @@ default = (
     ( 'SCHEMATIC_PAGE_LIMITS',  ( 181, 181, 181 ) ),
     ( 'OP_VOLTAGES',            ( 132,   0,  50 ) ),
     ( 'OP_CURRENTS',            ( 224,   0,  12 ) ),
-    # LAYER_INTERSHEET_REFS doesn't appear to exist in the theme
-    # it just uses globlabel. Other label fields use "fields"
-    ( 'intersheet_refs',        ( 132,   0,   0 ) ),
-    # For some reason NOTES_BACKGROUND is zero. KiCad uses NOTES instead
-    ( 'notes_background',       (   0,   0, 194 ) ),
     )
 
 classic = (
@@ -177,11 +210,6 @@ classic = (
     ( 'SCHEMATIC_DRAWINGSHEET', (132,   0,   0) ),
     ( 'OP_VOLTAGES',            ( 72,   0,  72) ),
     ( 'OP_CURRENTS',            (132,   0,   0) ),
-    # LAYER_INTERSHEET_REFS doesn't appear to exist in the theme
-    # it just uses globlabel. Other label fields use "fields"
-    ( 'intersheet_refs',        (132,   0,   0) ),
-    # For some reason NOTES_BACKGROUND is zero. KiCad uses NOTES instead
-    ( 'notes_background',       (  0,   0, 194) ),
     )
 
 blacknwhite = tuple(
@@ -195,9 +223,12 @@ def todict():
   colormap = get()
   themedict = {}
   for i, (themename, theme) in enumerate(themes()):
-    themedict[themename] = d = {}
+    # Always extend the default theme
+    themedict[themename] = d = dict(themedict.get(themes()[0][0], {}))
     for name, color in dict(theme).items():
       name = name.lower()
+      while name in colormap and not colormap[name].startswith('var('):
+        name = colormap[name].lower()
       if name in colormap:
         var = colormap[name].rpartition("-")[2].rstrip(")")
         while color in colormap:
