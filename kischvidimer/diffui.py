@@ -389,14 +389,18 @@ class DiffUI(object):
     # Embed styles
     html.append('<style>')
     for css in ['diffui.css', 'js-libraries/material.min.css']:
-      html.append(open(os.path.join(srcdir, css), 'r', encoding='utf-8').read())
+      with open(os.path.join(srcdir, css), 'r', encoding='utf-8') as f:
+        html.extend(line.strip() for line in f
+                    if "sourceMappingURL" not in line)
     html.append('</style>')
     # Embed js libraries
     html.append('<script>')
     jsdir = os.path.join(srcdir, "js-libraries")
     for lib in os.listdir(jsdir):
       if lib.endswith(".min.js"):
-        html.append(open(os.path.join(jsdir, lib), 'r', encoding='utf-8').read())
+        with open(os.path.join(jsdir, lib), 'r', encoding='utf-8') as f:
+          html.extend(line.strip() for line in f
+                      if "sourceMappingURL" not in line)
     html.append('</script>')
     # Controls
     html.append(DiffUI.loadhtml(os.path.join(srcdir, 'diffui.html')))
