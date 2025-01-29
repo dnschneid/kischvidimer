@@ -17,6 +17,7 @@ def themes():
   return (
       ("Default colors", default),
       ("Classic colors", classic),
+      ("wDark (wykys)", wdark),
       ("Black & white", blacknwhite),
       )
 
@@ -210,6 +211,47 @@ classic = (
     ( 'SCHEMATIC_DRAWINGSHEET', (132,   0,   0) ),
     ( 'OP_VOLTAGES',            ( 72,   0,  72) ),
     ( 'OP_CURRENTS',            (132,   0,   0) ),
+    )
+
+# https://github.com/pointhi/kicad-color-schemes/blob/master/wdark/wdark.json
+# by Jan Vykydal, CC0-1.0
+wdark = (
+    ("anchor", (97, 175, 239)),
+    ("aux_items", (0, 0, 0)),
+    ("background", (40, 44, 52)),
+    ("brightened", (255, 0, 255)),
+    ("bus", (97, 175, 239)),
+    ("bus_junction", (97, 175, 239)),
+    ("component_body", (84, 88, 98)),
+    ("component_outline", (224, 108, 117)),
+    ("cursor", (194, 194, 194)),
+    ("erc_error", (255, 0, 0)),
+    ("erc_warning", (255, 0, 0)),
+    ("fields", (86, 182, 194)),
+    ("grid", (132, 132, 132)),
+    ("grid_axes", (229, 192, 123)),
+    ("hidden", (194, 194, 194)),
+    ("junction", (152, 195, 121)),
+    ("label_global", (224, 108, 117)),
+    ("label_hier", (198, 120, 221)),
+    ("label_local", (229, 192, 123)),
+    ("net_name", (198, 120, 221)),
+    ("no_connect", (97, 175, 239)),
+    ("note", (97, 175, 239)),
+    ("pin", (224, 108, 117)),
+    ("pin_name", (152, 195, 121)),
+    ("pin_number", (224, 108, 117)),
+    ("reference", (86, 182, 194)),
+    ("shadow", (102, 179, 255, 0.800)),
+    ("sheet", (198, 120, 221)),
+    ("sheet_background", (0, 0, 0)),
+    ("sheet_fields", (132, 0, 132)),
+    ("sheet_filename", (198, 120, 221)),
+    ("sheet_label", (198, 120, 221)),
+    ("sheet_name", (198, 120, 221)),
+    ("value", (86, 182, 194)),
+    ("wire", (152, 195, 121)),
+    ("worksheet", (127, 132, 142)),
     )
 
 blacknwhite = tuple(
