@@ -76,9 +76,10 @@ class Svg(object):
   }
   # It seems a font of size 1.5775 as an em height of 2.54 in KiCad
   FONT_SIZE = 2.54/1.5775  # mm, converting KiCad glyph width to em height
+  FONT_FAMILY = "sans-serif"
   # Scale factor trying to bring the font's width closer to the width in KiCad
-  FONT_CONDENSE = 0.75  # condensed
-  FONT_SPACING = 0.05  # in ex
+  FONT_CONDENSE = 1  # condensed versions may not exist, so don't rely on it
+  FONT_SPACING = -0.1  # in ex
   # Image scale value, above which to treat the image as pixel art
   IMAGE_PIXEL_SCALE_THRESHOLD = 10
   # Transformation types
@@ -1048,7 +1049,7 @@ class Svg(object):
                'viewBox="%s"' % ','.join(tuple(map(Svg.tounit, viewbox))),
                'width="%s" height="%s"' % tuple(map(Svg.tomm, viewbox[2:4])),
                'fill="none"',
-               'font-family="sans"',
+               'font-family="%s"' % Svg.FONT_FAMILY,
                'font-size="%s"' % Svg.tounit(Svg.FONT_SIZE),
                'font-stretch="%g%%"' % (Svg.FONT_CONDENSE*100),
                'letter-spacing="%gex"' % Svg.FONT_SPACING,
