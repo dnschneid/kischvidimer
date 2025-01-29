@@ -175,6 +175,12 @@ SPDX-License-Identifier: Apache-2.0
     margin-right: 15px;
 }
 
+.mdl-layout__header {
+    color: color(from var(--d) srgb calc(0.95 - 0.9*r) calc(0.95 - 0.9*g) calc(0.95 - 0.9*b)) !important;
+    background-color: color(from var(--d) srgb calc(0.05 + 0.9*r) calc(0.05 + 0.9*g) calc(0.05 + 0.9*b)) !important;
+    fill:  color(from var(--d) srgb calc(0.95 - 0.9*r) calc(0.95 - 0.9*g) calc(0.95 - 0.9*b)) !important;
+}
+
 @media screen and (max-width: 1024px) {
     #mdlheader {
         width: 100% !important;

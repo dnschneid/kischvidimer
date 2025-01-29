@@ -346,10 +346,13 @@ class DiffUI(object):
       # Load the SVG
       with open(os.path.join(os.path.dirname(path), data["src"]), 'r') as f:
         s = f.read()
+      # Remove "fill" from the icon if not specified in the img tag
+      data.setdefault("fill", None)
+      data["src"] = None
       # Merge the SVG tag
       return re.sub(r'<svg\s[^>]*>',
           lambda m: "<svg%s>" % (
-          "".join(f' {k}="{v}"' for k,v in attrs(m[0], data).items() if k != "src"))
+          "".join(f' {k}="{v}"' for k,v in attrs(m[0], data).items() if v))
           , s)
     return re.sub(r'<img\s[^>]*>', repl, h)
 

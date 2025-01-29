@@ -186,7 +186,7 @@ classic = (
 
 blacknwhite = tuple(
     (name,
-      (1,1,1,0) if 'BACKGROUND' in name else
+      (255,255,255) if 'BACKGROUND' in name else
       (0,0,0,color[-1]) if 0 < color[-1] < 1 else
       (0,0,0)
     ) for name, color in default)
