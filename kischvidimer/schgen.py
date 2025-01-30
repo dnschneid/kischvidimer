@@ -128,13 +128,14 @@ class Schematic(object):
     for pageset in pagesets:
       projs[0].fillvars(variables, [], pageset, p=p)
 
-    now = time.strftime('%Y-%m-%d.%H:%M')
-    title = '%s - %s' % (self._proj.lstrip('./\\'),
-                         ' vs '.join(r or now for r in self._revs))
+    ver = git.get_version(os.path.dirname(self._proj))
+    ver += time.strftime(' (%Y-%m-%d %H:%M)')
+    ver = ' vs '.join(r or ver for r in self._revs)
+    title = self._proj.lstrip('./\\')
     if self.diff:
       title += ' (only diffs)'
     p.set_text('Rendering %s' % self._proj).write()
-    ui = DiffUI(title=title,
+    ui = DiffUI(title=title, ver=ver,
                 proj=projs[0], worksheet=worksheets[0],
                 variables=variables, mode=len(self._revs))
     for page in pages:

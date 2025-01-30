@@ -113,10 +113,11 @@ class DiffUI(object):
   MODE_MERGE = 3
   MODE_ICONS = (None, 'memory', 'compare', 'merge')
 
-  def __init__(self, title=None, proj=None, worksheet=None, variables=None,
-               mode=MODE_MERGE, verbosity=0):
+  def __init__(self, title=None, ver=None, proj=None, worksheet=None,
+               variables=None, mode=MODE_MERGE, verbosity=0):
     gc.disable()
     self.title = title
+    self.ver = ver or ""
     self._proj = proj
     self._variables = variables
     self._pages = []
@@ -371,6 +372,9 @@ class DiffUI(object):
           break
     if self.title:
       title.append(self.title)
+    window_title = ": ".join(title)
+    if self.ver:
+      window_title += f" - {self.ver}"
 
     html = ['<!DOCTYPE html>']
     html.append("""<!--
@@ -384,7 +388,7 @@ class DiffUI(object):
         '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">')
     html.append('<link rel="icon" href="%s"/>' %
                 self._icon('%s.svg' % DiffUI.MODE_ICONS[self._mode]))
-    html.append('<title>%s</title></head>' % Svg.escape(": ".join(title)))
+    html.append('<title>%s</title></head>' % Svg.escape(window_title))
     html.append('<body>')
     srcdir = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
     # Embed styles
@@ -409,6 +413,7 @@ class DiffUI(object):
     html.append('<script>')
     html.append('let uiVersion = "%s";' % git.get_version(srcdir))
     html.append('let schematicTitle = "%s";' % title[-1].replace("\\", "\\\\").replace('"', '\\"'))
+    html.append('let schematicVersion = "%s";' % self.ver.replace("\\", "\\\\").replace('"', '\\"'))
     html.append('let uiMode = %u;' % self._mode)
     if self._mode >= DiffUI.MODE_DIFF:
       html.append("let diffIcon = '%s';" %

@@ -108,7 +108,7 @@ def get_version(repo=None):
   Specify repo to use a git repo other than the current one."""
   ret = subprocess.run(
       "git describe --all --always --broken --dirty --long".split(),
-      cwd=repo, capture_output=True, universal_newlines=True)
+      cwd=repo or '.', capture_output=True, universal_newlines=True)
   if ret.returncode == 0:
     return ret.stdout.strip().replace("heads/","").replace("tags/","")
   return "unknown"

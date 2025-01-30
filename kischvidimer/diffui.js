@@ -561,6 +561,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     document.getElementById('schematic-title').textContent = schematicTitle;
+    document.getElementById('schematic-version').textContent = schematicVersion;
 
     initHammer();
 });

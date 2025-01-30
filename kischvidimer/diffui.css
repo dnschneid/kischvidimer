@@ -175,6 +175,16 @@ SPDX-License-Identifier: Apache-2.0
     margin-right: 15px;
 }
 
+#schematic-version {
+    font-size: 75%;
+    font-style: italic;
+    height: 100%;
+    line-height: 200%;
+    padding-top: 20px;
+    margin-right: 15px;
+    overflow-x: hidden;
+}
+
 .mdl-layout__header {
     color: color(from var(--d) srgb calc(0.95 - 0.9*r) calc(0.95 - 0.9*g) calc(0.95 - 0.9*b)) !important;
     background-color: color(from var(--d) srgb calc(0.05 + 0.9*r) calc(0.05 + 0.9*g) calc(0.05 + 0.9*b)) !important;
@@ -185,6 +195,10 @@ SPDX-License-Identifier: Apache-2.0
     #mdlheader {
         width: 100% !important;
         margin-left: 0 !important;
+    }
+
+    #schematic-version {
+        width: 0 !important;
     }
 }
 
