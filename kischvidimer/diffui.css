@@ -261,6 +261,12 @@ SPDX-License-Identifier: Apache-2.0
     align-items: center;
 }
 
+#uiversion {
+    font-size: 80%;
+    text-transform: unset !important;
+    padding: 0 4px;
+}
+
 .ghost {
     overflow: auto;
 }

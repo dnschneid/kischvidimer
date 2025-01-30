@@ -9,7 +9,6 @@ path = [
   "diff-project",
   "kischvidimer/diff.py",
   "kischvidimer/fileparse.py",
-  "kischvidimer/git.py",
   "kischvidimer/project.py",
   "kischvidimer/resolver.py",
   "kischvidimer/icons/*",

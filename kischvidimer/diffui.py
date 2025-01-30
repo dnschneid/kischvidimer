@@ -30,6 +30,7 @@ import zlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from . import diff as diff_mod
+from . import git
 from . import themes
 from .svg import Svg
 from .kicad_common import Drawable, Variables
@@ -138,7 +139,7 @@ class DiffUI(object):
 
   def _mkdtemp(self):
     if not self._tempdir:
-      self._tempdir = tempfile.mkdtemp(prefix='webschviewdiffmerge.diffui.%s' % id(self))
+      self._tempdir = tempfile.mkdtemp(prefix='kischvidimer.diffui.%s' % id(self))
       with open(os.path.join(self._tempdir, 'First Run'), 'w'):
         pass
 
@@ -406,6 +407,7 @@ class DiffUI(object):
     html.append(DiffUI.loadhtml(os.path.join(srcdir, 'diffui.html')))
     # Code
     html.append('<script>')
+    html.append('let uiVersion = "%s";' % git.get_version(srcdir))
     html.append('let schematicTitle = "%s";' % title[-1].replace("\\", "\\\\").replace('"', '\\"'))
     html.append('let uiMode = %u;' % self._mode)
     if self._mode >= DiffUI.MODE_DIFF:

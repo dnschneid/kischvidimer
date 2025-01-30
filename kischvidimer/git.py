@@ -1,19 +1,21 @@
-# Copyright 2024 Google LLC
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-
-#     https://www.apache.org/licenses/LICENSE-2.0
-
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-FileCopyrightText: Copyright 2024 Google LLC
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
+
 import os
+import sys
 import subprocess
 import tempfile
 
@@ -99,6 +101,17 @@ def rev_parse(revs):
   revlist = subprocess.check_output(
       ['git', 'rev-parse', '--revs-only', revs], universal_newlines=True)
   return [rev.lstrip('^') for rev in revlist.splitlines()]
+
+
+def get_version(repo=None):
+  """Returns a friendly string of the current version.
+  Specify repo to use a git repo other than the current one."""
+  ret = subprocess.run(
+      "git describe --all --always --broken --dirty --long".split(),
+      cwd=repo, capture_output=True, universal_newlines=True)
+  if ret.returncode == 0:
+    return ret.stdout.strip().replace("heads/","").replace("tags/","")
+  return "unknown"
 
 
 # A cache for repo_path
@@ -196,3 +209,11 @@ def ls_tree(path, commit='HEAD', full_tree=True, recurse=True):
     ], cwd=repo_path() if full_tree else None,
     universal_newlines=True).splitlines()
   return __lscache[(path, commit, full_tree)]
+
+
+def main(argv):
+  for path in argv or [None]:
+    print(get_version(path))
+  return 0
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))

@@ -381,6 +381,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     //init settings
     document.getElementById('settingsbutton').addEventListener('click', function () {
+        document.getElementById('uiversion').innerText = `UI: ${uiVersion}`;
+
         // show zoom control selection
         if (getSetting('ShowZoomControls') == 'shown') {
             document.getElementById('zoomcontrolcheckboxlabel').MaterialCheckbox.check();
@@ -410,6 +412,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     document.getElementById('printbutton').addEventListener('click', function () {
         genpdf();
+    });
+    document.getElementById('uiversion').addEventListener('click', function() {
+        copyToClipboard(uiVersion, 'kischvidimer version');
     });
     document.getElementById('closesettings').addEventListener('click', function () {
         let dialog = document.getElementById('settingsdialog');
