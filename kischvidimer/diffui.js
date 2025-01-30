@@ -78,7 +78,18 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
+    // Initialize theme
+    let tprev = "lwfbgphrv";  // order of the theme colors to use to render the label
+    document.querySelector(".themeselect").innerHTML =
+        Object.entries(themes).map(([name, data]) => `
+        <label style="margin-bottom:10px" class="mdl-radio mdl-js-radio mdl-js-ripple-effect"
+            for="toption-${name}">
+            <input type="radio" id="toption-${name}" class="mdl-radio__button" name="options" value="${name}">
+            <span class="mdl-radio__label" style="background-color:${data.d}">
+            ${name.split("").map((c,i)=>`<span style="color:${data[tprev.substr(i%tprev.length,1)]}">${c}</span>`).join('')}
+            </span></label>`).join('');
     setTheme(getSetting('SchematicTheme', themeDefault));
+
     document.getElementById('zoomcontrols').style.display = getSetting('ShowZoomControls') == 'shown' ? 'inline' : 'none';
     componentHandler.upgradeDom();
     fillPageList(data.pages);
@@ -369,15 +380,6 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById('zoomcontrolin').addEventListener('click', zoomIn);
 
     //init settings
-    let tprev = "lwfbgphrv";  // order of the theme colors to use to render the label
-    document.querySelector(".themeselect").innerHTML =
-        Object.entries(themes).map(([name, data]) => `
-        <label style="margin-bottom:10px" class="mdl-radio mdl-js-radio mdl-js-ripple-effect"
-            for="toption-${name}">
-            <input type="radio" id="toption-${name}" class="mdl-radio__button" name="options" value="${name}">
-            <span class="mdl-radio__label" style="background-color:${data.d}">
-            ${name.split("").map((c,i)=>`<span style="color:${data[tprev.substr(i%tprev.length,1)]}">${c}</span>`).join('')}
-            </span></label>`).join('');
     document.getElementById('settingsbutton').addEventListener('click', function () {
         // show zoom control selection
         if (getSetting('ShowZoomControls') == 'shown') {
