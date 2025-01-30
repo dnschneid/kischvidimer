@@ -85,7 +85,20 @@ class junction(Drawable):
     diameter = sexp.Decimal(0.915)
     if "diameter" in self and self["diameter"][0][0]:
       diameter = self["diameter"][0][0]
-    color = 'junction'  # FIXME: 'bus_junction' as appropriate
+    # Change color if bus vs wire
+    color = None
+    # FIXME: replace this with a proper point database
+    for c in reversed(context):
+      if "bus" in c:
+        for bus in c["bus"]:
+          if "pts" in bus:
+            for pt in bus["pts"][0]["xy"]:
+              if pos == pt.pos():
+                color = "bus_junction"
+            if color: break
+        if color: break
+    else:
+      color = 'junction'
     if "color" in self and any(self["color"][0].data):
       color = self["color"][0].data
     svg.circle(pos,
@@ -121,6 +134,9 @@ class wire(polyline, has_uuid):
 @sexp.handler("global_label", "hierarchical_label", "label")
 class label(Drawable, has_uuid):
   """ any type of label """
+  BUS_RE = re.compile(r"(?:^|[^_~^$]){(.+)}|\[(\d+)[.][.](\d+)\]")
+
+
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs)
     if shape is not None:
@@ -145,6 +161,9 @@ class label(Drawable, has_uuid):
   def net(self, diffs, context):
     return self[0]
 
+  def bus(self, diffs, context):
+    return label.BUS_RE.search(self.net(diffs, context))
+
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
     if draw & Drawable.DRAW_FG:
@@ -152,8 +171,9 @@ class label(Drawable, has_uuid):
       args = {
           "size": 1.27,
           }
-      # FIXME: colors change if the label is a bus
-      if self.type == "label":
+      if self.bus(diffs, context):
+        args["color"] = "bus"
+      elif self.type == "label":
         args["color"] = "loclabel"
       elif self.type == "pin":
         args["color"] = "sheetlabel"
