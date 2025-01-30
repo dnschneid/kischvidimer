@@ -285,7 +285,7 @@ class DiffUI(object):
     if request.path != '/':
       return False
     datatype = 'text/html'
-    data = '\n'.join(self.genhtml())
+    data = '\n'.join(self.genhtml(is_app=True))
     request.send_response(200)
     request.send_header('Content-type', datatype)
     request.end_headers()
@@ -357,12 +357,12 @@ class DiffUI(object):
           , s)
     return re.sub(r'<img\s[^>]*>', repl, h)
 
-  def genhtml(self):
+  def genhtml(self, is_app=False):
     self._update_index()
 
     # Generate title
     title = [['kischvidimer', 'kischVIdimer', 'kischviDImer', 'kischvidiMER'][
-              min(self._mode, DiffUI.MODE_MERGE)]]
+              min(self._mode, DiffUI.MODE_MERGE)]] * is_app
     if self._pages:
       firstpageid = self.schematic_index['pages'][0]["id"]
       for p in self._pages:
