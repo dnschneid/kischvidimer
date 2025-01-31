@@ -2,4 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 .*.swp
+*.egg-info
 __pycache__/
+build/
+/uv.lock

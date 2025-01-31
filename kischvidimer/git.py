@@ -212,8 +212,10 @@ def ls_tree(path, commit='HEAD', full_tree=True, recurse=True):
 
 
 def main(argv):
-  for path in argv or [None]:
+  for path in argv[1:] or [None]:
     print(get_version(path))
   return 0
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

@@ -324,20 +324,22 @@ def main(argv):
   """
   s = svg.Svg(theme="default")
   s.push_invert_y()
-  with open(argv[0], "r") if argv else sys.stdin as f:
+  path = argv[1] if len(argv) > 1 else None
+  with open(path, "r") if path else sys.stdin as f:
     data = sexp.parse(f.read())
   params = {
-      "svg": s,
-      "diffs": [],
-      "draw": Drawable.DRAW_ALL,
-      "context": (data[0],),
-      }
-  if len(argv) >= 2:
-    data[0].symbols()[argv[1]].fillsvg(**params)
+    "svg": s,
+    "diffs": [],
+    "draw": Drawable.DRAW_ALL,
+    "context": (data[0],),
+  }
+  if len(argv) > 2:
+    data[0].symbols()[argv[2]].fillsvg(**params)
   else:
     import random
     random.choice(list(data[0].symbols().values())).fillsvg(**params)
   print(str(s))
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

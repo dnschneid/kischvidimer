@@ -307,8 +307,9 @@ def main(argv):
   size (or A4 if not specified).
   """
   s = svg.Svg(theme="default")
-  w = kicad_wks(open(argv[0], "r") if argv else sys.stdin)
-  paper = argv[1] if len(argv) >= 2 else "A4"
+  path = argv[1] if len(argv) > 1 else None
+  w = kicad_wks(open(path, "r") if path else sys.stdin)
+  paper = argv[2] if len(argv) > 2 else "A4"
   # Placeholder title block; kicad_sch needed for variable filling
   fakepage = f'(kicad_sch (paper "{paper}"))'
   fakepage = sexp.parse(fakepage)[0]
@@ -321,5 +322,6 @@ def main(argv):
   w.fillsvg(**params)
   print(str(s))
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

@@ -213,20 +213,23 @@ def main(argv):
   """USAGE: kicad_pro.py [kicad_pro]
   Reads a kicad_pro from stdin or symfile and writes out the page tree.
   """
+  path = argv[1] if len(argv) > 1 else None
   p = progress.Progress(sys.stderr)
-  p.set_max(1).set_text(f"Loading {argv[0] if argv else 'stdin'}").write()
-  with open(argv[0], "r") if argv else sys.stdin as f:
-    proj = kicad_pro(f, argv[0] if argv else None)
+  p.set_max(1).set_text(f"Loading {path or 'stdin'}").write()
+  with open(path, "r") if path else sys.stdin as f:
+    proj = kicad_pro(f, path)
   p.incr()
   pages = proj.get_pages(None, None, p=p)
   toc = proj.gen_toc(pages)
   p.clear()
-  print(f"{argv[0] if argv else 'stdin'}:")
+  print(f"{path or 'stdin'}:")
+
   def print_toc(toc, indent=0):
     for inst in toc:
       print(f"{inst['page']:3d}: {'  '*indent}{inst['name']} ({inst['file']})")
       print_toc(inst.get("children", []), indent+1)
   print_toc(toc)
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "kischvidimer"
+version = "0.1.0"
+description = "KiCad schematic HTML viewer generator"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.1.0",
+  "reuse>=5.0.2",
+  "ruff>=0.9.4",
+]
+
+[project.scripts]
+kischvidimer = "kischvidimer.__main__:main"
+
+[uv.tool]
+package = true
+
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["kischvidimer"]
+license-files = ["LICENSES/*.txt"]
+
+[tool.ruff]
+extend-exclude = [
+  "kischvidimer/diff.py",
+  "kischvidimer/fileparse.py",
+  "kischvidimer/project.py",
+  "kischvidimer/resolver.py",
+]
+indent-width = 2
+line-length = 80
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "E",
+  "F",
+  "I",
+  "N",
+  "W",
+]

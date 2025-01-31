@@ -18,7 +18,15 @@ it on a webserver.
 Give it a test whirl:
 
 ```
-python3 -m kischvidimer .../your_project.kicad_pro -o your_project.html
+python3 -m kischvidimer schgen .../your_project.kicad_pro -o your_project.html
+```
+
+Or install it:
+
+```
+pip3 install .
+cd .../your_project
+kischvidimer schgen your_project.kicad_pro -o your_project.html
 ```
 
 ## What about layout?

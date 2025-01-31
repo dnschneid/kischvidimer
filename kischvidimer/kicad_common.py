@@ -761,14 +761,14 @@ class Variables():
 def main(argv):
   # Perform keyword checks to ensure all keywords are handled
   sexp.handler._handlers.clear()
-  if argv[0] == "wks":
-    import kicad_wks
-  elif argv[0] == "sym":
-    import kicad_sym
+  if "wks" in argv:
+    from . import kicad_wks
+  elif "sym" in argv:
+    from . import kicad_sym
   else:
     import kicad_sch  # includes kicad_sym and kicad_wks
   ret = 0
-  for kwfile in argv:
+  for kwfile in argv[1:]:
     if not os.path.isfile(kwfile):
       continue
     with open(kwfile, "r") as f:
@@ -779,5 +779,7 @@ def main(argv):
         print(f"  {kw}")
         ret = 1
   return ret
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

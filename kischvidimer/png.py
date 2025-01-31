@@ -61,12 +61,13 @@ def encode(rows, width, height, has_alpha, bitdepth):
 
 
 def main(argv):
-  data = open(argv[0] if argv else sys.stdin, "rb").read()
+  data = (open(argv[1], "rb") if len(argv) > 1 else sys.stdin).read()
   sz = getsize(data)
   if sz is None:
     return 1
   print("Size:", sz)
   return 0
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))

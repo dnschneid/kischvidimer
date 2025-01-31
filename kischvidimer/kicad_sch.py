@@ -593,12 +593,14 @@ def main(argv):
   specified instance as an svg to stdout.
   """
   s = svg.Svg(theme="default")
-  with open(argv[0], "r") if argv else sys.stdin as f:
+  path = argv[1] if len(argv) > 1 else None
+  with open(path, "r") if path else sys.stdin as f:
     data = sexp.parse(f.read())
   variables = Variables()
   data[0].fillvars(variables, [], None)
   data[0].fillsvg(s, [], Drawable.DRAW_ALL, variables.context())
   print(str(s))
 
-if __name__ == '__main__':
-  sys.exit(main(sys.argv[1:]))
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))
