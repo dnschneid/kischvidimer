@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -13,16 +12,17 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
-from . import kicad_sym
-from . import kicad_wks
+from . import kicad_sym, kicad_wks
 from .kicad_common import *
 
 # FIXME: check eeschema/schematic.keywords for completeness
 #        on last check, there are around 79 unused atoms
 
+
 @sexp.handler("title_block")
 class title_block(Drawable):
-  """ title_block """
+  """title_block"""
+
   @property
   @sexp.uses("title")
   def title(self):
@@ -32,8 +32,15 @@ class title_block(Drawable):
     # FIXME: diffs
     svg.instantiate_worksheet(draw, context)
 
-  @sexp.uses("company", "comment", "title", "paper", "generator",
-             "generator_version", "rev")
+  @sexp.uses(
+    "company",
+    "comment",
+    "title",
+    "paper",
+    "generator",
+    "generator_version",
+    "rev",
+  )
   def fillvars(self, variables, diffs, context):
     # Fill in all variable defaults
     missing_vars = set(kicad_wks.ALL_WKS_VARS)
@@ -45,7 +52,7 @@ class title_block(Drawable):
         name += "".join(str(s) for s in var.data[:-1])
       name = name.upper()
       missing_vars.remove(name)
-      variables.define(context+(self,), name, var.data[-1])
+      variables.define(context + (self,), name, var.data[-1])
     for name in missing_vars:
       text = ""
       if name == "PAPER":
@@ -56,7 +63,8 @@ class title_block(Drawable):
       elif name == "KICAD_VERSION":
         for c in reversed(context):
           if c.type == "kicad_sch":
-            text = ' '.join((
+            text = " ".join(
+              (
                 c.get("generator", default=["unknown"])[0],
                 c.get(
                   "generator_version",
@@ -65,17 +73,20 @@ class title_block(Drawable):
                   ],
                 )[0],
                 "(rendered by kischvidimer)",
-                ))
+              )
+            )
             break
-      variables.define(context+(self,), name, text)
+      variables.define(context + (self,), name, text)
     # For whatever reason, wks uses REVISION but it references REV
-    if variables.resolve(context+(self,), "REVISION") is None:
-      variables.define(context+(self,), "REVISION", "${REV}")
+    if variables.resolve(context + (self,), "REVISION") is None:
+      variables.define(context + (self,), "REVISION", "${REV}")
     super().fillvars(variables, diffs, context)
+
 
 @sexp.handler("junction")
 class junction(Drawable):
-  """ junction """
+  """junction"""
+
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
@@ -95,54 +106,66 @@ class junction(Drawable):
             for pt in bus["pts"][0]["xy"]:
               if pos == pt.pos():
                 color = "bus_junction"
-            if color: break
-        if color: break
+            if color:
+              break
+        if color:
+          break
     else:
-      color = 'junction'
+      color = "junction"
     if "color" in self and any(self["color"][0].data):
       color = self["color"][0].data
-    svg.circle(pos,
-        radius=diameter/2,
-        color='none',
-        fill=color,
-        )
+    svg.circle(
+      pos,
+      radius=diameter / 2,
+      color="none",
+      fill=color,
+    )
+
 
 @sexp.handler("no_connect")
 class no_connect(Drawable):
-  """ no_connect """
+  """no_connect"""
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs
     sz = sexp.Decimal(0.6350)
     pos = self["at"][0].pos(diffs)
-    xys = [(pos[0] - sz, pos[1] - sz),
-           (pos[0] + sz, pos[1] + sz),
-           pos,
-           (pos[0] + sz, pos[1] - sz),
-           (pos[0] - sz, pos[1] + sz)]
+    xys = [
+      (pos[0] - sz, pos[1] - sz),
+      (pos[0] + sz, pos[1] + sz),
+      pos,
+      (pos[0] + sz, pos[1] - sz),
+      (pos[0] - sz, pos[1] + sz),
+    ]
     svg.polyline(xys, color="noconnect")
+
 
 # FIXME: (wire (pts (xy) (xy)) (stroke) (uuid))
 @sexp.handler("wire", "bus")
 class wire(polyline, has_uuid):
-  """ wire or bus """
+  """wire or bus"""
+
 
 # FIXME: (hierarchical_label "x" (shape input) (at) (effects) (uuid) (property))
 # FIXME: (label "x" (at) (effects) (uuid) (property))
 # FIXME: (global_label "x" (shape input) (at) (effects) (uuid) (property))
 @sexp.handler("global_label", "hierarchical_label", "label")
 class label(Drawable, has_uuid):
-  """ any type of label """
-  BUS_RE = re.compile(r"(?:^|[^_~^$]){(.+)}|\[(\d+)[.][.](\d+)\]")
+  """any type of label"""
 
+  BUS_RE = re.compile(r"(?:^|[^_~^$]){(.+)}|\[(\d+)[.][.](\d+)\]")
 
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs)
     if shape is not None:
-      variables.define(context+(self,), "CONNECTION_TYPE",
-          "-".join(s.capitalize() for s in shape.split("-")))
-    variables.define(context+(self,), "OP", "--")
+      variables.define(
+        context + (self,),
+        "CONNECTION_TYPE",
+        "-".join(s.capitalize() for s in shape.split("-")),
+      )
+    variables.define(context + (self,), "OP", "--")
     """ FIXME:
     ${NET_CLASS} -> net class
     ${NET_NAME} -> connection name
@@ -169,8 +192,8 @@ class label(Drawable, has_uuid):
     if draw & Drawable.DRAW_FG:
       # FIXME: diffs
       args = {
-          "size": 1.27,
-          }
+        "size": 1.27,
+      }
       if self.bus(diffs, context):
         args["color"] = "bus"
       elif self.type == "label":
@@ -187,33 +210,33 @@ class label(Drawable, has_uuid):
       shape = self.shape(diffs)
       outline = None
       if self.type != "label":
-        offset = float(args["size"]/8)
+        offset = float(args["size"] / 8)
         # Reference: sch_label.cpp: *::CreateGraphicShape
         # FIXME: text width/height calculations are broken
         if self.type == "global_label":
           w = float(len(self[0]) * args["size"])
           h = float(args["size"] * 2)
           if shape == "input":
-            offset += h/2
-            outline = [(0, 0), (h/2, h/2), (h/2+w, h/2)]
+            offset += h / 2
+            outline = [(0, 0), (h / 2, h / 2), (h / 2 + w, h / 2)]
           elif shape == "output":
-            outline = [(0, h/2), (w, h/2), (h/2+w, 0)]
+            outline = [(0, h / 2), (w, h / 2), (h / 2 + w, 0)]
           elif shape in ("bidirectional", "tri_state"):
-            offset += h/2
-            outline = [(0, 0), (h/2, h/2), (h/2+w, h/2), (h+w, 0)]
+            offset += h / 2
+            outline = [(0, 0), (h / 2, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
           elif shape == "passive":
-            outline = [(0, h/2), (w, h/2)]
+            outline = [(0, h / 2), (w, h / 2)]
         elif self.type in ("hierarchical_label", "pin"):
           h = float(args["size"])
           offset += h
           if shape == "input":
-            outline = [(0, 0), (h/2, h/2), (h, h/2)]
+            outline = [(0, 0), (h / 2, h / 2), (h, h / 2)]
           elif shape == "output":
-            outline = [(0, h/2), (h/2, h/2), (h, 0)]
+            outline = [(0, h / 2), (h / 2, h / 2), (h, 0)]
           elif shape in ("bidirectional", "tri_state"):
-            outline = [(0, 0), (h/2, h/2), (h, 0)]
+            outline = [(0, 0), (h / 2, h / 2), (h, 0)]
           elif shape == "passive":
-            outline = [(0, h/2), (h, h/2)]
+            outline = [(0, h / 2), (h, h / 2)]
           if self.type == "pin":
             offset *= -1
             for i, p in enumerate(outline):
@@ -231,24 +254,25 @@ class label(Drawable, has_uuid):
           outline.append(outline[0])
       svg.gstart(pos=pos, rotate=rot)
       if outline:
-        svg.polyline(outline,
-            color=args["color"].replace("sheet", "hier"),
-            thick=args["size"]/8)
+        svg.polyline(
+          outline,
+          color=args["color"].replace("sheet", "hier"),
+          thick=args["size"] / 8,
+        )
       args["rotate"] = -180 * (rot >= 180)
-      svg.text(self.net(diffs, context),
-          prop=svg.PROP_LABEL,
-          pos=offset,
-          **args
-          )
+      svg.text(
+        self.net(diffs, context), prop=svg.PROP_LABEL, pos=offset, **args
+      )
       svg.gend()
     if draw & Drawable.DRAW_TEXT and "property" in self:
       for field in self["property"]:
         field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
 
 
-@sexp.handler('bus_entry')
+@sexp.handler("bus_entry")
 class bus_entry(Drawable):
-  """ Instance of a bus entry """
+  """Instance of a bus entry"""
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
@@ -256,10 +280,10 @@ class bus_entry(Drawable):
     pos = self["at"][0].pos(diffs)
     size = self["size"][0].data
     args = {
-        "p1": pos,
-        "p2": (pos[0]+size[0], pos[1]+size[1]),
-        "color": "wire",
-        }
+      "p1": pos,
+      "p2": (pos[0] + size[0], pos[1] + size[1]),
+      "color": "wire",
+    }
     args.update(self.svgargs(diffs, context))
     svg.line(**args)
 
@@ -267,10 +291,11 @@ class bus_entry(Drawable):
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
 #          (instances (project "x" (path "y" (reference "z") (unit 1)))))
 class symbol_inst(Drawable, has_uuid):
-  """ An instance of a symbol in a schematic """
+  """An instance of a symbol in a schematic"""
+
   def fillvars(self, variables, diffs, context):
-    variables.define(context+(self,), "UNIT", self.unit(diffs, context, True))
-    variables.define(context+(self,), "OP", "--")
+    variables.define(context + (self,), "UNIT", self.unit(diffs, context, True))
+    variables.define(context + (self,), "OP", "--")
     """ FIXME:
     ${ref:DNP} -> "DNP" or ""
     ${ref:EXCLUDE_FROM_BOARD} -> "Excluded from board" or ""
@@ -305,21 +330,22 @@ class symbol_inst(Drawable, has_uuid):
       unit = self.unit(diffs, context)
       convert = self.get("convert", default=[1])[0]
       svg.gstart(
-          pos=pos,
-          rotate=rot,
-          mirror=mirror,
-          hidden=False,
-          path=self.uuid(generate=True),
-          tag=svg.getuid(self),
-          )
-      svg.instantiate(subdraw, lib, lib_id, unit=unit, variant=convert,
-                      context=(self,))
+        pos=pos,
+        rotate=rot,
+        mirror=mirror,
+        hidden=False,
+        path=self.uuid(generate=True),
+        tag=svg.getuid(self),
+      )
+      svg.instantiate(
+        subdraw, lib, lib_id, unit=unit, variant=convert, context=(self,)
+      )
       svg.gend()
     super().fillsvg(svg, diffs, draw, context)
 
   def show_unit(self, diffs, context):
     for c in reversed(context):
-      if c.type == 'kicad_sch':
+      if c.type == "kicad_sch":
         lib = c["lib_symbols"][0]
         lib_id = self["lib_id"][0][0]
         return lib.symbol(lib_id).show_unit(diffs, context)
@@ -343,14 +369,20 @@ class symbol_inst(Drawable, has_uuid):
     return (rot, mirror)
 
   def refdes(self, diffs, context):
-    return instancedata("reference", diffs,
-                        context + (self,) if context else None,
-                        default=self.get("reference", default=[1])[0])
+    return instancedata(
+      "reference",
+      diffs,
+      context + (self,) if context else None,
+      default=self.get("reference", default=[1])[0],
+    )
 
   def unit(self, diffs, context, as_alpha=False):
-    unit = instancedata("unit", diffs,
-                        context + (self,) if context else None,
-                        default=self.get("unit", default=[1])[0])
+    unit = instancedata(
+      "unit",
+      diffs,
+      context + (self,) if context else None,
+      default=self.get("unit", default=[1])[0],
+    )
     if not as_alpha:
       return unit
     return unit_to_alpha(unit)
@@ -358,47 +390,56 @@ class symbol_inst(Drawable, has_uuid):
   def as_comp(self, context):
     # returns (refdes, {dict of properties, with chr(1) containing local uuid})
     ref = self.refdes([], context)
-    props = {
-        chr(1): self.uuid(generate=True)
-        }
-    if not "property" in self:
+    props = {chr(1): self.uuid(generate=True)}
+    if "property" not in self:
       return ref, props
     variables = Variables.v(context)
     for prop in self["property"]:
       name = prop.name
-      value = variables.expand(context+(self,), prop.value)
-      if name and not name.lower().startswith('sim.') and value and value != "~":
+      value = variables.expand(context + (self,), prop.value)
+      if (
+        name and not name.lower().startswith("sim.") and value and value != "~"
+      ):
         props[name] = value
     return ref, props
 
 
 kicad_sym.symbol_inst = symbol_inst
 
+
 class pin_inst(sexp.sexp, Comparable, has_uuid):
-  """ pins in a symbol instance """
+  """pins in a symbol instance"""
+
   """
 		(pin "1"
 			(uuid "91e8ed47-d04f-4b18-94c6-d8c70729bd8c")
 			(alternate "pwr_in")
 		)
                 """
+
+
 kicad_sym.pin_inst = pin_inst
 
+
 class pin_sheet(label):
-  """ A pin on a sheet instance """
+  """A pin on a sheet instance"""
+
+
 kicad_sym.pin_sheet = pin_sheet
 
+
 def fakesheet(uuid):
-  """ Creates a fake sheet element for the purposes of UUIDs """
+  """Creates a fake sheet element for the purposes of UUIDs"""
   if not isinstance(uuid, str):
     uuid = uuid["uuid"][0][0]
-  return sexp.sexp.init([sexp.atom("sheet"),
-                           sexp.sexp.init([sexp.atom("uuid"), uuid])
-                        ])
+  return sexp.sexp.init(
+    [sexp.atom("sheet"), sexp.sexp.init([sexp.atom("uuid"), uuid])]
+  )
+
 
 @sexp.handler("sheet")
 class sheet(Drawable, has_uuid):
-  """ Sheet instance """
+  """Sheet instance"""
 
   def fillvars(self, variables, diffs, context):
     super().fillvars(variables, diffs, context)
@@ -406,8 +447,11 @@ class sheet(Drawable, has_uuid):
     variables.define(context, "FILENAME", os.path.basename(self.file))
     variables.define(context, "FILEPATH", self.file)
     # Define SHEETPATH using the parent sheetpath and just-now-defined sheetname
-    variables.define(context, "SHEETPATH",
-        variables.expand(context, "${SHEETPATH}${SHEETNAME}/"))
+    variables.define(
+      context,
+      "SHEETPATH",
+      variables.expand(context, "${SHEETPATH}${SHEETNAME}/"),
+    )
 
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs, of course
@@ -417,17 +461,17 @@ class sheet(Drawable, has_uuid):
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
       args = {
-          "pos": pos,
-          "width": size[0],
-          "height": size[1],
-          "color": "sheet",
-          "fill": "sheet_background",
-          "tag": svg.getuid(self),
-          }
+        "pos": pos,
+        "width": size[0],
+        "height": size[1],
+        "color": "sheet",
+        "fill": "sheet_background",
+        "tag": svg.getuid(self),
+      }
       if not draw & Drawable.DRAW_FG:
         args["thick"] = 0
       if not draw & Drawable.DRAW_BG:
-        args["fill"] = 'none'
+        args["fill"] = "none"
       args.update(self.svgargs(diffs, context))
       svg.rect(**args)
 
@@ -435,27 +479,28 @@ class sheet(Drawable, has_uuid):
     super().fillsvg(svg, diffs, draw, context)
 
   def paths(self, project=None):
-    """ Returns a list of path elements for a project """
-    if not "instances" in self:
+    """Returns a list of path elements for a project"""
+    if "instances" not in self:
       return []
     return list(self["instances"][0].paths(project).values())
 
   @property
   def name(self):
     return field.getprop(self, "Sheetname")
+
   @property
   def file(self):
     return field.getprop(self, "Sheetfile")
 
 
-
 @sexp.handler("instances")
 class instances(sexp.sexp, Comparable):
-  """ Tracks instances of a sheet or symbol """
+  """Tracks instances of a sheet or symbol"""
+
   @sexp.uses("project")
   def paths(self, project=None):
-    """ Returns a dict of instance to path elements """
-    if not "project" in self:
+    """Returns a dict of instance to path elements"""
+    if "project" not in self:
       return {}
     if isinstance(project, sexp.sexp):
       project = project[0]
@@ -470,6 +515,7 @@ class instances(sexp.sexp, Comparable):
         ret[inst[0]] = inst
     return ret
 
+
 @sexp.handler("path")
 class path(sexp.sexp, Comparable):
   def uuid(self, ref=None, generate=False):
@@ -479,14 +525,16 @@ class path(sexp.sexp, Comparable):
       return self[0]
     return f"{self[0]}/{'/'.join(r.uuid(generate=generate) for r in ref)}"
 
+
 def fakepath(path):
-  """ Creates a fake path element for the purposes of tracking instances """
+  """Creates a fake path element for the purposes of tracking instances"""
   return sexp.sexp.init([sexp.atom("path"), path])
 
 
 @sexp.handler("kicad_sch")
 class sch(Drawable):  # ignore the uuid for the most part
-  """ A schematic page """
+  """A schematic page"""
+
   @property
   def paper(self):
     if "paper" in self:
@@ -512,9 +560,11 @@ class sch(Drawable):  # ignore the uuid for the most part
     # NOTE: if this ever stops working (eg sheet_instances is removed), a
     # potential heuristic is to look at the various instances fields on the
     # page and see if the page's UUID is featured first.
-    if ("sheet_instances" in self and
-        "path" in self["sheet_instances"][0] and
-        self["sheet_instances"][0]["path"][0][0] == "/"):
+    if (
+      "sheet_instances" in self
+      and "path" in self["sheet_instances"][0]
+      and self["sheet_instances"][0]["path"][0][0] == "/"
+    ):
       return self["sheet_instances"][0]["path"][0]
     return None
 
@@ -526,8 +576,8 @@ class sch(Drawable):  # ignore the uuid for the most part
     super().fillvars(variables, diffs, context)
 
   def inferred_instances(self, project=None):
-    """ If operating on a standalone file, we won't have any context on
-    instances. So come up with the different instance views. """
+    """If operating on a standalone file, we won't have any context on
+    instances. So come up with the different instance views."""
     instances = set()
     # Instances can be inferred from sheet and symbol instantiations
     for typ in "sheet", "symbol":
@@ -535,12 +585,14 @@ class sch(Drawable):  # ignore the uuid for the most part
         for obj in self[typ]:
           if "instances" in obj:
             instances.update(obj["instances"][0].paths(project))
-    return [(fakepath(i.rpartition('/')[0]), fakesheet(i.rpartition('/')[2]))
-            for i in instances]
+    return [
+      (fakepath(i.rpartition("/")[0]), fakesheet(i.rpartition("/")[2]))
+      for i in instances
+    ]
 
   def get_sheets(self, project=None):
-    """ Returns a list of tuples of (path, sheetref) """
-    if not "sheet" in self:
+    """Returns a list of tuples of (path, sheetref)"""
+    if "sheet" not in self:
       return []
     sheets = []
     for sheet in self["sheet"]:
@@ -549,7 +601,7 @@ class sch(Drawable):  # ignore the uuid for the most part
 
   def get_components(self, instance, variables):
     # returns a dict mapping refdes to dict of properties
-    if not "symbol" in self:
+    if "symbol" not in self:
       return {}
     variables = variables or Variables()
     context = variables.context() + (fakepath(instance), self)
@@ -569,7 +621,7 @@ class sch(Drawable):  # ignore the uuid for the most part
     variables = variables or Variables()
     nets = set()
     for labtyp in "global_label", "hierarchical_label", "label":
-      if not labtyp in self:
+      if labtyp not in self:
         continue
       for label in self[labtyp]:
         nets.add(label.net([], instance))

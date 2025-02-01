@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,18 +15,19 @@
 
 import sys
 
+
 class Progress(object):
   """Renders a simple progress bar with text."""
 
   # Characters for a spinner!
-  SPINNER = '|/-\\'
+  SPINNER = "|/-\\"
 
   def __init__(self, fout):
     """Instantiates a progress bar with a file object."""
     self._max = 1
     self._incr_max_mult = 1
     self._val = 0
-    self._text = ''
+    self._text = ""
     self._width = 60
     self._fout = fout
     self._spin = 0
@@ -35,11 +35,11 @@ class Progress(object):
 
   def incr(self, amount=1):
     """Increments the value and returns itself."""
-    return self.set_val(self._val+amount)
+    return self.set_val(self._val + amount)
 
   def incr_max(self, amount=1):
     """Increments the maximum value and returns itself."""
-    return self.set_max(self._max+amount*self._incr_max_mult)
+    return self.set_max(self._max + amount * self._incr_max_mult)
 
   def set_incr_max_mult(self, mult=1):
     """Sets the multiplier for incr_max.
@@ -78,16 +78,24 @@ class Progress(object):
     """Writes the bar to the file descriptor and returns itself."""
     if self._fout is None:
       return self
-    rev = '\x1b[7m'
-    endrev = '\x1b[0m'
+    rev = "\x1b[7m"
+    endrev = "\x1b[0m"
     barwidth = self._width - 1
     textwidth = barwidth
     spin = Progress.SPINNER[self._spin % len(Progress.SPINNER)]
     self._spin += self._spinDir
-    inner = '%s%s' % (self._text[:textwidth], '.'*(textwidth-len(self._text)))
+    inner = "%s%s" % (
+      self._text[:textwidth],
+      "." * (textwidth - len(self._text)),
+    )
     endpos = barwidth * max(self._val, 0) // self._max
-    text = '\r%s%s%s%s%s\b' % (rev, inner[:endpos], endrev,
-        inner[endpos:], spin)
+    text = "\r%s%s%s%s%s\b" % (
+      rev,
+      inner[:endpos],
+      endrev,
+      inner[endpos:],
+      spin,
+    )
     self._fout.write(text)
     self._fout.flush()
     return self
@@ -98,7 +106,7 @@ class Progress(object):
     spinDir -- picks a new direction for the spinner (instead of flipping)
     """
     if self._fout is not None:
-      self._fout.write('\r' + ' '*self._width + '\r')
+      self._fout.write("\r" + " " * self._width + "\r")
     if spinDir is None:
       self._spinDir = -self._spinDir
     else:
@@ -109,15 +117,16 @@ class Progress(object):
 def main(_):
   """Does a quick render test of the progress bar"""
   import time
+
   text = [
-    'Asserting Packed Exemplars',
-    'Depixelating Inner Mountain Surface Back Faces',
-    'Downloading Satellite Terrain Data',
-    'Initializing Robotic Click-Path AI',
-    'Lecturing Errant Subsystems',
-    'Partitioning City Grid Singularities',
-    'Retracting Phong Shader',
-    'Routing Neural Network Infanstructure',
+    "Asserting Packed Exemplars",
+    "Depixelating Inner Mountain Surface Back Faces",
+    "Downloading Satellite Terrain Data",
+    "Initializing Robotic Click-Path AI",
+    "Lecturing Errant Subsystems",
+    "Partitioning City Grid Singularities",
+    "Retracting Phong Shader",
+    "Routing Neural Network Infanstructure",
   ]
   p = Progress(sys.stdout).set_max(53).set_width(42)
   p.write()
@@ -130,7 +139,9 @@ def main(_):
     p.incr().write()
   time.sleep(1)
   p.clear()
-  sys.stdout.write('DONE! THAT WAS AN AMAZING EXPERIENCE\n')
+  sys.stdout.write("DONE! THAT WAS AN AMAZING EXPERIENCE\n")
   return 0
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
   sys.exit(main(sys.argv))

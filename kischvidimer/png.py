@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +16,14 @@
 import sys
 import zlib
 
-MAGIC = b"\x89PNG\r\n\x1A\n"
+MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
 def getsize(d):
   # Check header
   if not d or len(d) < 24:
     return None
-  if d[ 0: 8] != MAGIC:
+  if d[0:8] != MAGIC:
     return None
   if d[12:16] != b"IHDR":
     return None
@@ -37,19 +36,19 @@ def encode(rows, width, height, has_alpha, bitdepth):
   def block(typ, data):
     crc = zlib.crc32(data, zlib.crc32(typ))
     return [
-        int.to_bytes(len(data), 4, "big", signed=False),
-        typ,
-        data,
-        int.to_bytes(crc, 4, "big", signed=False),
-        ]
+      int.to_bytes(len(data), 4, "big", signed=False),
+      typ,
+      data,
+      int.to_bytes(crc, 4, "big", signed=False),
+    ]
 
   png = [MAGIC]
   # IHDR
-  IHDR  = int.to_bytes(width, 4, "big", signed=False)
+  IHDR = int.to_bytes(width, 4, "big", signed=False)
   IHDR += int.to_bytes(height, 4, "big", signed=False)
   IHDR += int.to_bytes(bitdepth, 1, "big", signed=False)
-  IHDR += b'\x06' if has_alpha else b'\x02'  # colortype
-  IHDR += b'\x00'*3
+  IHDR += b"\x06" if has_alpha else b"\x02"  # colortype
+  IHDR += b"\x00" * 3
   png += block(b"IHDR", IHDR)
   # IDAT
   raw = b"\0" + b"\0".join(map(bytes, rows))
@@ -57,7 +56,7 @@ def encode(rows, width, height, has_alpha, bitdepth):
   png += block(b"IDAT", compressed)
   # IEND
   png += block(b"IEND", b"")
-  return b''.join(png)
+  return b"".join(png)
 
 
 def main(argv):

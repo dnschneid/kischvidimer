@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +28,8 @@ class placeholder_handler(sexp.sexp):
 
 
 class pin_def(Drawable):
-  """ pins in a symbol definition """
+  """pins in a symbol definition"""
+
   def get_type_style(self, alternate, diffs):
     # FIXME: diffs
     # FIXME: alternate can have diffs too
@@ -39,8 +39,17 @@ class pin_def(Drawable):
           return (alt[1], alt[2])
     return (self[0], self[1])
 
-  @sexp.uses("clock", "clock_low", "edge_clock_high", "input_low", "inverted",
-             "non_logic", "output_low", "hide", "length")
+  @sexp.uses(
+    "clock",
+    "clock_low",
+    "edge_clock_high",
+    "input_low",
+    "inverted",
+    "non_logic",
+    "output_low",
+    "hide",
+    "length",
+  )
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_PINS:
       return
@@ -57,58 +66,63 @@ class pin_def(Drawable):
     pos = self["at"][0].pos(diffs)
     rot = self["at"][0].rot(diffs)
     length = float(self.get("length", 0)[0])
-    mirror = 1 if rot in (0,90) else -1
+    mirror = 1 if rot in (0, 90) else -1
 
     # Render line ending
     style = self[1]
     dot = "inverted" in style
-    end = translated(pos, rotated(length-1.27*dot, rot))
+    end = translated(pos, rotated(length - 1.27 * dot, rot))
     xys = [pos, end]
     if "clock" in style:
       # draw clk carrot
       svg.polyline(
-          xys=[translated(end, rotated((1.27*dot, 0.635), rot)),
-               translated(end, rotated(1.27*dot+0.635, rot)),
-               translated(end, rotated((1.27*dot, -0.635), rot))],
-          color='device'
-          )
+        xys=[
+          translated(end, rotated((1.27 * dot, 0.635), rot)),
+          translated(end, rotated(1.27 * dot + 0.635, rot)),
+          translated(end, rotated((1.27 * dot, -0.635), rot)),
+        ],
+        color="device",
+      )
     elif style == "non_logic":
       # draw X
-      xys += [(end[0]-0.635, end[1]-0.635),
-              (end[0]+0.635, end[1]+0.635),
-              end,
-              (end[0]+0.635, end[1]-0.635),
-              (end[0]-0.635, end[1]+0.635)]
+      xys += [
+        (end[0] - 0.635, end[1] - 0.635),
+        (end[0] + 0.635, end[1] + 0.635),
+        end,
+        (end[0] + 0.635, end[1] - 0.635),
+        (end[0] - 0.635, end[1] + 0.635),
+      ]
     if style.startswith("inverted"):
       # draw dot
       svg.circle(
         pos=translated(end, rotated(0.635, rot)),
         radius=0.635,
-        color='device',
-        )
+        color="device",
+      )
     elif style in ("input_low", "clock_low", "edge_clock_high"):
       # draw input-low
-      xys += [translated(end, rotated((-1.27*mirror, 1.27), rot % 180)),
-              translated(end, rotated(-1.27*mirror, rot % 180))]
+      xys += [
+        translated(end, rotated((-1.27 * mirror, 1.27), rot % 180)),
+        translated(end, rotated(-1.27 * mirror, rot % 180)),
+      ]
     elif style == "output_low":
       # draw output-low
-      xys += [translated(end, rotated(-1.27*mirror, rot % 180)),
-              translated(end, rotated((0, 1.27), rot % 180))]
+      xys += [
+        translated(end, rotated(-1.27 * mirror, rot % 180)),
+        translated(end, rotated((0, 1.27), rot % 180)),
+      ]
     # Render main line
-    svg.polyline(
-        xys=xys,
-        color='device'
-        )
+    svg.polyline(xys=xys, color="device")
 
     # Render lack of connection (MOVE ELSEWHERE)
     if False:
       svg.circle(
-          pos=pos,
-          radius=sexp.Decimal(0.3175),
-          fill='none',
-          color='device',
-          thick='ui'
-          )
+        pos=pos,
+        radius=sexp.Decimal(0.3175),
+        fill="none",
+        color="device",
+        thick="ui",
+      )
 
     # Render name and number
     # Compensate for mirror/rotation in instantiations
@@ -118,9 +132,12 @@ class pin_def(Drawable):
       if c.type == "symbol" and "lib_id" in c:
         inst_rot, inst_mirror = c.rot_mirror(diffs)
         break
-    pin_config = next(c.pin_config(diffs) for c in reversed(context)
-                      if isinstance(c, symbol_def))
-    yoffset = -0.1016 - svg.THICKNESS['wire']
+    pin_config = next(
+      c.pin_config(diffs)
+      for c in reversed(context)
+      if isinstance(c, symbol_def)
+    )
+    yoffset = -0.1016 - svg.THICKNESS["wire"]
     pin_config["number"]["xoffset"] = length / 2
     pin_config["number"]["yoffset"] = yoffset
     pin_config["number"]["justify"] = "middle"
@@ -152,14 +169,14 @@ class pin_def(Drawable):
       if pin_config[part]["hide"] or text == "~":
         text = ""
       xoffset = rotated(pin_config[part]["xoffset"], rot)
-      yoffset = rotated((0,pin_config[part]["yoffset"]), rot % 180)
+      yoffset = rotated((0, pin_config[part]["yoffset"]), rot % 180)
       args = {
-          "justify": pin_config[part]["justify"],
-          "vjustify": pin_config[part]["vjustify"],
-          "rotate": rot % 180,
-          "color": f"pin{part[:3]}",
-          "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
-          }
+        "justify": pin_config[part]["justify"],
+        "vjustify": pin_config[part]["vjustify"],
+        "rotate": rot % 180,
+        "color": f"pin{part[:3]}",
+        "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
+      }
       if swap_side:
         svg.gstart(pos=translated(pos, xoffset), rotate=180)
         if args["justify"] != "middle":
@@ -167,20 +184,25 @@ class pin_def(Drawable):
         args["pos"] = yoffset
       else:
         args["pos"] = translated(pos, translated(xoffset, yoffset))
-      args.update(Drawable.svgargs(self[part][0], diffs))#, context + (self,)))
+      args.update(
+        Drawable.svgargs(self[part][0], diffs)
+      )  # , context + (self,)))
       svg.text(text, **args)
       if swap_side:
         svg.gend()
 
+
 class pin_sheet(placeholder_handler):
   pass
+
 
 class pin_inst(placeholder_handler):
   pass
 
+
 @sexp.handler("pin")
 def pin_disambiguator(s):
-  """ the "pin" atom has three uses, which we disambiguate in order:
+  """the "pin" atom has three uses, which we disambiguate in order:
   1) a pin definition, whose first data will be an atom of the electrical type
   2) a sheet pin, whose second data will be an atom of the pin direction
   3) a pin instance
@@ -194,17 +216,20 @@ def pin_disambiguator(s):
 
 
 class symbol_body(Drawable):
-  """ The body of a symbol definition """
+  """The body of a symbol definition"""
+
   @property
   def unit(self):
     return int(self[0].split("_")[-2])
+
   @property
   def variant(self):
     return int(self[0].rpartition("_")[-1])
 
 
 class symbol_def(sexp.sexp, Comparable):
-  """ A single library symbol entity, either in a library or cache """
+  """A single library symbol entity, either in a library or cache"""
+
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
     to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
     sym = self._sym(diffs, context)
@@ -212,7 +237,7 @@ class symbol_def(sexp.sexp, Comparable):
     for body in bodies:
       body.fillsvg(svg, diffs, draw, context + (self,))
     if draw & Drawable.DRAW_PROPS:
-      properties = { p.name: p for p in sym["property"] }
+      properties = {p.name: p for p in sym["property"]}
       if sym is not self:
         properties.update((p.name, p) for p in self["property"])
       for field in properties.values():
@@ -225,15 +250,15 @@ class symbol_def(sexp.sexp, Comparable):
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs):
     cfg = {
-        "name": {
-          "xoffset": 0.508,
-          "hide": False,
-          },
-        "number": {
-          "xoffset": 0,
-          "hide": False,
-          }
-        }
+      "name": {
+        "xoffset": 0.508,
+        "hide": False,
+      },
+      "number": {
+        "xoffset": 0,
+        "hide": False,
+      },
+    }
     if "pin_names" in self:
       if "offset" in self["pin_names"][0]:
         cfg["name"]["xoffset"] = float(self["pin_names"][0]["offset"][0][0])
@@ -265,7 +290,7 @@ class symbol_inst(placeholder_handler):
 
 @sexp.handler("symbol")
 def symbol_disambiguator(s):
-  """ the "symbol" atom has three uses, which we disambiguate in order:
+  """the "symbol" atom has three uses, which we disambiguate in order:
   1) a symbol instance, which contains a library refrence (lib_id)
   2) a symbol definition, which contains properties (property)
   3) a symbol body
@@ -282,8 +307,8 @@ def symbol_disambiguator(s):
 
 @sexp.handler("kicad_symbol_lib", "lib_symbols")
 class sym_lib(sexp.sexp, Comparable):
-  """Tracks a kicad_sym file or lib_symbols database
-  """
+  """Tracks a kicad_sym file or lib_symbols database"""
+
   def symbols(self):
     return {s[0]: s for s in self["symbol"]}
 
@@ -294,7 +319,7 @@ class sym_lib(sexp.sexp, Comparable):
     return None
 
   def sym_hash(self, name, cache=True):
-    """ calculates and returns the hash for a symbol, keeping track of the hash
+    """calculates and returns the hash for a symbol, keeping track of the hash
     for later lookup. The hash is an integer.
     If cache is true, assumes the symbol library hasn't been modified.
     Returns 0 if the symbol cannot be found
@@ -311,10 +336,10 @@ class sym_lib(sexp.sexp, Comparable):
     return h
 
   def hash_lookup(self, h):
-    """ returns the symbol for a previously-output sym_hash """
+    """returns the symbol for a previously-output sym_hash"""
     return getattr(self, "_hashcache", {}).get(
-        int(h,16) if isinstance(h, str) else int(h)
-        )
+      int(h, 16) if isinstance(h, str) else int(h)
+    )
 
 
 def main(argv):
@@ -337,6 +362,7 @@ def main(argv):
     data[0].symbols()[argv[2]].fillsvg(**params)
   else:
     import random
+
     random.choice(list(data[0].symbols().values())).fillsvg(**params)
   print(str(s))
 

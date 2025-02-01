@@ -1752,7 +1752,7 @@ function getElem(elem) {
     elem = elem.getRootNode().host || elem;
     // provide an explicit order for iterating through ELEM_TYPE_SELECTORS
     // because we want to find [prop="HDL_POWER"] labels inside of [p] symbols
-    // and there is no good css selector (that I know) that can differentiate 
+    // and there is no good css selector (that I know) that can differentiate
     // [p] results by their child content...
     for (let typ of ['net', 'component', 'ghost']) {
         for (let s of ELEM_TYPE_SELECTORS[typ]) {

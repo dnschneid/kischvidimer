@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -18,14 +17,13 @@ import json
 import os
 import sys
 
-from .diff import Comparable, Diff, Param, difflists, applylists, targetdict
-from . import git
-from . import kicad_sch
-from . import kicad_wks
-from . import progress
+from . import git, kicad_sch, kicad_wks, progress
+from .diff import Comparable
+
 
 class kicad_pro(Comparable):
-  """ Kicad project file """
+  """Kicad project file"""
+
   def __init__(self, f, fname=None):
     self._fname = fname
     self.json = json.loads(f.read())
@@ -43,7 +41,9 @@ class kicad_pro(Comparable):
     return self.json.get("text_variables", {})
 
   def context(self):
-    s = kicad_sch.sexp.sexp.init([kicad_sch.sexp.atom("~project"), self.project])
+    s = kicad_sch.sexp.sexp.init(
+      [kicad_sch.sexp.atom("~project"), self.project]
+    )
     return (s,)
 
   def fillvars(self, variables, diffs, pages=None, p=None):
@@ -57,25 +57,33 @@ class kicad_pro(Comparable):
     variables.define(variables.GLOBAL, variables.PAGECOUNT, pgcount)
     context = self.context()
     for filename, (instances, sch) in pages.items():
-      if p: p.write().incr()
+      if p:
+        p.write().incr()
       for path, sheet in instances:
         pgcontext = context + (path, sheet)
-        variables.define(pgcontext, variables.PAGENO, int(path.get("page", [0])[0]))
+        variables.define(
+          pgcontext, variables.PAGENO, int(path.get("page", [0])[0])
+        )
         sch.fillvars(variables, diffs, context=pgcontext)
 
   def get_pages(self, projfile, rev, p):
-    """ Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).
+    """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).
     Instances in turn are a tuple of (path ref, sheet ref)
     """
     pages = {}
     projdir = os.path.dirname(self._fname or "")
-    to_load = [f"{projdir}/{self.project}.kicad_sch" if projdir
-               else f"{self.project}.kicad_sch"]
-    if p: p.incr_max()
+    to_load = [
+      f"{projdir}/{self.project}.kicad_sch"
+      if projdir
+      else f"{self.project}.kicad_sch"
+    ]
+    if p:
+      p.incr_max()
     while to_load:
       filepath = to_load.pop()
       relpath = os.path.relpath(filepath, projdir)
-      if p: p.set_text(f"Loading {rev+':' if rev else ''}{relpath}").write()
+      if p:
+        p.set_text(f"Loading {rev + ':' if rev else ''}{relpath}").write()
       f = git.open_rb(filepath, rev)
       sch = kicad_sch.kicad_sch(f, filepath)
       # Handle the root page, whose path is self-defined by uuid
@@ -90,39 +98,50 @@ class kicad_pro(Comparable):
         relpath = os.path.relpath(filepath, projdir)
         if relpath not in pages:
           to_load.append(filepath)
-          if p: p.incr_max()
+          if p:
+            p.incr_max()
         pages.setdefault(relpath, ([],))[0].append((path, sheet))
-      if p: p.incr().write()
+      if p:
+        p.incr().write()
     return pages
 
   def get_worksheet(self, rev, p):
-    """ Returns a kicad_wks instance. """
+    """Returns a kicad_wks instance."""
     default_wks = kicad_wks.kicad_wks(None)
     wks_path = self.json.get("schematic", {}).get("page_layout_descr_file")
     if not wks_path:
       return default_wks
-    if p: p.incr_max().set_text(f"Loading {wks_path}").write().incr()
+    if p:
+      p.incr_max().set_text(f"Loading {wks_path}").write().incr()
     os.environ.update(config_env_vars())
     wks_path_expanded = os.path.expandvars(wks_path)
     if any(c in wks_path_expanded for c in "$%~"):
-      if p: p.clear()
-      print("WARNING: unable to expand worksheet path", wks_path,
-            file=sys.stderr)
+      if p:
+        p.clear()
+      print(
+        "WARNING: unable to expand worksheet path", wks_path, file=sys.stderr
+      )
       return default_wks
     if wks_path_expanded.startswith("/"):
       if not os.path.isfile(wks_path_expanded):
-        if p: p.clear()
-        print("WARNING: unable to find worksheet", wks_path_expanded,
-              file=sys.stderr)
+        if p:
+          p.clear()
+        print(
+          "WARNING: unable to find worksheet",
+          wks_path_expanded,
+          file=sys.stderr,
+        )
         return default_wks
       wks = kicad_wks.kicad_wks(open(wks_path_expanded, "r"), wks_path_expanded)
     else:
-      wks = kicad_wks.kicad_wks(git.open_rb(wks_path_expanded, rev), wks_path_expanded)
+      wks = kicad_wks.kicad_wks(
+        git.open_rb(wks_path_expanded, rev), wks_path_expanded
+      )
     return wks or default_wks
 
   @staticmethod
   def pgcount(pages):
-    return sum(len(i) for i,_ in pages.values())
+    return sum(len(i) for i, _ in pages.values())
 
   def gen_toc(self, pages):
     # Returns a sorted, hierarchical TOC, lists of dicts containing lists.
@@ -134,24 +153,28 @@ class kicad_pro(Comparable):
       for path, sheet in instances:
         uuid = path.uuid(sheet)
         inst = {
-            "page": int(path.get("page", [0])[0]),
-            "name": self.uuid_to_name(pages, uuid),
-            "uuid": uuid,
-            "file": filepath,
-            "sch":  sch,
-            }
+          "page": int(path.get("page", [0])[0]),
+          "name": self.uuid_to_name(pages, uuid),
+          "uuid": uuid,
+          "file": filepath,
+          "sch": sch,
+        }
         subhier = hier
         uuidparts = uuid.split("/")
         for subid in uuidparts[1:-1]:
           subhier = subhier.setdefault(subid, {}).setdefault("hier", {})
         subhier.setdefault(uuidparts[-1], {}).update(inst)
+
     # Collapse into lists-of-lists, sorted by PN
     def to_list(hier):
       return [
-          {"children" if k == "hier" else k: to_list(v) if k == "hier" else v
-            for k,v in inst.items()}
-          for inst in sorted(hier.values(), key=lambda i: (i["page"], i["name"]))
-          ]
+        {
+          "children" if k == "hier" else k: to_list(v) if k == "hier" else v
+          for k, v in inst.items()
+        }
+        for inst in sorted(hier.values(), key=lambda i: (i["page"], i["name"]))
+      ]
+
     return to_list(hier)
 
   def uuid_to_name(self, pages, uuid):
@@ -175,26 +198,30 @@ class kicad_pro(Comparable):
 
 
 def config_env_vars():
-  """ Searches kicad configuration directories for environment variable defines
+  """Searches kicad configuration directories for environment variable defines
   and returns a dictionary of all the assignments.
   """
   configdirs = []
   for basedir in (
-      "$HOME/.config/kicad",  # Linux
-      "%AppData%/kicad",  # Windows
-      "$HOME/Library/Preferences/kicad",  # macOS
-      ):
+    "$HOME/.config/kicad",  # Linux
+    "%AppData%/kicad",  # Windows
+    "$HOME/Library/Preferences/kicad",  # macOS
+  ):
     basedir = os.path.expandvars(basedir)
     if not os.path.isdir(basedir):
       continue
     for subdir in os.listdir(basedir):
-      if (subdir.partition(".")[0].isdecimal() and
-          subdir.partition(".")[2].isdecimal()):
+      if (
+        subdir.partition(".")[0].isdecimal()
+        and subdir.partition(".")[2].isdecimal()
+      ):
         configdirs.append(os.path.join(basedir, subdir))
+
   # Parse files oldest to newest
   def sortkey(p):
     base = os.path.basename(p).partition(".")
     return (int(base[0]), int(base[2]), p)
+
   configdirs = sorted(configdirs, key=sortkey)
   # varibales in KICAD_CONFIG_HOME override all
   if "KICAD_CONFIG_HOME" in os.environ:
@@ -226,8 +253,11 @@ def main(argv):
 
   def print_toc(toc, indent=0):
     for inst in toc:
-      print(f"{inst['page']:3d}: {'  '*indent}{inst['name']} ({inst['file']})")
-      print_toc(inst.get("children", []), indent+1)
+      print(
+        f"{inst['page']:3d}: {'  ' * indent}{inst['name']} ({inst['file']})"
+      )
+      print_toc(inst.get("children", []), indent + 1)
+
   print_toc(toc)
 
 

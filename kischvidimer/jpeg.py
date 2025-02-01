@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,17 +20,17 @@ def getsize(d):
   # Check header
   if not d or len(d) < 24:
     return None
-  if d[ 0: 4] != b"\xFF\xD8\xFF\xE0":
+  if d[0:4] != b"\xff\xd8\xff\xe0":
     return None
-  if d[ 6:11] != b"JFIF\x00":
+  if d[6:11] != b"JFIF\x00":
     return None
   pos = 2
   while pos < len(d):
-    pos += 2+int.from_bytes(d[pos+2:pos+4], "big", signed=False)
-    if d[pos:pos+2] != b"\xFF\xC0":
+    pos += 2 + int.from_bytes(d[pos + 2 : pos + 4], "big", signed=False)
+    if d[pos : pos + 2] != b"\xff\xc0":
       continue
-    w = int.from_bytes(d[pos+5:pos+7], "big", signed=False)
-    h = int.from_bytes(d[pos+7:pos+9], "big", signed=False)
+    w = int.from_bytes(d[pos + 5 : pos + 7], "big", signed=False)
+    h = int.from_bytes(d[pos + 7 : pos + 9], "big", signed=False)
     return (w, h)
   return None
 

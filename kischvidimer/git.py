@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import sys
 import subprocess
+import sys
 import tempfile
 
 # Version selection for checkout and cat_file
@@ -26,9 +25,9 @@ VERSION_THEIRS = 3
 VERSIONS = (VERSION_BASE, VERSION_OURS, VERSION_THEIRS)
 
 # File state information
-STATE_MODIFIED = 'U'
-STATE_ADDED = 'A'
-STATE_DELETED = 'D'
+STATE_MODIFIED = "U"
+STATE_ADDED = "A"
+STATE_DELETED = "D"
 
 
 def get_conflicts():
@@ -36,16 +35,19 @@ def get_conflicts():
   Each file is returned as a tuple: (file, state), with state being two
   characters (ours and theirs) from one of the STATE_ states.
   """
-  conflicts = iter(subprocess.check_output(['git', 'status', '-z'],
-                                           cwd=repo_path()).split(b'\0'))
+  conflicts = iter(
+    subprocess.check_output(["git", "status", "-z"], cwd=repo_path()).split(
+      b"\0"
+    )
+  )
   for path in conflicts:
     path = path.decode()
     # If it's a rename, consume an extra file
     state = path[0:2]
-    if 'R' in state:
+    if "R" in state:
       next(conflicts)
       continue
-    if 'U' in state or state in ('AA', 'DD'):
+    if "U" in state or state in ("AA", "DD"):
       yield (path[3:], state)
 
 
@@ -54,9 +56,9 @@ def clone_tmp(commit=None):
   unless a commit is specified for checkout.
   Returns the temporary directory. You are responsible for deleting it."""
   tempdir = tempfile.mkdtemp()
-  subprocess.check_call(['git', 'clone', '-qns', '.', tempdir])
+  subprocess.check_call(["git", "clone", "-qns", ".", tempdir])
   if commit:
-    subprocess.check_call(['git', 'checkout', '-q', commit], cwd=tempdir)
+    subprocess.check_call(["git", "checkout", "-q", commit], cwd=tempdir)
   return tempdir
 
 
@@ -64,67 +66,95 @@ def checkout(path, version):
   """Runs git checkout on a relative path, with either --ours or --theirs."""
   if version == VERSION_BASE:
     return False
-  return subprocess.call(['git', 'checkout', '-q',
-    '--ours' if version == VERSION_OURS else '--theirs', '--', path],
-    cwd=repo_path()) == 0
+  return (
+    subprocess.call(
+      [
+        "git",
+        "checkout",
+        "-q",
+        "--ours" if version == VERSION_OURS else "--theirs",
+        "--",
+        path,
+      ],
+      cwd=repo_path(),
+    )
+    == 0
+  )
 
 
-def cat(path, ref=':', relative=False):
+def cat(path, ref=":", relative=False):
   """Returns a file for a path (and ref, if provided)."""
-  return subprocess.Popen(['git', 'show', ':'.join((ref,
-      path if not relative or path.startswith('/') else './%s' % path))],
-      cwd=None if relative else repo_path(),
-      stdout=subprocess.PIPE).stdout
+  return subprocess.Popen(
+    [
+      "git",
+      "show",
+      ":".join(
+        (ref, path if not relative or path.startswith("/") else "./%s" % path)
+      ),
+    ],
+    cwd=None if relative else repo_path(),
+    stdout=subprocess.PIPE,
+  ).stdout
 
 
-def cat_files(path, state=STATE_MODIFIED*2):
+def cat_files(path, state=STATE_MODIFIED * 2):
   """Returns a tuple of three files (base, ours, theirs) for a path.
   Substitutes in None if a tree does not contain the file (based on state)
   You can avoid specifying state if you know for a fact all files exist.
   """
   # Maps VERSION to whether the file exists in that index, based on state
-  exists = (None,
-            STATE_ADDED not in state,
-            state[0] != STATE_DELETED,
-            state[1] != STATE_DELETED)
-  return tuple(cat(path, ':%s' % str(version)) if exists[version] else None
-               for version in VERSIONS)
+  exists = (
+    None,
+    STATE_ADDED not in state,
+    state[0] != STATE_DELETED,
+    state[1] != STATE_DELETED,
+  )
+  return tuple(
+    cat(path, ":%s" % str(version)) if exists[version] else None
+    for version in VERSIONS
+  )
 
 
 def add(path):
   """Runs git add on the relative path."""
-  return subprocess.call(['git', 'add', '--', path], cwd=repo_path()) == 0
+  return subprocess.call(["git", "add", "--", path], cwd=repo_path()) == 0
 
 
 def rev_parse(revs):
   """Parses a revspec for a list of revisions to be considered."""
   revlist = subprocess.check_output(
-      ['git', 'rev-parse', '--revs-only', revs], universal_newlines=True)
-  return [rev.lstrip('^') for rev in revlist.splitlines()]
+    ["git", "rev-parse", "--revs-only", revs], universal_newlines=True
+  )
+  return [rev.lstrip("^") for rev in revlist.splitlines()]
 
 
 def get_version(repo=None):
   """Returns a friendly string of the current version.
   Specify repo to use a git repo other than the current one."""
   ret = subprocess.run(
-      "git describe --all --always --broken --dirty --long".split(),
-      cwd=repo or '.', capture_output=True, universal_newlines=True)
+    "git describe --all --always --broken --dirty --long".split(),
+    cwd=repo or ".",
+    capture_output=True,
+    universal_newlines=True,
+  )
   if ret.returncode == 0:
-    return ret.stdout.strip().replace("heads/","").replace("tags/","")
+    return ret.stdout.strip().replace("heads/", "").replace("tags/", "")
   return "unknown"
 
 
 # A cache for repo_path
 __repopath = None
 
-def repo_path(path=''):
+
+def repo_path(path=""):
   """Returns the absolute path for a file in the repo."""
   global __repopath
   if __repopath is None:
     __repopath = subprocess.check_output(
-        ['git', 'rev-parse', '--show-toplevel'],
-        universal_newlines=True).rstrip()
+      ["git", "rev-parse", "--show-toplevel"], universal_newlines=True
+    ).rstrip()
   return os.path.join(os.fsdecode(__repopath), path)
+
 
 def is_in_repo(path):
   """Return true if the specified path is within the current repo."""
@@ -139,6 +169,7 @@ def is_in_repo(path):
   except ValueError:
     return False
 
+
 def listdir(path_or_tuple, githash=None):
   """Behaves like os.listdir, but if path_or_tuple is a tuple of (path, githash)
   (or if githash is specified separately), will query git instead for non-abs
@@ -148,9 +179,13 @@ def listdir(path_or_tuple, githash=None):
     path_or_tuple, githash = path_or_tuple
   if not githash or not is_in_repo(path_or_tuple):
     return os.listdir(path_or_tuple)
-  return [os.path.basename(path)
-     for path in ls_tree(path_or_tuple + '/.', githash,
-       full_tree=False, recurse=False)]
+  return [
+    os.path.basename(path)
+    for path in ls_tree(
+      path_or_tuple + "/.", githash, full_tree=False, recurse=False
+    )
+  ]
+
 
 def isdir(path_or_tuple, githash=None):
   """Behaves like os.path.isdir and handles git hashes as in listdir."""
@@ -158,8 +193,12 @@ def isdir(path_or_tuple, githash=None):
     path_or_tuple, githash = path_or_tuple
   if not githash or not is_in_repo(path_or_tuple):
     return os.path.isdir(path_or_tuple)
-  return True if ls_tree(path_or_tuple + '/.', githash,
-      full_tree=False, recurse=False) else False
+  return (
+    True
+    if ls_tree(path_or_tuple + "/.", githash, full_tree=False, recurse=False)
+    else False
+  )
+
 
 def isfile(path_or_tuple, githash=None):
   """Behaves like os.path.isfile and handles git hashes as in listdir."""
@@ -169,29 +208,37 @@ def isfile(path_or_tuple, githash=None):
     return os.path.isfile(path_or_tuple)
   if isdir(path_or_tuple, githash):
     return False
-  return True if ls_tree(path_or_tuple, githash,
-      full_tree=False, recurse=False) else False
+  return (
+    True
+    if ls_tree(path_or_tuple, githash, full_tree=False, recurse=False)
+    else False
+  )
+
 
 def open_rb(path_or_tuple, githash=None):
   """Behaves like open(x, 'rb') and handles git hashes as in listdir."""
   if isinstance(path_or_tuple, tuple):
     path_or_tuple, githash = path_or_tuple
   if not githash or not is_in_repo(path_or_tuple):
-    return open(path_or_tuple, 'rb')
+    return open(path_or_tuple, "rb")
   return cat(path_or_tuple, githash, relative=True)
+
 
 # A cache for is_rebase
 __isrebase = None
+
 
 def is_rebase():
   """Returns True if the git repo is in the middle of a rebase (vs a merge)."""
   global __isrebase
   if __isrebase is None:
     __isrebase = False
-    for d in ('rebase-merge', 'rebase-apply'):
-      if os.path.isdir(subprocess.check_output(
-          ['git', 'rev-parse', '--git-path', d],
-          universal_newlines=True).rstrip()):
+    for d in ("rebase-merge", "rebase-apply"):
+      if os.path.isdir(
+        subprocess.check_output(
+          ["git", "rev-parse", "--git-path", d], universal_newlines=True
+        ).rstrip()
+      ):
         __isrebase = True
   return __isrebase
 
@@ -199,15 +246,18 @@ def is_rebase():
 # A cache for ls_tree, indexed by (path, commit)
 __lscache = {}
 
-def ls_tree(path, commit='HEAD', full_tree=True, recurse=True):
+
+def ls_tree(path, commit="HEAD", full_tree=True, recurse=True):
   """Returns a list of all the files under a given path and commit."""
   if (path, commit, full_tree) not in __lscache:
-    __lscache[(path, commit, full_tree)] = subprocess.check_output([
-      'git', 'ls-tree', '--name-only'
-    ] + ['-r']*recurse + ['--full-tree']*full_tree + [
-      commit, path
-    ], cwd=repo_path() if full_tree else None,
-    universal_newlines=True).splitlines()
+    __lscache[(path, commit, full_tree)] = subprocess.check_output(
+      ["git", "ls-tree", "--name-only"]
+      + ["-r"] * recurse
+      + ["--full-tree"] * full_tree
+      + [commit, path],
+      cwd=repo_path() if full_tree else None,
+      universal_newlines=True,
+    ).splitlines()
   return __lscache[(path, commit, full_tree)]
 
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 # SPDX-FileCopyrightText: Copyright 2024 Google LLC
 #   Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +17,6 @@
 Parses Kicad worksheet files
 """
 
-from . import kicad_common
 from .kicad_common import *
 
 # NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
@@ -36,13 +34,20 @@ from .kicad_common import *
 # polygon
 # pts
 
-ALL_WKS_VARS = {'TITLE', 'ISSUE_DATE', 'REV', 'COMPANY',
-                'LAYER', 'PAPER', 'KICAD_VERSION'
-                }.union({f'COMMENT{i}' for i in range(10)})
+ALL_WKS_VARS = {
+  "TITLE",
+  "ISSUE_DATE",
+  "REV",
+  "COMPANY",
+  "LAYER",
+  "PAPER",
+  "KICAD_VERSION",
+}.union({f"COMMENT{i}" for i in range(10)})
+
 
 def toMM(x, y):
-  return (sexp.Decimal(x)*254/10,
-          sexp.Decimal(y)*254/10)
+  return (sexp.Decimal(x) * 254 / 10, sexp.Decimal(y) * 254 / 10)
+
 
 @sexp.handler("setup")
 class setup(sexp.sexp):
@@ -55,8 +60,14 @@ class setup(sexp.sexp):
         return bool(c.root_path)
     return False
 
-  @sexp.uses("paper", "left_margin", "top_margin", "right_margin",
-             "bottom_margin", "portrait")
+  @sexp.uses(
+    "paper",
+    "left_margin",
+    "top_margin",
+    "right_margin",
+    "bottom_margin",
+    "portrait",
+  )
   def page_corners(self, context):
     paper = ["A4"]
     for c in reversed(context):
@@ -64,35 +75,39 @@ class setup(sexp.sexp):
         paper = c.get("paper", paper).data
         break
     if len(paper) > 2:
-      assert paper[0] == 'User'
+      assert paper[0] == "User"
       assert len(paper) == 3
       size = tuple(paper[1:])
     else:
       size = {
-          "A0": (1189, 841),
-          "A1": (841, 594),
-          "A2": (594, 420),
-          "A3": (420, 297),
-          "A4": (297, 210),
-          "A5": (210, 148),
-          "A": toMM(11, 8.5),
-          "B": toMM(17, 11),
-          "C": toMM(22, 17),
-          "D": toMM(34, 22),
-          "E": toMM(44, 34),
-          "USLedger": toMM(17, 11),
-          "USLegal":  toMM(14, 8.5),
-          "USLetter": toMM(11, 8.5),
-          }.get(paper[0])
+        "A0": (1189, 841),
+        "A1": (841, 594),
+        "A2": (594, 420),
+        "A3": (420, 297),
+        "A4": (297, 210),
+        "A5": (210, 148),
+        "A": toMM(11, 8.5),
+        "B": toMM(17, 11),
+        "C": toMM(22, 17),
+        "D": toMM(34, 22),
+        "E": toMM(44, 34),
+        "USLedger": toMM(17, 11),
+        "USLegal": toMM(14, 8.5),
+        "USLetter": toMM(11, 8.5),
+      }.get(paper[0])
       assert size
       if len(paper) == 2:
-        assert paper[1] == 'portrait'
+        assert paper[1] == "portrait"
         size = (size[1], size[0])
-    lt = (self.get("left_margin", default=[0])[0],
-          self.get("top_margin", default=[0])[0])
-    rb = (size[0] - self.get("right_margin", default=[0])[0],
-          size[1] - self.get("bottom_margin", default=[0])[0])
-    return lt+rb
+    lt = (
+      self.get("left_margin", default=[0])[0],
+      self.get("top_margin", default=[0])[0],
+    )
+    rb = (
+      size[0] - self.get("right_margin", default=[0])[0],
+      size[1] - self.get("bottom_margin", default=[0])[0],
+    )
+    return lt + rb
 
   @property
   @sexp.uses("textsize")
@@ -113,9 +128,11 @@ class setup(sexp.sexp):
   def textthick(self):
     return self.get("textlinewidth", default=["wire"])[0]
 
+
 class Repeatable(Drawable):
   def is_pg(self):
     return False
+
   @sexp.uses("option", "incrx", "incry", "page1only", "notonpage1", "repeat")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_WKS_PG if self.is_pg() else Drawable.DRAW_WKS):
@@ -127,14 +144,14 @@ class Repeatable(Drawable):
     assert config
     is_pgone = config.is_pgone(context)
     rel = config.page_corners(context)
-    defgrav = 'rb'
+    defgrav = "rb"
     params = {
-        "thick": config.thick,
-        "textthick": config.textthick,
-        "size": config.textsize,
-        "color": 'SCHEMATIC_DRAWINGSHEET',
-        }
-    posparams = {'rel': rel, 'defgravity': defgrav}
+      "thick": config.thick,
+      "textthick": config.textthick,
+      "size": config.textsize,
+      "color": "SCHEMATIC_DRAWINGSHEET",
+    }
+    posparams = {"rel": rel, "defgravity": defgrav}
     if "pos" in self:
       params["pos"] = self["pos"][0].pos(**posparams)
     else:
@@ -158,58 +175,64 @@ class Repeatable(Drawable):
         if p in params:
           gravity = self[p][0].gravity(default=defgrav)
           vec = rel_coord(gravity, vect=(incrx, incry))
-          params[p] = (vec[0]+params[p][0],
-                       vec[1]+params[p][1])
+          params[p] = (vec[0] + params[p][0], vec[1] + params[p][1])
           # Stop early if we've gone beyond the page size
-          if (params[p][0] < rel[0] or params[p][0] > rel[2] or
-              params[p][1] < rel[1] or params[p][1] > rel[3]):
+          if (
+            params[p][0] < rel[0]
+            or params[p][0] > rel[2]
+            or params[p][1] < rel[1]
+            or params[p][1] > rel[3]
+          ):
             return
+
 
 @sexp.handler("rect")
 class rect(Repeatable):
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.rect(
-        pos=params["start"],
-        end=params["end"],
-        color=params["color"],
-        thick=params["thick"],
-        )
+      pos=params["start"],
+      end=params["end"],
+      color=params["color"],
+      thick=params["thick"],
+    )
+
 
 @sexp.handler("line")
 class line(Repeatable):
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.line(
-        p1=params["start"],
-        p2=params["end"],
-        color=params["color"],
-        thick=params["thick"],
-        )
+      p1=params["start"],
+      p2=params["end"],
+      color=params["color"],
+      thick=params["thick"],
+    )
+
 
 @sexp.handler("tbtext")
 class tbtext(Repeatable):
   def is_pg(self):
-    return '${' in self[0]
+    return "${" in self[0]
 
   @sexp.uses("incrlabel", "rotate")
   def fillsvginst(self, svg, i, params, expandfunc):
     text = self[0]
     incr = self.get("incrlabel", default=[1])[0]
     if text == "1":
-      text = f"{i*incr+1}"
+      text = f"{i * incr + 1}"
     elif text == "A":
-      text = unit_to_alpha(i*incr+1)
+      text = unit_to_alpha(i * incr + 1)
     else:
       text = expandfunc(text)
     lr, tb = self.justify
     svg.text(
-        text=text,
-        pos=params["pos"],
-        size=self.size(params["size"]),
-        color=params["color"],
-        justify=lr,
-        vjustify=tb,
-        rotate=self.get("rotate", default=[0])[0],
-        )
+      text=text,
+      pos=params["pos"],
+      size=self.size(params["size"]),
+      color=params["color"],
+      justify=lr,
+      vjustify=tb,
+      rotate=self.get("rotate", default=[0])[0],
+    )
 
   @sexp.uses("font", "size")
   def size(self, default):
@@ -231,26 +254,31 @@ class tbtext(Repeatable):
       tb = "wks_bottom" if "bottom" in self["justify"][0] else tb
     return (lr, tb)
 
+
 @sexp.handler("bitmap")
 class bitmap(Repeatable):
   @sexp.uses("data", "scale")
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.image(
-        pos=params["pos"],
-        scale=self.get("scale", default=[1])[0],
-        data="".join(self["data"][0].data),
-        )
+      pos=params["pos"],
+      scale=self.get("scale", default=[1])[0],
+      data="".join(self["data"][0].data),
+    )
+
 
 @sexp.handler("kicad_wks")
 class wks(Drawable):
-  """Tracks a kicad_wks file """
+  """Tracks a kicad_wks file"""
+
   def wks_hash(self, context):
-    """ calculates and returns the hash for a context. """
+    """calculates and returns the hash for a context."""
     # FIXME: include worksheet itself in hash?
-    return hash((
-      self["setup"][0].is_pgone(context),
-      self["setup"][0].page_corners(context),
-      ))
+    return hash(
+      (
+        self["setup"][0].is_pgone(context),
+        self["setup"][0].page_corners(context),
+      )
+    )
 
 
 DEFAULT_WORKSHEET_PATH = "templates/pagelayout_default.kicad_wks"
@@ -259,29 +287,30 @@ DEFAULT_WORKSHEET = "(kicad_wks)"
 # rather than supplement the variable expander with these ancient runes, do a
 # pre-processing step to upgrade the file format
 UPGRADE_DICT = {
-    "%%": "%",
-    "%C0": "${COMMENT1}",
-    "%C1": "${COMMENT2}",
-    "%C2": "${COMMENT3}",
-    "%C3": "${COMMENT4}",
-    "%C4": "${COMMENT5}",
-    "%C5": "${COMMENT6}",
-    "%C6": "${COMMENT7}",
-    "%C7": "${COMMENT8}",
-    "%C8": "${COMMENT9}",
-    "%D": "${ISSUE_DATE}",
-    "%F": "${FILENAME}",
-    "%K": "${KICAD_VERSION}",
-    "%L": "${LAYER}",
-    "%N": "${##}",
-    "%P": "${SHEETPATH}",
-    "%R": "${REVISION}",
-    "%S": "${#}",
-    "%T": "${TITLE}",
-    "%Y": "${COMPANY}",
-    "%Z": "${PAPER}",
-    "page_layout": "kicad_wks",
-    }
+  "%%": "%",
+  "%C0": "${COMMENT1}",
+  "%C1": "${COMMENT2}",
+  "%C2": "${COMMENT3}",
+  "%C3": "${COMMENT4}",
+  "%C4": "${COMMENT5}",
+  "%C5": "${COMMENT6}",
+  "%C6": "${COMMENT7}",
+  "%C7": "${COMMENT8}",
+  "%C8": "${COMMENT9}",
+  "%D": "${ISSUE_DATE}",
+  "%F": "${FILENAME}",
+  "%K": "${KICAD_VERSION}",
+  "%L": "${LAYER}",
+  "%N": "${##}",
+  "%P": "${SHEETPATH}",
+  "%R": "${REVISION}",
+  "%S": "${#}",
+  "%T": "${TITLE}",
+  "%Y": "${COMPANY}",
+  "%Z": "${PAPER}",
+  "page_layout": "kicad_wks",
+}
+
 
 @sexp.uses("page_layout")
 def kicad_wks(f, fname=None):
@@ -291,8 +320,9 @@ def kicad_wks(f, fname=None):
       raw = raw.decode()
     data = sexp.parse(raw)
     if data[0].type == "page_layout":
-      data = re.sub("|".join(UPGRADE_DICT), lambda m: UPGRADE_DICT.get(m[0]),
-                    raw)
+      data = re.sub(
+        "|".join(UPGRADE_DICT), lambda m: UPGRADE_DICT.get(m[0]), raw
+      )
       data = sexp.parse(data)
     if isinstance(data[0], wks):
       return data[0]
@@ -300,6 +330,7 @@ def kicad_wks(f, fname=None):
   if fname == defpath or not os.path.isfile(defpath):
     return sexp.parse(DEFAULT_WORKSHEET)
   return kicad_wks(open(defpath, "r"), defpath)
+
 
 def main(argv):
   """USAGE: kicad_wks.py [wksfile [size]]
@@ -314,11 +345,11 @@ def main(argv):
   fakepage = f'(kicad_sch (paper "{paper}"))'
   fakepage = sexp.parse(fakepage)[0]
   params = {
-      "svg": s,
-      "diffs": [],
-      "draw": Drawable.DRAW_ALL,
-      "context": (fakepage,),
-      }
+    "svg": s,
+    "diffs": [],
+    "draw": Drawable.DRAW_ALL,
+    "context": (fakepage,),
+  }
   w.fillsvg(**params)
   print(str(s))
 
