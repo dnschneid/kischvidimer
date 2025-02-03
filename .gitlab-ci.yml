@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image: python:latest
+
+pages:
+  cache:
+    key: demos-8.0
+    paths:
+      - demos/
+  before_script:
+    - mkdir -p demos public
+    - test -d demos/kicad-8.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/8.0/kicad-8.0.tar.gz?path=demos' | tar -xzC demos
+  script:
+    - find demos -name '*.kicad_pro' -not -regex '.*/simulation/.*' | while read -r pro; do
+        if test -f "${pro%pro}sch"; then
+          echo "$pro";
+          python3 -m kischvidimer schgen "$pro" -o "public/$(basename "$pro" .kicad_pro).html";
+        fi;
+      done
+    - echo '<html><head><title>kischvidimer demos</title></head><body><h1>kischvidimer demos</h1><ul>' > "public/index.html"
+    - find public -name "*.html" -not -name "index.html" | while read -r html; do
+        html="$(basename "$html")";
+        url="$(echo "$html" | sed 's/ /%20/g')";
+        echo "<li><a href=$url>$html</a></li>";
+      done >> "public/index.html"
+    - echo "</ul></body></html>" >> "public/index.html"
+  artifacts:
+    paths:
+      - public
+  rules:
+    # Only trigger on pushes to the default branch
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
