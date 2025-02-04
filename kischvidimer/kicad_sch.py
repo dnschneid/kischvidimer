@@ -314,7 +314,12 @@ class symbol_inst(Drawable, has_uuid):
     """
     super().fillvars(variables, diffs, context)
 
-  @sexp.uses("lib_id")
+  @sexp.uses("lib_name", "lib_id")
+  def lib_id(self, diffs, context):
+    # lib_name specifies page-local overrides of the original library symbol,
+    # usually due to out-of-date symbol instances.
+    return self.get("lib_name", default=self.get("lib_id"))[0]
+
   def fillsvg(self, svg, diffs, draw, context):
     # Decide what to draw
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
@@ -323,7 +328,7 @@ class symbol_inst(Drawable, has_uuid):
     if subdraw:
       # FIXME: diffs, of course
       lib = context[-1]["lib_symbols"][0]
-      lib_id = self["lib_id"][0][0]
+      lib_id = self.lib_id(diffs, context)
       pos = self["at"][0].pos(diffs)
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
@@ -347,7 +352,7 @@ class symbol_inst(Drawable, has_uuid):
     for c in reversed(context):
       if c.type == "kicad_sch":
         lib = c["lib_symbols"][0]
-        lib_id = self["lib_id"][0][0]
+        lib_id = self.lib_id(diffs, context)
         return lib.symbol(lib_id).show_unit(diffs, context)
     return True
 
