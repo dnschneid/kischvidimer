@@ -378,7 +378,7 @@ class symbol_inst(Drawable, has_uuid):
       "reference",
       diffs,
       context + (self,) if context else None,
-      default=self.get("reference", default=[1])[0],
+      default=field.getprop(self, "Reference", default="?"),
     )
 
   def unit(self, diffs, context, as_alpha=False):
