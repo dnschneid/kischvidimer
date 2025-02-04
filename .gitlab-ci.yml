@@ -3,6 +3,17 @@
 
 image: python:latest
 
+pre-commit:
+  cache:
+    paths:
+      - build/cache/pip
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/build/cache/pip"
+  before_script:
+    - pip install pre-commit
+  script:
+    - pre-commit run --all-files
+
 pages:
   cache:
     key: demos-8.0
