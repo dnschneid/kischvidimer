@@ -444,11 +444,11 @@ class Svg(object):
         for i in range(max(map(len, (pos, end))))
       ]
       width = [
-        (abs(end.get(i)[0][0] - pos.get(i)[0][0]), c)
+        (max(abs(end.get(i)[0][0] - pos.get(i)[0][0]), 1 / Svg.SCALE), c)
         for i, c in enumerate(classes)
       ]
       height = [
-        (abs(end.get(i)[0][1] - pos.get(i)[0][1]), c)
+        (max(abs(end.get(i)[0][1] - pos.get(i)[0][1]), 1 / Svg.SCALE), c)
         for i, c in enumerate(classes)
       ]
       x = [
@@ -478,7 +478,10 @@ class Svg(object):
     ]
     self._update_bounds(
       pos[0][0],
-      (pos[0][0][0] + width[0][0], pos[0][0][1] + self.y(height[0][0])),
+      (
+        float(pos[0][0][0]) + float(width[0][0]),
+        float(pos[0][0][1]) + float(self.y(height[0][0])),
+      ),
       thick[0][0],
     )
     self.add(
