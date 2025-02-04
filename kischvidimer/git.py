@@ -138,7 +138,10 @@ def get_version(repo=None):
     universal_newlines=True,
   )
   if ret.returncode == 0:
-    return ret.stdout.strip().replace("heads/", "").replace("tags/", "")
+    ver = ret.stdout.strip()
+    if ver.startswith("pipelines/") and "CI_COMMIT_REF_NAME" in os.environ:
+      return f"{os.environ['CI_COMMIT_REF_NAME']}-{ver.partition('-')[2]}"
+    return ver.replace("heads/", "").replace("tags/", "")
   return "unknown"
 
 
