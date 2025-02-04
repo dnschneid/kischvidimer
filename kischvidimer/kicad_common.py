@@ -583,7 +583,7 @@ class field(Drawable):
     is_pg = "${" in text or (prop.lower() in ("reference", "sheetname"))
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
-    show_name = "show_name" in self and self["show_name"][0][0]
+    show_name = "show_name" in self  # TODO: is this ever "no"?
     if show_name:
       text = f"{prop}: {text}"
     tag = svg.getuid(context[-1])
