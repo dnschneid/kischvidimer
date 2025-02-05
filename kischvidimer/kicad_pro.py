@@ -159,6 +159,9 @@ class kicad_pro(Comparable):
           "file": filepath,
           "sch": sch,
         }
+        # Prune unreachable stale instances
+        if not inst["name"]:
+          continue
         subhier = hier
         uuidparts = uuid.split("/")
         for subid in uuidparts[1:-1]:
