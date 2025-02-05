@@ -5,6 +5,7 @@
 .*.swp
 /uv.lock
 __pycache__/
+_version.py
 build/
 demos/
 public/

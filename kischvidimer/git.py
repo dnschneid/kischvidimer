@@ -14,6 +14,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -131,6 +132,12 @@ def rev_parse(revs):
 def get_version(repo=None):
   """Returns a friendly string of the current version.
   Specify repo to use a git repo other than the current one."""
+  # Check for a _version.py file for special projects and kischvidimer itself
+  versionfile = os.path.join(repo or ".", "_version.py")
+  if os.path.isfile(versionfile):
+    glbls = runpy.run_path(versionfile)
+    if "__version__" in glbls:
+      return glbls["__version__"]
   ret = subprocess.run(
     "git describe --all --always --broken --dirty --long".split(),
     cwd=repo or ".",

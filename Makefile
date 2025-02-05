@@ -38,6 +38,7 @@ clean:
 		*.egg-info/ \
 		__pycache__/ \
 		kischvidimer/__picache__/ \
+		kischvidimer/_version.py \
 
 
 .PHONY: \

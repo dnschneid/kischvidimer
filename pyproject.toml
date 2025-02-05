@@ -3,11 +3,11 @@
 
 [project]
 name = "kischvidimer"
-version = "0.1.0"
 description = "KiCad schematic HTML viewer generator"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+dynamic = ["version"]
 
 [dependency-groups]
 dev = [
@@ -29,6 +29,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["kischvidimer"]
 license-files = ["LICENSES/*.txt"]
+
+[tool.setuptools_scm]
+version_file = "kischvidimer/_version.py"
 
 [tool.ruff]
 extend-exclude = [
