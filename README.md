@@ -29,6 +29,12 @@ cd .../your_project
 kischvidimer schgen your_project.kicad_pro -o your_project.html
 ```
 
+Integrate it into your Gitlab CI:
+
+```
+include: "https://gitlab.com/dnschneid/kischvidimer/raw/main/ci/gitlab.yml"
+```
+
 ## What about layout?
 
 Nope. Try [KiCanvas](https://kicanvas.org/) instead?
