@@ -394,19 +394,25 @@ class symbol_inst(Drawable, has_uuid):
 
   def as_comp(self, context):
     # returns (refdes, {dict of properties, with chr(1) containing local uuid})
-    ref = self.refdes([], context)
-    props = {chr(1): self.uuid(generate=True)}
+    props = {
+      chr(1): self.uuid(generate=True),
+      "Reference": self.refdes([], context),
+    }
     if "property" not in self:
-      return ref, props
+      return props["Reference"], props
     variables = Variables.v(context)
     for prop in self["property"]:
       name = prop.name
       value = variables.expand(context + (self,), prop.value)
       if (
-        name and not name.lower().startswith("sim.") and value and value != "~"
+        name
+        and name != "Reference"
+        and not name.lower().startswith("sim.")
+        and value
+        and value != "~"
       ):
         props[name] = value
-    return ref, props
+    return props["Reference"], props
 
 
 kicad_sym.symbol_inst = symbol_inst
