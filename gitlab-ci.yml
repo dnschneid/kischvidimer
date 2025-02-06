@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+.kischvidimer:
+  rules:
+    - changes:
+      - "**/*.kicad_pro"
+      - "**/*.kicad_sch"
+  image: python:latest
+  cache:
+    key: kischvidimer
+    paths:
+      - .cache
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  artifacts:
+    paths:
+      - "**/*.html"
+    exclude:
+      - ".cache/**/*"
+  before_script:
+    - pip install virtualenv
+    - virtualenv .cache/venv
+    - source .cache/venv/bin/activate
+    - pip install -U git+https://gitlab.com/dnschneid/kischvidimer.git
+
+schgen:
+  extends: .kischvidimer
+  stage: build
+  script:
+    - find -name '*.kicad_pro' -execdir python3 -m kischvidimer schgen '{}' -o '{}.html' ';'
