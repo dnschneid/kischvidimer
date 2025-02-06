@@ -435,7 +435,7 @@ document.addEventListener("DOMContentLoaded", function () {
         toggleDialog(dialog, false);
     });
     document.getElementById('xprobe').addEventListener('click', function (e) {
-        e.target.setAttribute("disabled","");
+        e.target.disabled = true;
         e.target.innerText = "Cross-probe started";
         crossProbe();
     });
@@ -587,7 +587,8 @@ function initHammer() {
 }
 
 function crossProbe(cmd, target) {
-    if (!document.getElementById('xprobe').hasAttribute("disabled")) {
+    // Don't cross-probe unless the button has been pressed
+    if (!document.getElementById('xprobe').disabled) {
         return;
     }
     if (xprobe) {
@@ -1488,7 +1489,7 @@ function validateResultPageNumber() {
     let pnInput = document.getElementById('resultpagenumber');
     let enteredPage = parseInt(pnInput.value);
     if (enteredPage > 0 && enteredPage <= Math.ceil(searchMatches.length / matchesPerPage)) {
-        pnInput.style.borderBottomColor = 'white';
+        pnInput.style.borderBottomColor = 'grey';
         return enteredPage;
     } else {
         pnInput.style.borderBottomColor = 'red';
@@ -1500,6 +1501,7 @@ function populateMatches() {
     //clear any old matches
     document.getElementById('matchlist').innerHTML = "";
     document.getElementById('resultpagenumber').value = matchPage + 1;
+    document.getElementById('resultpagenumber').disabled = !searchMatches.length;
     validateResultPageNumber();
 
     searchMatchesOnPage = searchMatches.slice(matchesPerPage * matchPage, matchesPerPage * (matchPage + 1));

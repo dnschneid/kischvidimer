@@ -245,10 +245,9 @@ SPDX-License-Identifier: Apache-2.0
                         title="next search page" id="nextresults" style="float:right">
                         <img src="icons/forward.svg" style="fill:white" width="24" height="32">
                     </button>
-                    <div class="mdl-textfield mdl-js-textfield" style="top:-20px;width:40px;display:inline;float:right;"
-                        id="resultpagenumberdiv">
-                        <input class="mdl-textfield__input" type="number" pattern="[0-9]*" id="resultpagenumber"
-                            style="color:white;text-align:center;border-bottom-color:white">
+                    <div class="mdl-textfield mdl-js-textfield" style="top:-20px;width:40px;display:inline;float:right;">
+                        <input disabled class="mdl-textfield__input" type="number" pattern="[0-9]*" id="resultpagenumber"
+                            style="color:white;text-align:center">
                     </div>
                     <button disabled class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
                         title="previous search page" id="previousresults" style="float:right">
@@ -262,7 +261,7 @@ SPDX-License-Identifier: Apache-2.0
         </header>
         <div class="demo-drawer mdl-layout__drawer mdl-color--blue-grey-900 mdl-color-text--blue-grey-50" id="pagebar">
 
-            <div class="mdl-textfield mdl-js-textfield" id="pagefilterdiv">
+            <div class="mdl-textfield mdl-js-textfield">
                 <input class="mdl-textfield__input" type="text" id="pagefilter" style="border-bottom:1px solid grey">
                 <label class="mdl-textfield__label" for="pagefilter" style="color:lightgrey;">filter pages...</label>
                 <img src="icons/filter.svg" style="fill:lightgrey;position:absolute;right:0;bottom:22px" height="24" width="24">
