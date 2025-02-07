@@ -16,7 +16,7 @@
 import sys
 
 
-class Progress(object):
+class Progress:
   """Renders a simple progress bar with text."""
 
   # Characters for a spinner!
@@ -84,18 +84,9 @@ class Progress(object):
     textwidth = barwidth
     spin = Progress.SPINNER[self._spin % len(Progress.SPINNER)]
     self._spin += self._spin_dir
-    inner = "%s%s" % (
-      self._text[:textwidth],
-      "." * (textwidth - len(self._text)),
-    )
+    inner = self._text[:textwidth] + "." * (textwidth - len(self._text))
     endpos = barwidth * max(self._val, 0) // self._max
-    text = "\r%s%s%s%s%s\b" % (
-      rev,
-      inner[:endpos],
-      endrev,
-      inner[endpos:],
-      spin,
-    )
+    text = f"\r{rev}{inner[:endpos]}{endrev}{inner[endpos:]}{spin}\b"
     self._fout.write(text)
     self._fout.flush()
     return self

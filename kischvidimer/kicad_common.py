@@ -115,18 +115,12 @@ def rel_coord(gravity, rel=None, pos=None, vect=None):
     if pos is not None:
       ret = (rel[0] + ret[0], ret[1])
   elif gravity[0] == "r":
-    if pos is not None:
-      ret = (rel[2] - ret[0], ret[1])
-    else:
-      ret = (-ret[0], ret[1])
+    ret = (-ret[0], ret[1]) if pos is None else (rel[2] - ret[0], ret[1])
   if gravity[1] == "t":
     if pos is not None:
       ret = (ret[0], rel[1] + ret[1])
   elif gravity[1] == "b":
-    if pos is not None:
-      ret = (ret[0], rel[3] - ret[1])
-    else:
-      ret = (ret[0], -ret[1])
+    ret = (ret[0], -ret[1]) if pos is None else (ret[0], rel[3] - ret[1])
   return ret
 
 
@@ -312,9 +306,12 @@ class Effects(Modifier):
         rot += c["at"][0].rot(diffs, context) * (-1 if flipy != flipx else 1)
     rot = rot % 360
     spin = False
-    if rot in (0, 180) and inst_rot in (180, 270):
-      spin = True
-    elif rot in (90, 270) and inst_rot in (90, 180):
+    if (
+      rot in (0, 180)
+      and inst_rot in (180, 270)
+      or rot in (90, 270)
+      and inst_rot in (90, 180)
+    ):
       spin = True
     if inst_mirror and not (rot + inst_rot) % 180:
       spin = not spin
@@ -344,9 +341,8 @@ class Stroke(Modifier):
       stroke = tuple(self["color"][0].data)
       if any(stroke):
         args["color"] = stroke
-    if "type" in self:
-      if self["type"][0][0] != "default":
-        args["pattern"] = self["type"][0][0]
+    if "type" in self and self["type"][0][0] != "default":
+      args["pattern"] = self["type"][0][0]
     return args
 
 
@@ -824,7 +820,7 @@ def main(argv):
   for kwfile in argv[1:]:
     if not os.path.isfile(kwfile):
       continue
-    with open(kwfile, "r") as f:
+    with open(kwfile) as f:
       kws = sorted(line.strip() for line in f if line.strip())
     print(f"{kwfile}:")
     for kw in kws:

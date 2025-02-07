@@ -28,7 +28,7 @@ class GenSchError(Exception):
   pass
 
 
-class Page(object):
+class Page:
   """Manages a single page."""
 
   PAGENAME_CREATED = "[CREATED]"
@@ -49,12 +49,12 @@ class Page(object):
     names = self.names
     if names[0] == Page.PAGENAME_CREATED:
       names = [name if name != Page.PAGENAME_DELETED else "-" for name in names]
-    if not any((name != names[0] for name in names[1:])):
+    if not any(name != names[0] for name in names[1:]):
       names = names[:1]
     names = [self._pretty_name(name) for name in names]
     name = names[0]
     if len(names) > 1:
-      name += " > %s" % " / ".join(names[1:])
+      name += " > " + " / ".join(names[1:])
     return name
 
   def _pretty_name(self, name):
@@ -78,7 +78,7 @@ class Page(object):
     return (diffs, conflicts)
 
 
-class Schematic(object):
+class Schematic:
   """Manages a single project with conflicts."""
 
   def __init__(self, proj):
@@ -103,7 +103,7 @@ class Schematic(object):
     worksheets = []
     pagesets = []
     for rev in self._revs:
-      p.set_text("Loading %s" % self._proj).set_val(0).set_max(1).write().incr()
+      p.set_text("Loading " + self._proj).set_val(0).set_max(1).write().incr()
       f = git.open_rb(self._proj, rev)
       projs.append(kicad_pro.kicad_pro(f, fname=self._proj))
       pagesets.append(projs[-1].get_pages(self._proj, rev, p))
@@ -146,7 +146,7 @@ class Schematic(object):
     title = self._proj.lstrip("./\\")
     if self.diff:
       title += " (only diffs)"
-    p.set_text("Rendering %s" % self._proj).write()
+    p.set_text("Rendering " + self._proj).write()
     ui = DiffUI(
       title=title,
       ver=ver,
@@ -158,7 +158,7 @@ class Schematic(object):
     for page in pages:
       # FIXME: handle changing paths
       dispname = page.dispname()
-      p.set_text("Rendering %s" % dispname).incr().write()
+      p.set_text("Rendering " + dispname).incr().write()
       diffs, conflicts = page.diff()
       if self.diff and not conflicts:
         # Skip the page if only unimportant diffs remain
@@ -197,13 +197,13 @@ class Schematic(object):
 def main(argv):
   if len(argv) == 1:
     sys.stderr.write(
-      """%s [-o HTML|DIR|-] [--diff] [GIT_REV [GIT_REV]] project.kicad_pro
+      argv[0]
+      + """[-o HTML|DIR|-] [--diff] [GIT_REV [GIT_REV]] project.kicad_pro
 Generates and displays a schematic.
 If GIT_REV is provided, generates a schematic diff between two or three
 revisions. Trailing ..'s in GIT_REV will compare to the working tree.
   --diff  Hides any pages that do not have differences.
 """
-      % argv[0]
     )
     return 2
   sch = Schematic(proj=None)
@@ -223,7 +223,7 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
       verbosity += 1 if "v" in f else -1
     elif f.endswith(".kicad_pro"):
       if sch._proj:
-        sys.stderr.write("Ignoring extra proj %s\n" % f)
+        print("Ignoring extra proj " + f, file=sys.stderr)
       else:
         sch._proj = f
     else:
@@ -235,7 +235,7 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
         for rev in revlist:
           sch.add_rev(rev)
       else:
-        sys.stderr.write("Skipping '%s'\n" % f)
+        print(f"Skipping '{f}'", file=sys.stderr)
   if sch._proj is None:
     raise GenSchError("Input .kicad_pro file is required")
   try:
@@ -246,7 +246,7 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
   except conflicts_ok as e:
     if not e.is_conflict:
       raise
-    sys.stderr.write("%s\n" % e)
+    print(e, file=sys.stderr)
   return 0
 
 
@@ -254,5 +254,5 @@ if __name__ == "__main__":
   try:
     sys.exit(main(sys.argv))
   except GenSchError as e:
-    sys.stderr.write("Error: %s\n" % e)
+    print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)

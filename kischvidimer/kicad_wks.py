@@ -337,7 +337,7 @@ def kicad_wks(f, fname=None):
   defpath = os.path.join(os.path.dirname(__file__), DEFAULT_WORKSHEET_PATH)
   if fname == defpath or not os.path.isfile(defpath):
     return sexp.parse(DEFAULT_WORKSHEET)
-  return kicad_wks(open(defpath, "r"), defpath)
+  return kicad_wks(open(defpath), defpath)
 
 
 def main(argv):
@@ -347,7 +347,7 @@ def main(argv):
   """
   s = svg.Svg(theme="default")
   path = argv[1] if len(argv) > 1 else None
-  w = kicad_wks(open(path, "r") if path else sys.stdin)
+  w = kicad_wks(open(path) if path else sys.stdin)
   paper = argv[2] if len(argv) > 2 else "A4"
   # Placeholder title block; kicad_sch needed for variable filling
   fakepage = f'(kicad_sch (paper "{paper}"))'

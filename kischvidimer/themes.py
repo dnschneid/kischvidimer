@@ -268,7 +268,7 @@ blacknwhite = tuple(
 def todict():
   colormap = get()
   themedict = {}
-  for i, (themename, theme) in enumerate(themes()):
+  for themename, theme in themes():
     # Always extend the default theme
     themedict[themename] = d = dict(themedict.get(themes()[0][0], {}))
     for name, color in dict(theme).items():

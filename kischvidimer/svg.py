@@ -24,7 +24,7 @@ from .diff import Param
 from .kicad_common import Drawable
 
 
-class Svg(object):
+class Svg:
   """Helps generate an SVG image."""
 
   # SVGs can't handle fractional pixels, and we don't want to specify units all
@@ -127,17 +127,17 @@ class Svg(object):
     self._animate_attrs = []
     if auto_animate:
       self._animate_attrs = [
-        'begin="svg%X.begin"' % (id(self)),
-        'dur="%us"' % auto_animate[0],
+        f'begin="svg{id(self):X}.begin"',
+        f'dur="{auto_animate[0]:d}s"',
         'fill="freeze"',
       ]
       # Looper
       self._auto_animate = [
         "<animate",
-        'id="svg%X"' % id(self),
-        'dur="%us"' % sum(auto_animate),
+        f'id="svg{id(self):X}"',
+        f'dur="{sum(auto_animate):d}s"',
         'attributeName="visibility"',
-        'begin="0;svg%X.end"/>' % id(self),
+        f'begin="0;svg{id(self):X}.end"/>',
       ]
     # Metadata tracking
     self.metadata_context = None
@@ -152,7 +152,7 @@ class Svg(object):
     If uidtable is None, returns a non-sequential but likely unique ID.
     """
     if self.uidtable is None:
-      return "%X" % id(obj)
+      return f"{id(obj):X}"
     try:
       return self.uidtable.index(id(obj)) + 1
     except ValueError:
@@ -173,7 +173,7 @@ class Svg(object):
           sin = math.sin(math.radians(transform[1]))
           pos = (pos[0] * cos - pos[1] * sin, pos[1] * cos + pos[0] * sin)
         elif transform[0] not in ("hide", "noop"):
-          raise Exception("unrecognized transform %s" % transform)
+          raise Exception(f"unrecognized transform {transform}")
     return pos
 
   def _update_bounds(self, pos, pos2=None, thick=0):
@@ -216,10 +216,7 @@ class Svg(object):
     """Generates an opacity attribute, if cnt > 1"""
     if len(cnt) == 1:
       return []
-    if i == 0:
-      c = " ".join((c for _, c in cnt[1:] if c))
-    else:
-      c = cnt[i][1]
+    c = cnt[i][1] if i else " ".join((c for _, c in cnt[1:] if c))
     return self.attr(
       name, [(1 * (i == 0), None), (1 * (i > 0), c)], 1, convert=False
     )
@@ -233,11 +230,11 @@ class Svg(object):
         self._animate.append((name, Svg.tounit(value[0][0]), newvalue, c))
     val = Param.ify(value).get(i)[0]
     if name in Svg.TRANSFORM_TYPES:
-      return ['transform="%s(%s)"' % (name, ",".join(map(str, val)))] * any(val)
+      return [f'transform="{name}({",".join(map(str, val))})"'] * any(val)
     elif convert:
       val = Svg.tounit(val)
       default = Svg.tounit(default)
-    return ['%s="%s"' % (name, val)] * (str(val) != str(default))
+    return [f'{name}="{val}"'] * (str(val) != str(default))
 
   def hascontents(self, contents=""):
     """Ends the last tag without closing it, and flushes animation tags.
@@ -264,7 +261,7 @@ class Svg(object):
       return
     tag = self.data[-1].partition(" ")[0][1:]
     self.hascontents()
-    self.add("</%s>" % tag)
+    self.add(f"</{tag}>")
 
   def _flush_animate(self):
     """Outputs all queued animate tags."""
@@ -274,26 +271,26 @@ class Svg(object):
         params = [
           "<animateTransform",
           'attributeName="transform"',
-          'type="%s"' % name,
-          'from="%s"' % ",".join(map(str, fromval)),
-          'to="%s"' % ",".join(map(str, toval)),
+          f'type="{name}"',
+          f'from="{",".join(map(str, fromval))}"',
+          f'to="{",".join(map(str, toval))}"',
         ]
       elif name in Svg.COLOR_TYPES:
         # Can't animate CSS Variables, so resolve them
         params = [
           "<animate",
-          'attributeName="%s"' % name,
-          'fromvar="%s"' % fromval,
-          'tovar="%s"' % toval,
+          f'attributeName="{name}"',
+          f'fromvar="{fromval}"',
+          f'tovar="{toval}"',
         ]
       else:
         params = [
           "<animate",
-          'attributeName="%s"' % name,
-          'from="%s"' % fromval,
-          'to="%s"' % toval,
+          f'attributeName="{name}"',
+          f'from="{fromval}"',
+          f'to="{toval}"',
         ]
-      self.add(params + self._animate_attrs + ['class="%s"/>' % c])
+      self.add(params + self._animate_attrs + [f'class="{c}"/>'])
     self._animate = []
 
   def gstart(
@@ -392,7 +389,7 @@ class Svg(object):
     return True
 
   def astart(self, target):
-    self.add('<a href="%s">' % target)
+    self.add(f'<a href="{target}">')
 
   def aend(self):
     self.add("</a>")
@@ -610,25 +607,27 @@ class Svg(object):
     ]
     d = [
       (
-        "M %s %s A %s %s 0 %d %d %s %s"
-        % (
-          Svg.tounit(start.get(i)[0][0]),
-          Svg.tounit(self.y(start.get(i)[0][1])),
-          Svg.tounit(radius.get(i)[0]),
-          Svg.tounit(radius.get(i)[0]),
-          1 * largearc.get(i)[0],
-          0.5 + self.y(0.5),  # sweep direction is opposite if y is flipped
-          Svg.tounit(stop.get(i)[0][0]),
-          Svg.tounit(self.y(stop.get(i)[0][1])),
-        )
-        + (
-          "L %s %s Z"
-          % (
+        " ".join(
+          (
+            "M",
+            Svg.tounit(start.get(i)[0][0]),
+            Svg.tounit(self.y(start.get(i)[0][1])),
+            "A",
+            Svg.tounit(radius.get(i)[0]),
+            Svg.tounit(radius.get(i)[0]),
+            "0",
+            str(1 * largearc.get(i)[0]),
+            str(int(0.5 + self.y(0.5))),  # flip sweep dir when y is flipped
+            Svg.tounit(stop.get(i)[0][0]),
+            Svg.tounit(self.y(stop.get(i)[0][1])),
+          )
+          + (
+            "L",
             Svg.tounit(center.get(i)[0][0]),
             Svg.tounit(self.y(center.get(i)[0][1])),
+            "Z",
           )
-          if center and fill.get(i)[0] != "none"
-          else ""
+          * (center and fill.get(i)[0] != "none")
         ),
         Svg.classunion(
           start.get(i), stop.get(i), radius.get(i), largearc.get(i), fill.get(i)
@@ -662,14 +661,9 @@ class Svg(object):
         xys = [(xys, None)]
     d = [
       (
-        "M %s %s %s"
-        % (
-          Svg.tounit(pts[0][0]),
-          Svg.tounit(self.y(pts[0][1])),
-          " ".join(
-            "L %s %s" % (Svg.tounit(pt[0]), Svg.tounit(self.y(pt[1])))
-            for pt in pts[1:]
-          ),
+        " ".join(
+          f"{'L' if i else 'M'} {Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
+          for i, pt in enumerate(pts)
         ),
         c,
       )
@@ -724,7 +718,7 @@ class Svg(object):
         pos[i][0], (pos[i][0][0] + width[i][0], pos[i][0][1] + height[i][0])
       )
       self.add(
-        ["<image", 'href="%s"' % image]
+        ["<image", f'href="{image}"']
         + self.attr("x", [(p[0], c) for p, c in pos], 0, i)
         + self.attr("y", [(self.y(p[1]), c) for p, c in pos], 0, i)
         + self.attr("width", width, 0, i)
@@ -821,7 +815,7 @@ class Svg(object):
       + self.attr("text-anchor", anchor, "start")
       + ['transform="scale(-1 1)"'] * self._mirror_text
       + Svg._tagattr(tag)
-      + (['prop="%s"' % prop] if prop and isinstance(prop, str) else [])
+      + ([f'prop="{prop}"'] if prop and isinstance(prop, str) else [])
     ).hascontents()
     # FIXME: clean up this janky way of collecting pin names/numbers
     if prop and isinstance(prop, int) and prop < Svg.PROP_LABEL:
@@ -846,16 +840,8 @@ class Svg(object):
       )
     for i in range(len(text)):
       if url.get(i)[0]:
-        self.add(
-          [
-            "<a href='%s'%s>"
-            % (
-              url.get(i)[0],
-              " target='_blank'" * (not url.get(i)[0].startswith("#")),
-            )
-          ],
-          extend=True,
-        )
+        targ = " target='_blank'" * (not url.get(i)[0].startswith("#"))
+        self.add([f"<a href='{url.get(i)[0]}'{targ}>"], extend=True)
       opacity = (
         []
         if len(text) == 1
@@ -890,7 +876,7 @@ class Svg(object):
             + baseline
             + opacity,
             extend=True,  # stray whitespace in <text> causes misalignment
-          ).hascontents("%s</tspan>" % encoded)
+          ).hascontents(f"{encoded}</tspan>")
           colcount += len(t)
       if url.get(i)[0]:
         self.add("</a>", extend=True)
@@ -899,7 +885,7 @@ class Svg(object):
       self.gend()
 
   def title(self, label):
-    self.add("<title>%s</title>" % Svg.escape(label))
+    self.add(f"<title>{Svg.escape(label)}</title>")
 
   def instantiate(self, draw, lib, lib_id, unit=1, variant=1, context=None):
     """Instantiates a symbol. lib must contain a definition of lib_id.
@@ -912,14 +898,16 @@ class Svg(object):
     variant = Param.ify(variant)
     name = [
       (
-        "symbol:%x:%d:%d:%d%s:%x"
-        % (
-          lib.get(i)[0].sym_hash(lib_id.get(i)[0]),
-          unit.get(i)[0],
-          variant.get(i)[0],
-          self._rotate_state(i) // 90,
-          ":m" * self._mirror_state(i),
-          draw,
+        ":".join(
+          (
+            "symbol",
+            f"{lib.get(i)[0].sym_hash(lib_id.get(i)[0]):x}",
+            str(unit.get(i)[0]),
+            str(variant.get(i)[0]),
+            str(self._rotate_state(i) // 90),
+            "m" * self._mirror_state(i),
+            f"{draw:x}",
+          )
         ),
         Svg.classunion(lib.get(i), lib_id.get(i), unit.get(i), variant.get(i)),
       )
@@ -960,7 +948,7 @@ class Svg(object):
       (
         None
         if wks.get(i)[0] is None
-        else "wks:%x" % (wks.get(i)[0].wks_hash(context.get(i)[0])),
+        else f"wks:{wks.get(i)[0].wks_hash(context.get(i)[0]):x}",
         Svg.classunion(wks.get(i), context.get(i)),
       )
       for i in range(max(map(len, (wks, context))))
@@ -993,7 +981,7 @@ class Svg(object):
         continue
       if symsvg.data:
         self.add(
-          ["<use", 'href="#%s"' % name[i][0]] + self.attr_opacity(name, i=i)
+          ["<use", f'href="#{name[i][0]}"'] + self.attr_opacity(name, i=i)
         ).nocontents()
         self.generic_text.extend(
           (self.metadata_context, t) for _, t in symsvg.generic_text
@@ -1026,10 +1014,8 @@ class Svg(object):
 
   def _image(self, data):
     imagetype, imagedata, w, h = self.imagedata(data)
-    image = "data:image/%s;base64,%s" % (
-      imagetype,
-      base64.b64encode(imagedata).decode("ascii"),
-    )
+    b64 = base64.b64encode(imagedata).decode("ascii")
+    image = f"data:image/{imagetype};base64,{b64}"
     return (image, w, h)
 
   @staticmethod
@@ -1144,7 +1130,7 @@ class Svg(object):
     if isinstance(color, tuple):
       if len(color) > 3:
         opacity = color[3]
-      color = "#" + "".join("%02X" % c for c in color[:3])
+      color = "#" + "".join(f"{c:02X}" for c in color[:3])
     return (color, opacity)
 
   def size(self, size):
@@ -1200,16 +1186,12 @@ class Svg(object):
     innertext = Svg._ENCODE_BLOCKS_RE.sub(Svg._encode_block, text[1])
     # Reference: STROKE_FONT::GetTextAsGlyphs
     if text[0][0] == "_":  # subscript
-      return (
-        '<tspan font-size="80%%" baseline-shift="-15%%">%s</tspan>' % innertext
-      )
+      return f'<tspan font-size="80%" baseline-shift="-15%">{innertext}</tspan>'
     elif text[0][0] == "^":  # superscript
-      return (
-        '<tspan font-size="80%%" baseline-shift="35%%">%s</tspan>' % innertext
-      )
+      return f'<tspan font-size="80%" baseline-shift="35%">{innertext}</tspan>'
     elif text[0][0] == "~":  # overbar
-      return '<tspan text-decoration="overline">%s</tspan>' % innertext
-    assert False  # regex is bad
+      return f'<tspan text-decoration="overline">{innertext}</tspan>'
+    raise AssertionError()  # regex is bad
 
   @staticmethod
   def classunion(*classstrings):
@@ -1228,7 +1210,7 @@ class Svg(object):
 
   @staticmethod
   def tomm(coord):
-    return "%.4fmm" % (coord)
+    return f"{coord:.4f}mm"
 
   @staticmethod
   def tounit(mm):
@@ -1289,17 +1271,17 @@ class Svg(object):
         (
           '<svg xmlns="http://www.w3.org/2000/svg"',
           'xmlns:xlink="http://www.w3.org/1999/xlink"',
-          'viewBox="%s"' % ",".join(tuple(map(Svg.tounit, viewbox))),
-          'width="%s" height="%s"' % tuple(map(Svg.tomm, viewbox[2:4])),
+          f'viewBox="{",".join(tuple(map(Svg.tounit, viewbox)))}"',
+          f'width="{Svg.tomm(viewbox[2])}" height="{Svg.tomm(viewbox[3])}"',
           'fill="none"',
-          'font-family="%s"' % Svg.FONT_FAMILY,
-          'font-size="%s"' % Svg.tounit(Svg.FONT_SIZE),
-          'font-stretch="%g%%"' % (Svg.FONT_CONDENSE * 100),
-          'letter-spacing="%gex"' % Svg.FONT_SPACING,
-          'stroke-width="%s"' % Svg.tounit(Svg.THICKNESS["wire"]),
+          f'font-family="{Svg.FONT_FAMILY}"',
+          f'font-size="{Svg.tounit(Svg.FONT_SIZE)}"',
+          f'font-stretch="{Svg.FONT_CONDENSE * 100:g}%"',
+          f'letter-spacing="{Svg.FONT_SPACING:g}ex"',
+          f'stroke-width="{Svg.tounit(Svg.THICKNESS["wire"])}"',
           'stroke-linecap="round"',
           'stroke-linejoin="round"',
-          'style="background-color:%s"' % self.bgcolor,
+          f'style="background-color:{self.bgcolor}"',
         )
       )
       + ">"
@@ -1310,7 +1292,7 @@ class Svg(object):
     for name, symsvg in self.symbols.items():
       if symsvg is None or not symsvg.data:
         continue
-      svg.append('<symbol id="%s" overflow="visible">' % name)
+      svg.append(f'<symbol id="{name}" overflow="visible">')
       svg += symsvg.data
       svg.append("</symbol>")
     svg += self.data or Svg._get_placeholder().data

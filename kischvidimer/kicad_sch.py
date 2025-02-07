@@ -673,7 +673,7 @@ def main(argv):
   """
   s = svg.Svg(theme="default")
   path = argv[1] if len(argv) > 1 else None
-  with open(path, "r") if path else sys.stdin as f:
+  with open(path) if path else sys.stdin as f:
     data = sexp.parse(f.read())
   variables = Variables()
   data[0].fillvars(variables, [], None)

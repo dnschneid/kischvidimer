@@ -26,8 +26,9 @@ def main(argv=sys.argv):
     print(f"USAGE: {argv[0]} COMMAND ...", file=sys.stderr)
     print("Recognized commands:", file=sys.stderr)
     for mod in sorted(mods):
-      if "def main(" in open(os.path.join(p, f"{mod}.py"), "r").read():
-        print(f"  {mod}", file=sys.stderr)
+      with open(os.path.join(p, f"{mod}.py")) as f:
+        if "def main(" in f.read():
+          print(f"  {mod}", file=sys.stderr)
     return 2
   mod = f".{argv[1]}"
   args = [f"{argv[0]} {argv[1]}"] + argv[2:]

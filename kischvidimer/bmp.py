@@ -33,8 +33,6 @@ def getsize(d):
 
 def to_png(f):
   """Returns a Bytes() object of a PNG file"""
-  if isinstance(f, str):
-    f = open(f, "rb")
   if isinstance(f, io.IOBase):
     f = f.read()
 
@@ -60,16 +58,16 @@ def to_png(f):
   if header_size >= 40:
     compression = int.from_bytes(f[30:34], byteorder="little")
     if compression not in (0, 3):
-      raise Exception("compression (%d) not supported" % compression)
+      raise Exception(f"compression ({compression}) not supported")
     num_colors = (
       min(int.from_bytes(f[46:50], byteorder="little"), num_colors)
       or num_colors
     )
     if compression == 3:
       if bpp not in (16, 32):
-        raise Exception("invalid bit depth (%d) for bitmask" % bpp)
+        raise Exception(f"invalid bit depth ({bpp}) for bitmask")
       if header_size < 52 and header_size != 40:
-        raise Exception("bad header size (%d) for bitmask" % header_size)
+        raise Exception(f"bad header size ({header_size}) for bitmask")
       bitmask = tuple(
         int.from_bytes(f[i : i + 4], byteorder="little")
         for i in range(54, 54 + 4 * (3 if header_size < 56 else 4), 4)

@@ -52,7 +52,7 @@ class KicadPro(Comparable):
     pgcount = sum(len(i) for i, _ in pages.values())
     variables.define(variables.GLOBAL, variables.PAGECOUNT, pgcount)
     context = self.context()
-    for filename, (instances, sch) in pages.items():
+    for _filename, (instances, sch) in pages.items():
       if p:
         p.write().incr()
       for path, sheet in instances:
@@ -128,7 +128,7 @@ class KicadPro(Comparable):
           file=sys.stderr,
         )
         return default_wks
-      wks = kicad_wks.kicad_wks(open(wks_path_expanded, "r"), wks_path_expanded)
+      wks = kicad_wks.kicad_wks(open(wks_path_expanded), wks_path_expanded)
     else:
       wks = kicad_wks.kicad_wks(
         git.open_rb(wks_path_expanded, rev), wks_path_expanded
@@ -225,7 +225,7 @@ def config_env_vars():
   for configdir in configdirs:
     for configfile in os.listdir(configdir):
       if configfile.lower() == "kicad_common.json":
-        config = json.load(open(os.path.join(configdir, configfile), "r"))
+        config = json.load(open(os.path.join(configdir, configfile)))
         envvars.update(config.get("environment", {}).get("vars", {}).items())
         break
   return envvars
@@ -242,7 +242,7 @@ def main(argv):
   path = argv[1] if len(argv) > 1 else None
   p = progress.Progress(sys.stderr)
   p.set_max(1).set_text(f"Loading {path or 'stdin'}").write()
-  with open(path, "r") if path else sys.stdin as f:
+  with open(path) if path else sys.stdin as f:
     proj = kicad_pro(f, path)
   p.incr()
   pages = proj.get_pages(None, None, p=p)

@@ -158,9 +158,12 @@ class PinDef(Drawable):
     # pin name should always be top/left, pin number below/right.
     # text should always be facing up/left
     swap_side = False
-    if rot in (0, 180) and inst_rot in (180, 270):
-      swap_side = True
-    elif rot in (90, 270) and inst_rot in (90, 180):
+    if (
+      rot in (0, 180)
+      and inst_rot in (180, 270)
+      or rot in (90, 270)
+      and inst_rot in (90, 180)
+    ):
       swap_side = True
     if inst_mirror and not (rot + inst_rot) % 180:
       swap_side = not swap_side
@@ -351,7 +354,7 @@ def main(argv):
   s = svg.Svg(theme="default")
   s.push_invert_y()
   path = argv[1] if len(argv) > 1 else None
-  with open(path, "r") if path else sys.stdin as f:
+  with open(path) if path else sys.stdin as f:
     data = sexp.parse(f.read())
   params = {
     "svg": s,

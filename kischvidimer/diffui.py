@@ -14,6 +14,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import base64
+import contextlib
 import gc
 import html as html_mod
 import json
@@ -34,7 +35,7 @@ from .kicad_common import Drawable, Variables
 from .svg import Svg
 
 
-class Page(object):
+class Page:
   def __init__(
     self,
     name,
@@ -71,9 +72,9 @@ class Page(object):
       context += proj.context()
     else:
       page.fillvars(variables, diffs, context)
-    self.id = self.svg.vars.get("~pageid", "page%s" % self.svg.getuid(self))
+    self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
     self.name = ": ".join(
-      (n for n in (name, self.svg.vars.get("~pagetitle")) if n)
+      n for n in (name, self.svg.vars.get("~pagetitle")) if n
     )
     # Common background elements
     page.fillsvg(
@@ -100,8 +101,7 @@ class Page(object):
   def alldiffs(self):
     for diffpair in self.conflicts + self.safediffs:
       for diffs in diffpair:
-        for diff in diffs:
-          yield diff
+        yield from diffs
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
@@ -117,7 +117,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
     self.server.diffui.log(fmt % args)
 
 
-class DiffUI(object):
+class DiffUI:
   """Creates a diff/merge UI and launches it for the user, then updates the base
   with the user-selected diffs.
   """
@@ -162,18 +162,14 @@ class DiffUI(object):
 
   def _mkdtemp(self):
     if not self._tempdir:
-      self._tempdir = tempfile.mkdtemp(
-        prefix="kischvidimer.diffui.%s" % id(self)
-      )
+      self._tempdir = tempfile.mkdtemp(prefix=f"kischvidimer.diffui.{id(self)}")
       with open(os.path.join(self._tempdir, "First Run"), "w"):
         pass
 
   def _cleanup(self):
     if self._uiprocess:
-      try:
+      with contextlib.suppress(OSError):
         self._uiprocess.terminate()
-      except OSError:
-        pass
     if self._tempdir:
       shutil.rmtree(self._tempdir, ignore_errors=True)
       self._tempdir = None
@@ -347,17 +343,15 @@ class DiffUI(object):
 
   def log(self, msg):
     if self._verbosity > 0:
-      sys.stderr.write("%s\n" % msg)
+      sys.stderr.write(f"{msg}\n")
 
   def _icon(self, icon):
     icon = os.path.join(os.path.dirname(__file__), "icons", icon)
     imagetype = (
       "svg+xml" if icon.endswith(".svg") else icon.rpartition(".")[2].lower()
     )
-    return "data:image/%s;base64,%s" % (
-      imagetype,
-      base64.b64encode(open(icon, "rb").read()).decode("ascii"),
-    )
+    b64 = base64.b64encode(open(icon, "rb").read()).decode("ascii")
+    return f"data:image/{imagetype};base64,{b64}"
 
   def _fillsvg(self, svg):
     svg.symbols = self._symbols
@@ -392,12 +386,13 @@ class DiffUI(object):
   @staticmethod
   def loadhtml(path):
     # Loads in an html file and replaces <img> tags with embedded SVG files
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
       h = f.read()
 
-    def attrs(tag, overrides={}):
+    def attrs(tag, overrides=None):
       data = {a[1]: a[2] for a in re.finditer(r'\b([a-zA-Z]+)="([^"]+)"', tag)}
-      data.update(overrides)
+      if overrides:
+        data.update(overrides)
       return data
 
     def repl(m):
@@ -405,18 +400,14 @@ class DiffUI(object):
       if "src" not in data:
         return m[0]
       # Load the SVG
-      with open(os.path.join(os.path.dirname(path), data["src"]), "r") as f:
+      with open(os.path.join(os.path.dirname(path), data["src"])) as f:
         s = f.read()
       # Remove "fill" from the icon if not specified in the img tag
       data.setdefault("fill", None)
       data["src"] = None
       # Merge the SVG tag
-      return re.sub(
-        r"<svg\s[^>]*>",
-        lambda m: "<svg%s>"
-        % ("".join(f' {k}="{v}"' for k, v in attrs(m[0], data).items() if v)),
-        s,
-      )
+      inner = "".join(f' {k}="{v}"' for k, v in attrs(m[0], data).items() if v)
+      return re.sub(r"<svg\s[^>]*>", lambda m: f"<svg{inner}>", s)
 
     return re.sub(r"<img\s[^>]*>", repl, h)
 
@@ -452,11 +443,9 @@ class DiffUI(object):
     html.append(
       '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
     )
-    html.append(
-      '<link rel="icon" href="%s"/>'
-      % self._icon("%s.svg" % DiffUI.MODE_ICONS[self._mode])
-    )
-    html.append("<title>%s</title></head>" % Svg.escape(window_title))
+    pageicon = self._icon(f"{DiffUI.MODE_ICONS[self._mode]}.svg")
+    html.append(f'<link rel="icon" href="{pageicon}"/>')
+    html.append(f"<title>{Svg.escape(window_title)}</title></head>")
     html.append("<body>")
     srcdir = os.path.realpath(
       os.path.join(os.getcwd(), os.path.dirname(__file__))
@@ -464,7 +453,7 @@ class DiffUI(object):
     # Embed styles
     html.append("<style>")
     for css in ["diffui.css", "js-libraries/material.min.css"]:
-      with open(os.path.join(srcdir, css), "r", encoding="utf-8") as f:
+      with open(os.path.join(srcdir, css), encoding="utf-8") as f:
         html.extend(
           line.strip() for line in f if "sourceMappingURL" not in line
         )
@@ -474,7 +463,7 @@ class DiffUI(object):
     jsdir = os.path.join(srcdir, "js-libraries")
     for lib in os.listdir(jsdir):
       if lib.endswith(".min.js"):
-        with open(os.path.join(jsdir, lib), "r", encoding="utf-8") as f:
+        with open(os.path.join(jsdir, lib), encoding="utf-8") as f:
           html.extend(
             line.strip() for line in f if "sourceMappingURL" not in line
           )
@@ -483,41 +472,29 @@ class DiffUI(object):
     html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
     # Code
     html.append("<script>")
-    html.append('let uiVersion = "%s";' % git.get_version(srcdir))
-    html.append(
-      'let schematicTitle = "%s";'
-      % title[-1].replace("\\", "\\\\").replace('"', '\\"')
-    )
-    html.append(
-      'let schematicVersion = "%s";'
-      % self.ver.replace("\\", "\\\\").replace('"', '\\"')
-    )
-    html.append("let uiMode = %u;" % self._mode)
+    html.append(f'let uiVersion = "{git.get_version(srcdir)}";')
+    safetitle = title[-1].replace("\\", "\\\\").replace('"', '\\"')
+    safevers = self.ver.replace("\\", "\\\\").replace('"', '\\"')
+    html.append(f'let schematicTitle = "{safetitle}";')
+    html.append(f'let schematicVersion = "{safevers}";')
+    html.append(f"let uiMode = {self._mode};")
     if self._mode >= DiffUI.MODE_DIFF:
-      html.append(
-        "let diffIcon = '%s';"
-        % self._icon("%s.svg" % DiffUI.MODE_ICONS[self._mode])
-      )
-    html.append(
-      "let feedbackURL = '%s';"
-      % (
-        self._variables
-        and self._variables.resolve(self._variables.GLOBAL, "feedbackURL")
-        or ""
-      )
+      difficon = self._icon(f"{DiffUI.MODE_ICONS[self._mode]}.svg")
+      html.append(f"let diffIcon = '{difficon}';")
+    fburl = ""
+    if self._variables:
+      fburl = self._variables.resolve(self._variables.GLOBAL, "feedbackURL")
+    html.append(f"let feedbackURL = '{fburl or ''}';")
+    html.append(f"let themeDefault = '{themes.themes()[0][0]}';")
+    bwtheme = next(
+      t[0]
+      for t in themes.themes()
+      if "black" in t[0].lower() and "white" in t[0].lower()
     )
-    html.append("let themeDefault = '%s';" % themes.themes()[0][0])
+    html.append(f"let themeBW = '{bwtheme}';")
+    html.append(f"let themes = {json.dumps(themes.todict())};")
     html.append(
-      "let themeBW = '%s';"
-      % next(
-        t[0]
-        for t in themes.themes()
-        if "black" in t[0].lower() and "white" in t[0].lower()
-      )
-    )
-    html.append("let themes = %s;" % json.dumps(themes.todict()))
-    html.append(
-      open(os.path.join(srcdir, "diffui.js"), "r", encoding="utf-8").read()
+      open(os.path.join(srcdir, "diffui.js"), encoding="utf-8").read()
     )
     html.append("</script>")
     # Data
@@ -526,17 +503,15 @@ class DiffUI(object):
     The following encoded schematic may be proprietary to its author and all
     rights are reserved to that author unless expressly stated otherwise in the
     rendered schematic.\n*/""")
-    html.append(
-      "var data = '%s';"
-      % self._compress(json.dumps(self.schematic_index, sort_keys=True))
-    )
+    zindex = self._compress(json.dumps(self.schematic_index, sort_keys=True))
+    html.append(f"var data = '{zindex}';")
     if self._pages:
       html.append("var pageData = {")
       lib = Svg(header=False, auto_animate=False)
       lib.symbols = self._symbols
-      html.append("library: '%s'," % self._compress(repr(lib)))
+      html.append(f"library: '{self._compress(repr(lib))}',")
       for page in self._pages:
-        html.append("%s: '%s'," % (page.id, self._compress(repr(page.svg))))
+        html.append(f"{page.id}: '{self._compress(repr(page.svg))}',")
       html.append("};")
     html.append("</script>")
     html.append("</body></html>")
@@ -563,19 +538,19 @@ class DiffUI(object):
       self._uiprocess = subprocess.Popen(
         chrome
         + (
-          "--user-data-dir=%s" % self._tempdir,
+          f"--user-data-dir={self._tempdir}",
           "--renderer-process-limit=1",
           "--disable-extensions",
           "--no-proxy-server",
           "--disable-component-extensions-with-background-pages",
-          "--app=http://localhost:%u" % server.server_address[1],
+          f"--app=http://localhost:{server.server_address[1]}",
         ),
         shell=shell,
         stderr=subprocess.STDOUT,
         stdout=open(os.path.join(self._tempdir, "chrome.log"), "wb"),
       )
     except FileNotFoundError as e:
-      sys.stderr.write("ERROR: %s\n" % e)
+      sys.stderr.write(f"ERROR: {e}\n")
       server.shutdown()
       return 127
     ret = self._uiprocess.wait()

@@ -90,7 +90,7 @@ def cat(path, ref=":", relative=False):
       "git",
       "show",
       ":".join(
-        (ref, path if not relative or path.startswith("/") else "./%s" % path)
+        (ref, path if not relative or path.startswith("/") else f"./{path}")
       ),
     ],
     cwd=None if relative else repo_path(),
@@ -111,7 +111,7 @@ def cat_files(path, state=STATE_MODIFIED * 2):
     state[1] != STATE_DELETED,
   )
   return tuple(
-    cat(path, ":%s" % str(version)) if exists[version] else None
+    cat(path, f":{version}") if exists[version] else None
     for version in VERSIONS
   )
 
@@ -142,7 +142,7 @@ def get_version(repo=None):
     "git describe --all --always --broken --dirty --long".split(),
     cwd=repo or ".",
     capture_output=True,
-    universal_newlines=True,
+    text=True,
   )
   if ret.returncode == 0:
     ver = ret.stdout.strip()
@@ -203,10 +203,8 @@ def isdir(path_or_tuple, githash=None):
     path_or_tuple, githash = path_or_tuple
   if not githash or not is_in_repo(path_or_tuple):
     return os.path.isdir(path_or_tuple)
-  return (
-    True
-    if ls_tree(path_or_tuple + "/.", githash, full_tree=False, recurse=False)
-    else False
+  return bool(
+    ls_tree(path_or_tuple + "/.", githash, full_tree=False, recurse=False)
   )
 
 
@@ -218,11 +216,7 @@ def isfile(path_or_tuple, githash=None):
     return os.path.isfile(path_or_tuple)
   if isdir(path_or_tuple, githash):
     return False
-  return (
-    True
-    if ls_tree(path_or_tuple, githash, full_tree=False, recurse=False)
-    else False
-  )
+  return bool(ls_tree(path_or_tuple, githash, full_tree=False, recurse=False))
 
 
 def open_rb(path_or_tuple, githash=None):
