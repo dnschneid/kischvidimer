@@ -32,7 +32,7 @@ if __name__ == "__main__":
 # FIXME: (uuid "7d02517e-895f-4725-8c48-050f5414907e")
 
 
-class has_uuid:
+class HasUUID:
   @sexp.uses("uuid")
   def uuid(self, generate=False):
     if "uuid" in self:
@@ -45,7 +45,7 @@ class has_uuid:
 
 
 @sexp.handler("version")
-class version(sexp.sexp, Comparable):
+class Version(sexp.SExp, Comparable):
   """File version"""
 
   MAX_VERSION = 20231120
@@ -53,14 +53,6 @@ class version(sexp.sexp, Comparable):
   def __init__(self, s):
     super().__init__(s)
     assert self.data[0] <= self.MAX_VERSION
-
-
-# FIXME: do we even need this?
-@sexp.handler("generator", "generator_version")
-class file_metadata(sexp.sexp, Comparable):
-  """Metadata lines that aren't important"""
-
-  pass
 
 
 def unit_to_alpha(unit):
@@ -139,7 +131,7 @@ def rel_coord(gravity, rel=None, pos=None, vect=None):
 
 
 @sexp.handler("at", "center", "end", "mid", "offset", "pos", "start", "xy")
-class coord(sexp.sexp, Comparable):
+class Coord(sexp.SExp, Comparable):
   """A set of offset or coordinates, and sometimes rotation"""
 
   def pos(self, diffs=None, rel=None, defgravity="lt"):
@@ -173,7 +165,7 @@ class coord(sexp.sexp, Comparable):
   #  return rotated
 
 
-class Drawable(sexp.sexp, Comparable):
+class Drawable(sexp.SExp, Comparable):
   DRAW_WKS = 1 << 0  # worksheet
   DRAW_WKS_PG = 1 << 1  # page-specific worksheet elements
   DRAW_IMG = 1 << 2
@@ -224,13 +216,13 @@ class Drawable(sexp.sexp, Comparable):
         item.fillvars(variables, diffs, context)
 
 
-class Modifier(sexp.sexp, Comparable):
+class Modifier(sexp.SExp, Comparable):
   def svgargs(self, diffs, context):
     return {}
 
 
 @sexp.handler("effects")
-class effects(Modifier):
+class Effects(Modifier):
   """font effects"""
 
   @sexp.uses("font", "size")
@@ -278,7 +270,7 @@ class effects(Modifier):
       del args["vjustify"]
     if args["size"] is None:
       del args["size"]
-    if args["hidden"] == False:
+    if not args["hidden"]:
       del args["hidden"]
 
     # Handle mirror/rotation causing justify to flip
@@ -326,7 +318,7 @@ class effects(Modifier):
 
 
 @sexp.handler("stroke", "default")
-class stroke(Modifier):
+class Stroke(Modifier):
   """stroke effects"""
 
   @sexp.uses("width", "type", "color")
@@ -346,7 +338,7 @@ class stroke(Modifier):
     return args
 
 
-class color(sexp.sexp, Comparable):
+class Color(sexp.SExp, Comparable):
   """color"""
 
   @property
@@ -359,7 +351,7 @@ class color(sexp.sexp, Comparable):
 
 
 @sexp.handler("fill")
-class fill(Modifier):
+class Fill(Modifier):
   """fill properties"""
 
   @sexp.uses("background", "color")
@@ -377,7 +369,7 @@ class fill(Modifier):
 
 
 @sexp.handler("polyline")
-class polyline(Drawable):
+class Polyline(Drawable):
   """Graphical polyline"""
 
   @sexp.uses("pts")
@@ -412,7 +404,7 @@ class polyline(Drawable):
 
 
 @sexp.handler("arc")
-class arc(Drawable):
+class Arc(Drawable):
   """Graphical arc"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -438,7 +430,7 @@ class arc(Drawable):
 
 
 @sexp.handler("circle")
-class circle(Drawable):
+class Circle(Drawable):
   """Graphical circle"""
 
   @sexp.uses("radius")
@@ -460,7 +452,7 @@ class circle(Drawable):
 
 
 @sexp.handler("rectangle")
-class rectangle(Drawable):
+class Rectangle(Drawable):
   """Graphical rectangle"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -481,7 +473,7 @@ class rectangle(Drawable):
 
 
 @sexp.handler("text")
-class text(Drawable):
+class Text(Drawable):
   """Graphical text"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -500,7 +492,7 @@ class text(Drawable):
 
 
 @sexp.handler("text_box")
-class text_box(Drawable):
+class TextBox(Drawable):
   """Graphical text, but in a box!"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -560,7 +552,7 @@ class text_box(Drawable):
 
 
 @sexp.handler("property")
-class field(Drawable):
+class Field(Drawable):
   """Properties/fields in labels, sheets, and symbols"""
 
   @property
@@ -636,7 +628,7 @@ class field(Drawable):
 
 
 @sexp.handler("image")
-class image(Drawable):
+class Image(Drawable):
   """An image!"""
 
   """ (image (at ) (scale x) (uuid ) (data "base64?" "base64?" ) )"""
@@ -728,9 +720,9 @@ class Variables:
     self._contexts = {}
 
   def context(self):
-    s = sexp.sexp.init(
+    s = sexp.SExp.init(
       [
-        sexp.atom("~variables"),
+        sexp.Atom("~variables"),
       ]
     )
     s.variables = self
@@ -748,7 +740,7 @@ class Variables:
     for c in context:
       if c.type == "path":
         elements = [c.uuid()]
-      elif isinstance(c, has_uuid):
+      elif isinstance(c, HasUUID):
         elements.append(c.uuid(generate=True))
     return "/".join(elements)
 
@@ -763,14 +755,14 @@ class Variables:
       if hasattr(c, "variables"):
         return c.variables
 
-    class dummy:
+    class Dummy:
       def expand(self, context, text, hist=None):
         return text
 
       def resolve(self, context, variable, hist=None):
         return None
 
-    return dummy()
+    return Dummy()
 
   def define(self, context, variable, value):
     if value is None:
@@ -821,11 +813,11 @@ def main(argv):
   # Perform keyword checks to ensure all keywords are handled
   sexp.handler._handlers.clear()
   if "wks" in argv:
-    from . import kicad_wks
+    pass
   elif "sym" in argv:
-    from . import kicad_sym
+    pass
   else:
-    from . import kicad_sch  # includes kicad_sym and kicad_wks
+    pass  # includes kicad_sym and kicad_wks
   ret = 0
   for kwfile in argv[1:]:
     if not os.path.isfile(kwfile):

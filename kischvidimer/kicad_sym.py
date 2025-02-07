@@ -19,15 +19,18 @@ Also acts as a deduplifying library cache when used with schematic-embedded
 symbols
 """
 
-from .kicad_common import *
+import sys
+
+from . import sexp, svg
+from .kicad_common import Comparable, Drawable, rotated, translated
 
 
-class placeholder_handler(sexp.sexp):
+class PlaceholderHandler(sexp.SExp):
   def __init__(self, s):
     raise Exception(f'found "{s[0]}" in an unexpected context')
 
 
-class pin_def(Drawable):
+class PinDef(Drawable):
   """pins in a symbol definition"""
 
   def get_type_style(self, alternate, diffs):
@@ -133,9 +136,7 @@ class pin_def(Drawable):
         inst_rot, inst_mirror = c.rot_mirror(diffs)
         break
     pin_config = next(
-      c.pin_config(diffs)
-      for c in reversed(context)
-      if isinstance(c, symbol_def)
+      c.pin_config(diffs) for c in reversed(context) if isinstance(c, SymbolDef)
     )
     yoffset = -0.1016 - svg.THICKNESS["wire"]
     pin_config["number"]["xoffset"] = length / 2
@@ -192,11 +193,11 @@ class pin_def(Drawable):
         svg.gend()
 
 
-class pin_sheet(placeholder_handler):
+class PinSheet(PlaceholderHandler):
   pass
 
 
-class pin_inst(placeholder_handler):
+class PinInst(PlaceholderHandler):
   pass
 
 
@@ -208,14 +209,14 @@ def pin_disambiguator(s):
   3) a pin instance
   Figure out which of the two we're dealing with and instantiate the subclass
   """
-  if len(s) >= 2 and isinstance(s[1], sexp.atom):
-    return pin_def(s)
-  elif len(s) >= 3 and isinstance(s[2], sexp.atom):
-    return pin_sheet(s)
-  return pin_inst(s)
+  if len(s) >= 2 and isinstance(s[1], sexp.Atom):
+    return PinDef(s)
+  elif len(s) >= 3 and isinstance(s[2], sexp.Atom):
+    return PinSheet(s)
+  return PinInst(s)
 
 
-class symbol_body(Drawable):
+class SymbolBody(Drawable):
   """The body of a symbol definition"""
 
   @property
@@ -227,7 +228,7 @@ class symbol_body(Drawable):
     return int(self[0].rpartition("_")[-1])
 
 
-class symbol_def(sexp.sexp, Comparable):
+class SymbolDef(sexp.SExp, Comparable):
   """A single library symbol entity, either in a library or cache"""
 
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
@@ -275,7 +276,7 @@ class symbol_def(sexp.sexp, Comparable):
     # Returns the true symbol (e.g., if extending, returns that one)
     if "extends" in self:
       for c in reversed(context):
-        if isinstance(c, sym_lib):
+        if isinstance(c, SymLib):
           return c.symbol(self["extends"][0][0])
       raise Exception("extended symbol with no library in context")
     return self
@@ -284,7 +285,7 @@ class symbol_def(sexp.sexp, Comparable):
     return hash(str(self))
 
 
-class symbol_inst(placeholder_handler):
+class SymbolInst(PlaceholderHandler):
   pass
 
 
@@ -298,15 +299,15 @@ def symbol_disambiguator(s):
   """
   # We probably shouldn't assume correct ordering of subexpressions, so we have
   # to search the entire expression for a lib_id before we can look for property
-  if any(isinstance(item, sexp.sexp) and item.type == "lib_id" for item in s):
-    return symbol_inst(s)
-  if any(isinstance(item, sexp.sexp) and item.type == "property" for item in s):
-    return symbol_def(s)
-  return symbol_body(s)
+  if any(isinstance(item, sexp.SExp) and item.type == "lib_id" for item in s):
+    return SymbolInst(s)
+  if any(isinstance(item, sexp.SExp) and item.type == "property" for item in s):
+    return SymbolDef(s)
+  return SymbolBody(s)
 
 
 @sexp.handler("kicad_symbol_lib", "lib_symbols")
-class sym_lib(sexp.sexp, Comparable):
+class SymLib(sexp.SExp, Comparable):
   """Tracks a kicad_sym file or lib_symbols database"""
 
   def symbols(self):

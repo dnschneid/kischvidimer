@@ -43,19 +43,22 @@ INT_DEC_ATOM_RE = re.compile(
 )
 LITERAL_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
 WHITESPACE_PLUS_PARENS = whitespace + "()"
-BACKSLASH_SUB = lambda x: x[0][1] if x[0][1] != "n" else "\n"
 BACKSLASH_RE = re.compile(r"\\.")
 
 
-class BadStringException(Exception):
+def backslash_sub(x):
+  return x[0][1] if x[0][1] != "n" else "\n"
+
+
+class BadStringError(Exception):
   pass
 
 
-class atom(str):
+class Atom(str):
   pass
 
 
-class InvalidAtomException(Exception):
+class InvalidAtomError(Exception):
   def __init__(self, s, atoms=None):
     text = f"Invalid atom: {s}"
     if atoms is not None:
@@ -70,7 +73,7 @@ def is_atom(s, atoms=None, recurse=True):
     return is_atom(
       s[0], atoms, recurse=True if recurse is True else recurse - 1
     )
-  if not isinstance(s, atom):
+  if not isinstance(s, Atom):
     return False
   if atoms is None:
     return True
@@ -84,7 +87,7 @@ def check_atom(s, atoms=None, recurse=True):
   a = is_atom(s, atoms, recurse=recurse)
   if a:
     return a
-  raise InvalidAtomException(s, atoms)
+  raise InvalidAtomError(s, atoms)
 
 
 # Decorator: use like @sexp.handler('atom1', 'atom2')
@@ -94,7 +97,7 @@ def handler(*atoms):
 
   def register_me(cls):
     for atm in atoms:
-      atm = atom(atm)
+      atm = Atom(atm)
       # Hacky check to make sure we properly handle overloaded atoms
       assert str(handler._handlers.get(atm, cls)) == str(cls)
       handler._handlers[atm] = cls
@@ -110,24 +113,24 @@ def uses(*atoms):
 
   def register_me(fn):
     for atm in atoms:
-      atm = atom(atm)
+      atm = Atom(atm)
       uses._uses.setdefault(atm, []).append(fn)
     return fn
 
   return register_me
 
 
-class sexp:
+class SExp:
   @classmethod
   def init(cls, data):
     if not data:
       return cls()
-    if not isinstance(data[0], atom):
+    if not isinstance(data[0], Atom):
       return cls(data)
     return getattr(handler, "_handlers", {}).get(data[0], cls)(data)
 
   def __init__(self, data=None):
-    if isinstance(data, sexp):
+    if isinstance(data, SExp):
       self.sexp = data.sexp
       self._subs = data._subs
       self._atoms = data._atoms
@@ -136,19 +139,19 @@ class sexp:
     self._subs = {}
     self._atoms = {}
     for item in self.sexp:
-      if isinstance(item, sexp):
+      if isinstance(item, SExp):
         self._subs.setdefault(item.type, []).append(item)
-      elif isinstance(item, atom):
+      elif isinstance(item, Atom):
         self._atoms[item] = self._atoms.get(item, 0) + 1
 
   def __getitem__(self, index_or_atom):
     try:
       return self.data[int(index_or_atom)]
     except ValueError:
-      return self._subs[atom(index_or_atom)]
+      return self._subs[Atom(index_or_atom)]
 
   def __contains__(self, atm):
-    return atom(atm) in self._subs or atom(atm) in self._atoms
+    return Atom(atm) in self._subs or Atom(atm) in self._atoms
 
   def __eq__(self, other):
     return self.sexp == other
@@ -161,13 +164,13 @@ class sexp:
 
   @property
   def type(self):
-    if isinstance(self.sexp[0], atom):
+    if isinstance(self.sexp[0], Atom):
       return self.sexp[0]
     return None
 
   @property
   def data(self):
-    if isinstance(self.sexp[0], atom):
+    if isinstance(self.sexp[0], Atom):
       return self.sexp[1:]
     return self.sexp
 
@@ -177,24 +180,24 @@ class sexp:
         if len(atoms) == 1:
           yield ((i, entry),)
         else:
-          for tuples in sexp.enum(entry, *atoms[1:]):
+          for tuples in SExp.enum(entry, *atoms[1:]):
             yield ((i, entry),) + tuples
 
   def get(self, atm, default_data=None, default=None):
-    atm = atom(atm)
+    atm = Atom(atm)
     if atm in self._subs:
       return self._subs[atm][0]
     if atm in self._atoms:
       return atm
     if default_data is not None:
       if isinstance(default_data, (list, tuple)):
-        return sexp.init([atm] + list(default_data))
-      return sexp.init([atm, default_data])
+        return SExp.init([atm] + list(default_data))
+      return SExp.init([atm, default_data])
     return default
 
   def add(self, item, i=None):
     i = i or len(self.sexp)
-    if isinstance(item, sexp):
+    if isinstance(item, SExp):
       # Add to sub list, maintaining relative ordering
       subs = self._subs.setdefault(item.type, [])
       for j in range(len(subs) - 1, -1, -1):
@@ -205,7 +208,7 @@ class sexp:
           break
       else:
         subs.insert(0, item)
-    elif isinstance(item, atom):
+    elif isinstance(item, Atom):
       self._atoms[item] = self._atoms.get(item, 0) + 1
     self.sexp.insert(i)
 
@@ -216,12 +219,12 @@ class sexp:
       if (atoms is None or is_atom(self.sexp[i], atoms)) and (
         func is None or func(self.sexp[i])
       ):
-        if isinstance(self.sexp[i], sexp):
+        if isinstance(self.sexp[i], SExp):
           _subs = self._subs.get(self.sexp[i].type, [])
           for j in range(len(_subs) - 1, -1, -1):
             if _subs[j] is self.sexp[i]:
               del _subs[j]
-        elif isinstance(self.sexp[i], atom):
+        elif isinstance(self.sexp[i], Atom):
           self._atoms[self.sexp[i]] -= 1
           if not self._atoms[self.sexp[i]]:
             del self._atoms[self.sexp[i]]
@@ -240,17 +243,17 @@ def parse(data):
       if c == "(":
         stack.append([])
       elif c == ")":
-        stack[-2].append(sexp.init(stack.pop()))
+        stack[-2].append(SExp.init(stack.pop()))
       i += 1
     elif c == '"':
       literal = LITERAL_RE.match(data, i).group()
       if "\n" in literal:
         literal = literal.partition("\n")[0] + " <--should be \\n"
-        raise BadStringException(
+        raise BadStringError(
           f"unescaped newline in string literal at offset {i}: {literal}"
         )
       i += len(literal)
-      stack[-1].append(BACKSLASH_RE.sub(BACKSLASH_SUB, literal[1:-1]))
+      stack[-1].append(BACKSLASH_RE.sub(backslash_sub, literal[1:-1]))
     else:
       a = INT_DEC_ATOM_RE.match(data, i)
       i = a.end()
@@ -260,21 +263,21 @@ def parse(data):
       elif a[0]:
         stack[-1].append(int(a[0]))
       else:
-        stack[-1].append(atom(a[2]))
+        stack[-1].append(Atom(a[2]))
   if gc_enabled:
     gc.enable()
-  return sexp.init(stack[-1])
+  return SExp.init(stack[-1])
 
 
 def dump(data):
   # Output format follows the Prettify definition in kicad:
   #   kicad/common/io/kicad/kicad_io_utils.cpp
   # Matches git bce982877c643bcdd8e6f3b2bb002d3a06c986ad
-  indentChar = "\t"
-  xySpecialCaseColumnLimit = 99
-  consecutiveTokenWrapThreshold = 72
-  inMultiLineList = False
-  inXY = False
+  indent_char = "\t"
+  xy_special_case_column_limit = 99
+  consecutive_token_wrap_threshold = 72
+  in_multiline_list = False
+  in_xy = False
   stack = [iter(data if isinstance(data, list) else data.sexp)]
 
   out = ["("]
@@ -283,35 +286,35 @@ def dump(data):
     if data is None:
       # End of block
       stack.pop()
-      if inMultiLineList or out[-1].endswith(")"):
-        out.append(f"{indentChar * len(stack)})")
+      if in_multiline_list or out[-1].endswith(")"):
+        out.append(f"{indent_char * len(stack)})")
       else:
         out[-1] += ")"
-      inMultiLineList = False
-    elif isinstance(data, (list, sexp)):
+      in_multiline_list = False
+    elif isinstance(data, (list, SExp)):
       # Start of block
-      out.append(f"{indentChar * len(stack)}(")
+      out.append(f"{indent_char * len(stack)}(")
       stack.append(iter(data if isinstance(data, list) else data.sexp))
     else:
       txt = str(data)
-      if isinstance(data, atom):
+      if isinstance(data, Atom):
         # Combine chains of XYs into a single line
-        wasXY = inXY
-        inXY = data == "xy"
-        if inXY and wasXY and len(out[-2]) < xySpecialCaseColumnLimit:
+        was_xy = in_xy
+        in_xy = data == "xy"
+        if in_xy and was_xy and len(out[-2]) < xy_special_case_column_limit:
           out.pop()
           out[-1] += " ("
       elif not isinstance(data, (int, Decimal)):
         txt = txt.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
         txt = f'"{txt}"'
-      if inXY or len(out[-1]) < consecutiveTokenWrapThreshold:
+      if in_xy or len(out[-1]) < consecutive_token_wrap_threshold:
         if out[-1].endswith("("):
           out[-1] += txt
         else:
           out[-1] = f"{out[-1]} {txt}"
       else:
-        out.append(f"{indentChar * len(stack)}{txt}")
-        inMultiLineList = True
+        out.append(f"{indent_char * len(stack)}{txt}")
+        in_multiline_list = True
   return "\n".join(out)
 
 

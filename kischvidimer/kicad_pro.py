@@ -21,7 +21,7 @@ from . import git, kicad_sch, kicad_wks, progress
 from .diff import Comparable
 
 
-class kicad_pro(Comparable):
+class KicadPro(Comparable):
   """Kicad project file"""
 
   def __init__(self, f, fname=None):
@@ -33,16 +33,12 @@ class kicad_pro(Comparable):
     return self.json["meta"]["filename"].replace(".kicad_pro", "")
 
   @property
-  def pgcount(self):
-    return len(self.json.get("sheets", []))
-
-  @property
   def variables(self):
     return self.json.get("text_variables", {})
 
   def context(self):
-    s = kicad_sch.sexp.sexp.init(
-      [kicad_sch.sexp.atom("~project"), self.project]
+    s = kicad_sch.sexp.SExp.init(
+      [kicad_sch.sexp.Atom("~project"), self.project]
     )
     return (s,)
 
@@ -53,7 +49,7 @@ class kicad_pro(Comparable):
       variables.define(variables.GLOBAL, key, value)
     if not pages:
       return
-    pgcount = kicad_pro.pgcount(pages)
+    pgcount = sum(len(i) for i, _ in pages.values())
     variables.define(variables.GLOBAL, variables.PAGECOUNT, pgcount)
     context = self.context()
     for filename, (instances, sch) in pages.items():
@@ -139,15 +135,11 @@ class kicad_pro(Comparable):
       )
     return wks or default_wks
 
-  @staticmethod
-  def pgcount(pages):
-    return sum(len(i) for i, _ in pages.values())
-
   def gen_toc(self, pages):
     # Returns a sorted, hierarchical TOC, lists of dicts containing lists.
     # Each entry is a dict containing page#, name, uuid, filepath, sch, children
-    # hier: an intermediate mapping of {uuidpart: instdict}. instdict contains a "hier"
-    #       attribute of the same
+    # hier: an intermediate mapping of {uuidpart: instdict}.
+    #       instdict contains a "hier" attribute of the same
     hier = {}
     for filepath, (instances, sch) in pages.items():
       for path, sheet in instances:
@@ -237,6 +229,10 @@ def config_env_vars():
         envvars.update(config.get("environment", {}).get("vars", {}).items())
         break
   return envvars
+
+
+def kicad_pro(f, fname=None):
+  return KicadPro(f, fname)
 
 
 def main(argv):

@@ -24,7 +24,7 @@ def main(argv=sys.argv):
   ]
   if len(argv) <= 1 or argv[1] not in mods:
     print(f"USAGE: {argv[0]} COMMAND ...", file=sys.stderr)
-    print(f"Recognized commands:", file=sys.stderr)
+    print("Recognized commands:", file=sys.stderr)
     for mod in sorted(mods):
       if "def main(" in open(os.path.join(p, f"{mod}.py"), "r").read():
         print(f"  {mod}", file=sys.stderr)

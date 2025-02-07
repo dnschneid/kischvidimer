@@ -60,7 +60,7 @@ class Page(object):
       safediffs = [(d, None) for d in safediffs]
     diffs = diff_mod.targetdict(safediffs + conflicts)
     # Generate the SVG for the page
-    self.svg = Svg(header=False, autoAnimate=False)
+    self.svg = Svg(header=False, auto_animate=False)
     self.svg.symbols = symbols
     self.svg.uidtable = uidtable
     self.svg.worksheet = worksheet
@@ -105,11 +105,11 @@ class Page(object):
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
-  def do_POST(self):
+  def do_POST(self):  # noqa: N802
     if not self.server.diffui.post(self):
       self.send_error(404)
 
-  def do_GET(self):
+  def do_GET(self):  # noqa: N802
     if not self.server.diffui.get(self):
       self.send_error(404)
 
@@ -372,19 +372,20 @@ class DiffUI(object):
     # strings by both Chrome and Firefox. Slash is not included since it's
     # possible </script> could get generated and break the world.
     code = (
-      b'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!"#$%&()*+,-.:;<=>?@[]^_`{|}~ '
-      b"\007\010\011\013\014\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037\177"
+      b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+      b'!"#$%&()*+,-.:;<=>?@[]^_`{|}~ '
+      b"\007\010\011\013\014\016\017\020\021\022\023\024\025\026\027"
+      b"\030\031\032\033\034\035\036\037\177"
     )
-    POW = [116, 116**2, 116**3, 116**4, 116**5, 116**6]
     output = bytearray()
     for i in range(0, len(data), 6):
       num = int.from_bytes(data[i : i + 6], byteorder="big")
-      output.append(code[num // POW[5]])
-      output.append(code[num // POW[4] % 116])
-      output.append(code[num // POW[3] % 116])
-      output.append(code[num // POW[2] % 116])
-      output.append(code[num // POW[1] % 116])
-      output.append(code[num // POW[0] % 116])
+      output.append(code[num // 116**6])
+      output.append(code[num // 116**5 % 116])
+      output.append(code[num // 116**4 % 116])
+      output.append(code[num // 116**3 % 116])
+      output.append(code[num // 116**2 % 116])
+      output.append(code[num // 116**1 % 116])
       output.append(code[num % 116])
     return output.decode("ascii")
 
@@ -531,7 +532,7 @@ class DiffUI(object):
     )
     if self._pages:
       html.append("var pageData = {")
-      lib = Svg(header=False, autoAnimate=False)
+      lib = Svg(header=False, auto_animate=False)
       lib.symbols = self._symbols
       html.append("library: '%s'," % self._compress(repr(lib)))
       for page in self._pages:
@@ -616,13 +617,13 @@ def main(argv):
   %s [-1|-2|-3|-4] base [ours [theirs [output]]] ...
   Shows one or more pages, diffs or 3-way merges.
   If one kicad_sch is provided, or -1 is specfied, just renders the pages.
-  If two kicad_schs are provided, or -2 is specified, renders an interactive diff for
-      each pair of kicad_sch files.
-  If three kicad_schs are provided, or -3 is specified, renders an interactive merge
-      for each set of three kicad_sch files (base, ours, theirs). Upon submitting,
-      the resulting kicad_sch files are written to stdout.
-  If four kicad_schs are provided, or -4 is specified, behaves the same as -3 but
-      writes the resulting kicad_sch files to the fourth filename in the set.
+  If two kicad_schs are provided, or -2 is specified, renders an interactive
+    diff for each pair of kicad_sch files.
+  If three kicad_schs are provided, or -3 is specified, renders an interactive
+    merge for each set of three kicad_sch files (base, ours, theirs). Upon
+    submitting, the resulting kicad_sch files are written to stdout.
+  If four kicad_schs are provided, or -4 is specified, behaves the same as -3
+    but writes the resulting kicad_sch files to the fourth filename in the set.
   """)
     return 2 * (len(argv) == 1)
   if argv[1].startswith("-"):

@@ -31,7 +31,7 @@ class Progress(object):
     self._width = 60
     self._fout = fout
     self._spin = 0
-    self._spinDir = 1
+    self._spin_dir = 1
 
   def incr(self, amount=1):
     """Increments the value and returns itself."""
@@ -83,7 +83,7 @@ class Progress(object):
     barwidth = self._width - 1
     textwidth = barwidth
     spin = Progress.SPINNER[self._spin % len(Progress.SPINNER)]
-    self._spin += self._spinDir
+    self._spin += self._spin_dir
     inner = "%s%s" % (
       self._text[:textwidth],
       "." * (textwidth - len(self._text)),
@@ -100,17 +100,17 @@ class Progress(object):
     self._fout.flush()
     return self
 
-  def clear(self, spinDir=None):
+  def clear(self, spin_dir=None):
     """Writes spaces to the file descriptor to clear the progress bar.
     Returns itself.
-    spinDir -- picks a new direction for the spinner (instead of flipping)
+    spin_dir -- picks a new direction for the spinner (instead of flipping)
     """
     if self._fout is not None:
       self._fout.write("\r" + " " * self._width + "\r")
-    if spinDir is None:
-      self._spinDir = -self._spinDir
+    if spin_dir is None:
+      self._spin_dir = -self._spin_dir
     else:
-      self._spinDir = 1 if spinDir else -1
+      self._spin_dir = 1 if spin_dir else -1
     return self
 
 

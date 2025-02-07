@@ -17,7 +17,12 @@
 Parses Kicad worksheet files
 """
 
-from .kicad_common import *
+import os
+import re
+import sys
+
+from . import sexp, svg
+from .kicad_common import Drawable, Variables, rel_coord, unit_to_alpha
 
 # NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
 # TODO: handle the following?
@@ -45,12 +50,12 @@ ALL_WKS_VARS = {
 }.union({f"COMMENT{i}" for i in range(10)})
 
 
-def toMM(x, y):
+def to_mm(x, y):
   return (sexp.Decimal(x) * 254 / 10, sexp.Decimal(y) * 254 / 10)
 
 
 @sexp.handler("setup")
-class setup(sexp.sexp):
+class Setup(sexp.SExp):
   def is_pgone(self, context):
     pn = int(Variables.v(context).resolve(context, Variables.PAGENO) or 0)
     if pn:
@@ -86,14 +91,14 @@ class setup(sexp.sexp):
         "A3": (420, 297),
         "A4": (297, 210),
         "A5": (210, 148),
-        "A": toMM(11, 8.5),
-        "B": toMM(17, 11),
-        "C": toMM(22, 17),
-        "D": toMM(34, 22),
-        "E": toMM(44, 34),
-        "USLedger": toMM(17, 11),
-        "USLegal": toMM(14, 8.5),
-        "USLetter": toMM(11, 8.5),
+        "A": to_mm(11, 8.5),
+        "B": to_mm(17, 11),
+        "C": to_mm(22, 17),
+        "D": to_mm(34, 22),
+        "E": to_mm(44, 34),
+        "USLedger": to_mm(17, 11),
+        "USLegal": to_mm(14, 8.5),
+        "USLetter": to_mm(11, 8.5),
       }.get(paper[0])
       assert size
       if len(paper) == 2:
@@ -158,7 +163,10 @@ class Repeatable(Drawable):
       params["start"] = self["start"][0].pos(**posparams)
       params["end"] = self["end"][0].pos(**posparams)
     variables = Variables.v(context)
-    expandfunc = lambda t: variables.expand(context, t)
+
+    def expandfunc(t):
+      return variables.expand(context, t)
+
     # Don't render on the wrong page
     option = self.get("option", default=[None])[0]
     # If pageno is unknown, assume not page 1
@@ -187,7 +195,7 @@ class Repeatable(Drawable):
 
 
 @sexp.handler("rect")
-class rect(Repeatable):
+class Rect(Repeatable):
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.rect(
       pos=params["start"],
@@ -198,7 +206,7 @@ class rect(Repeatable):
 
 
 @sexp.handler("line")
-class line(Repeatable):
+class Line(Repeatable):
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.line(
       p1=params["start"],
@@ -209,7 +217,7 @@ class line(Repeatable):
 
 
 @sexp.handler("tbtext")
-class tbtext(Repeatable):
+class TBText(Repeatable):
   def is_pg(self):
     return "${" in self[0]
 
@@ -256,7 +264,7 @@ class tbtext(Repeatable):
 
 
 @sexp.handler("bitmap")
-class bitmap(Repeatable):
+class Bitmap(Repeatable):
   @sexp.uses("data", "scale")
   def fillsvginst(self, svg, i, params, expandfunc):
     svg.image(
@@ -267,7 +275,7 @@ class bitmap(Repeatable):
 
 
 @sexp.handler("kicad_wks")
-class wks(Drawable):
+class KicadWks(Drawable):
   """Tracks a kicad_wks file"""
 
   def wks_hash(self, context):
@@ -324,7 +332,7 @@ def kicad_wks(f, fname=None):
         "|".join(UPGRADE_DICT), lambda m: UPGRADE_DICT.get(m[0]), raw
       )
       data = sexp.parse(data)
-    if isinstance(data[0], wks):
+    if isinstance(data[0], KicadWks):
       return data[0]
   defpath = os.path.join(os.path.dirname(__file__), DEFAULT_WORKSHEET_PATH)
   if fname == defpath or not os.path.isfile(defpath):

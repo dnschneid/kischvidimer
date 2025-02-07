@@ -91,7 +91,7 @@ class Svg(object):
     self,
     bgcolor="SCHEMATIC_BACKGROUND",
     header=True,
-    autoAnimate=(2, 1),
+    auto_animate=(2, 1),
     mirror_text=False,
     theme=None,
   ):
@@ -122,20 +122,20 @@ class Svg(object):
     self.bgcolor = self.color(bgcolor)[0]
     self.prop_display = "VALUE"
     # Deal with auto-animations
-    self._hasAnimation = False
-    self._autoAnimate = []
-    self._animateAttrs = []
-    if autoAnimate:
-      self._animateAttrs = [
+    self._has_animation = False
+    self._auto_animate = []
+    self._animate_attrs = []
+    if auto_animate:
+      self._animate_attrs = [
         'begin="svg%X.begin"' % (id(self)),
-        'dur="%us"' % autoAnimate[0],
+        'dur="%us"' % auto_animate[0],
         'fill="freeze"',
       ]
       # Looper
-      self._autoAnimate = [
+      self._auto_animate = [
         "<animate",
         'id="svg%X"' % id(self),
-        'dur="%us"' % sum(autoAnimate),
+        'dur="%us"' % sum(auto_animate),
         'attributeName="visibility"',
         'begin="0;svg%X.end"/>' % id(self),
       ]
@@ -269,7 +269,7 @@ class Svg(object):
   def _flush_animate(self):
     """Outputs all queued animate tags."""
     for name, fromval, toval, c in self._animate:
-      self._hasAnimation = True
+      self._has_animation = True
       if name in Svg.TRANSFORM_TYPES:
         params = [
           "<animateTransform",
@@ -293,7 +293,7 @@ class Svg(object):
           'from="%s"' % fromval,
           'to="%s"' % toval,
         ]
-      self.add(params + self._animateAttrs + ['class="%s"/>' % c])
+      self.add(params + self._animate_attrs + ['class="%s"/>' % c])
     self._animate = []
 
   def gstart(
@@ -934,7 +934,7 @@ class Svg(object):
       symsvg = Svg(
         self.bgcolor,
         header=False,
-        autoAnimate=False,
+        auto_animate=False,
         mirror_text=self._mirror_state(i),
       )
       symsvg.push_invert_y()
@@ -971,7 +971,7 @@ class Svg(object):
       for i in range(len(name)):
         if not name[i][0] or name[i][0] in self.symbols:
           continue
-        wkssvg = Svg(self.bgcolor, header=False, autoAnimate=False)
+        wkssvg = Svg(self.bgcolor, header=False, auto_animate=False)
         wkssvg.colormap = self.colormap
         wks.get(i)[0].fillsvg(wkssvg, [], Drawable.DRAW_WKS, context.get(i)[0])
         self.symbols[name[i][0]] = wkssvg
@@ -1040,14 +1040,14 @@ class Svg(object):
     Width and height are in mm, not pixels.
     """
     # FIXME: does KiCad check metadata, or does it use 300 always?
-    PX_TO_MM = 25.4 / 300
+    px_to_mm = 25.4 / 300
     if isinstance(data, str):
       data = base64.b64decode(data)
     for typ, mod in ("png", png), ("bmp", bmp), ("jpeg", jpeg):
       sz = mod.getsize(data)
       if sz is None:
         continue
-      sz = (sz[0] * PX_TO_MM, sz[1] * PX_TO_MM)
+      sz = (sz[0] * px_to_mm, sz[1] * px_to_mm)
       if hasattr(mod, "to_png"):
         return ("png", mod.to_png(data)) + sz
       elif convert_all and typ != "png":
@@ -1304,8 +1304,8 @@ class Svg(object):
       )
       + ">"
     )
-    if self._hasAnimation:
-      svg += self._autoAnimate
+    if self._has_animation:
+      svg += self._auto_animate
     # Add all symbols
     for name, symsvg in self.symbols.items():
       if symsvg is None or not symsvg.data:

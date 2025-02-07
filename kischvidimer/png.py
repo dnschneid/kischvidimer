@@ -44,12 +44,12 @@ def encode(rows, width, height, has_alpha, bitdepth):
 
   png = [MAGIC]
   # IHDR
-  IHDR = int.to_bytes(width, 4, "big", signed=False)
-  IHDR += int.to_bytes(height, 4, "big", signed=False)
-  IHDR += int.to_bytes(bitdepth, 1, "big", signed=False)
-  IHDR += b"\x06" if has_alpha else b"\x02"  # colortype
-  IHDR += b"\x00" * 3
-  png += block(b"IHDR", IHDR)
+  ihdr = int.to_bytes(width, 4, "big", signed=False)
+  ihdr += int.to_bytes(height, 4, "big", signed=False)
+  ihdr += int.to_bytes(bitdepth, 1, "big", signed=False)
+  ihdr += b"\x06" if has_alpha else b"\x02"  # colortype
+  ihdr += b"\x00" * 3
+  png += block(b"IHDR", ihdr)
   # IDAT
   raw = b"\0" + b"\0".join(map(bytes, rows))
   compressed = zlib.compress(raw, level=9)

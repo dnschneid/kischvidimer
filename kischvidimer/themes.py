@@ -41,13 +41,11 @@ def get(theme=None):
     "referencepart": "var(--r)",  # Symbol references
     "valuepart": "var(--v)",  # Symbol values
     "fields": "var(--f)",  # Symbol fields
-    "intersheet_refs": "var(--q)",  # Sheet references
     "netclass_refs": "var(--Q)",  # Net class references
     "device": "var(--b)",  # Symbol body outlines
     "device_background": "var(--B)",  # Symbol body fills
     "notes": "var(--g)",  # Schematic text && graphics
-    "private_notes": "var(--gp)",  # Symbol private text && graphics
-    "notes_background": "var(--G)",  # Schematic text && graphics backgrounds
+    "private_notes": "var(--G)",  # Symbol private text && graphics
     "pin": "var(--p)",  # Pins
     "sheet": "var(--s)",  # Sheet borders
     "sheet_background": "var(--S)",  # Sheet backgrounds
@@ -78,9 +76,9 @@ def get(theme=None):
     # Quirk mappings
     # INTERSHEET_REFS doesn't appear to exist in the theme
     # it just uses globlabel. Other label fields use "fields"
-    "intersheet_refs": "globlabel",
+    "intersheet_refs": "globlabel",  # Sheet references
     # For some reason NOTES_BACKGROUND is zero. KiCad uses NOTES instead
-    "notes_background": "notes",
+    "notes_background": "notes",  # Schematic text & graphics backgrounds
     # Theme mappings
     # The names in plugin themes are different from internal names
     "anchor": "SCHEMATIC_ANCHOR",

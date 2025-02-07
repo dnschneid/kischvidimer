@@ -12,15 +12,28 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
-from . import kicad_sym, kicad_wks
-from .kicad_common import *
+import os
+import re
+import sys
+
+from . import kicad_sym, kicad_wks, sexp, svg
+from .kicad_common import (
+  Comparable,
+  Drawable,
+  Field,
+  HasUUID,
+  Polyline,
+  Variables,
+  instancedata,
+  unit_to_alpha,
+)
 
 # FIXME: check eeschema/schematic.keywords for completeness
 #        on last check, there are around 79 unused atoms
 
 
 @sexp.handler("title_block")
-class title_block(Drawable):
+class TitleBlock(Drawable):
   """title_block"""
 
   @property
@@ -84,7 +97,7 @@ class title_block(Drawable):
 
 
 @sexp.handler("junction")
-class junction(Drawable):
+class Junction(Drawable):
   """junction"""
 
   @sexp.uses("diameter")
@@ -123,7 +136,7 @@ class junction(Drawable):
 
 
 @sexp.handler("no_connect")
-class no_connect(Drawable):
+class NoConnect(Drawable):
   """no_connect"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -144,7 +157,7 @@ class no_connect(Drawable):
 
 # FIXME: (wire (pts (xy) (xy)) (stroke) (uuid))
 @sexp.handler("wire", "bus")
-class wire(polyline, has_uuid):
+class Wire(Polyline, HasUUID):
   """wire or bus"""
 
 
@@ -152,7 +165,7 @@ class wire(polyline, has_uuid):
 # FIXME: (label "x" (at) (effects) (uuid) (property))
 # FIXME: (global_label "x" (shape input) (at) (effects) (uuid) (property))
 @sexp.handler("global_label", "hierarchical_label", "label")
-class label(Drawable, has_uuid):
+class Label(Drawable, HasUUID):
   """any type of label"""
 
   BUS_RE = re.compile(r"(?:^|[^_~^$]){(.+)}|\[(\d+)[.][.](\d+)\]")
@@ -185,7 +198,7 @@ class label(Drawable, has_uuid):
     return self[0]
 
   def bus(self, diffs, context):
-    return label.BUS_RE.search(self.net(diffs, context))
+    return Label.BUS_RE.search(self.net(diffs, context))
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
@@ -270,7 +283,7 @@ class label(Drawable, has_uuid):
 
 
 @sexp.handler("bus_entry")
-class bus_entry(Drawable):
+class BusEntry(Drawable):
   """Instance of a bus entry"""
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -290,7 +303,7 @@ class bus_entry(Drawable):
 
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
 #          (instances (project "x" (path "y" (reference "z") (unit 1)))))
-class symbol_inst(Drawable, has_uuid):
+class SymbolInst(Drawable, HasUUID):
   """An instance of a symbol in a schematic"""
 
   def fillvars(self, variables, diffs, context):
@@ -378,7 +391,7 @@ class symbol_inst(Drawable, has_uuid):
       "reference",
       diffs,
       context + (self,) if context else None,
-      default=field.getprop(self, "Reference", default="?"),
+      default=Field.getprop(self, "Reference", default="?"),
     )
 
   def unit(self, diffs, context, as_alpha=False):
@@ -415,10 +428,10 @@ class symbol_inst(Drawable, has_uuid):
     return props["Reference"], props
 
 
-kicad_sym.symbol_inst = symbol_inst
+kicad_sym.SymbolInst = SymbolInst
 
 
-class pin_inst(sexp.sexp, Comparable, has_uuid):
+class PinInst(sexp.SExp, Comparable, HasUUID):
   """pins in a symbol instance"""
 
   """
@@ -429,27 +442,27 @@ class pin_inst(sexp.sexp, Comparable, has_uuid):
                 """
 
 
-kicad_sym.pin_inst = pin_inst
+kicad_sym.PinInst = PinInst
 
 
-class pin_sheet(label):
+class PinSheet(Label):
   """A pin on a sheet instance"""
 
 
-kicad_sym.pin_sheet = pin_sheet
+kicad_sym.PinSheet = PinSheet
 
 
 def fakesheet(uuid):
   """Creates a fake sheet element for the purposes of UUIDs"""
   if not isinstance(uuid, str):
     uuid = uuid["uuid"][0][0]
-  return sexp.sexp.init(
-    [sexp.atom("sheet"), sexp.sexp.init([sexp.atom("uuid"), uuid])]
+  return sexp.SExp.init(
+    [sexp.Atom("sheet"), sexp.SExp.init([sexp.Atom("uuid"), uuid])]
   )
 
 
 @sexp.handler("sheet")
-class sheet(Drawable, has_uuid):
+class Sheet(Drawable, HasUUID):
   """Sheet instance"""
 
   def fillvars(self, variables, diffs, context):
@@ -497,15 +510,15 @@ class sheet(Drawable, has_uuid):
 
   @property
   def name(self):
-    return field.getprop(self, "Sheetname")
+    return Field.getprop(self, "Sheetname")
 
   @property
   def file(self):
-    return field.getprop(self, "Sheetfile")
+    return Field.getprop(self, "Sheetfile")
 
 
 @sexp.handler("instances")
-class instances(sexp.sexp, Comparable):
+class Instances(sexp.SExp, Comparable):
   """Tracks instances of a sheet or symbol"""
 
   @sexp.uses("project")
@@ -513,7 +526,7 @@ class instances(sexp.sexp, Comparable):
     """Returns a dict of instance to path elements"""
     if "project" not in self:
       return {}
-    if isinstance(project, sexp.sexp):
+    if isinstance(project, sexp.SExp):
       project = project[0]
     ret = {}
     for proj in self["project"]:
@@ -528,7 +541,7 @@ class instances(sexp.sexp, Comparable):
 
 
 @sexp.handler("path")
-class path(sexp.sexp, Comparable):
+class Path(sexp.SExp, Comparable):
   def uuid(self, ref=None, generate=False):
     if ref and not isinstance(ref, (tuple, list)):
       ref = [ref]
@@ -539,11 +552,11 @@ class path(sexp.sexp, Comparable):
 
 def fakepath(path):
   """Creates a fake path element for the purposes of tracking instances"""
-  return sexp.sexp.init([sexp.atom("path"), path])
+  return sexp.SExp.init([sexp.Atom("path"), path])
 
 
 @sexp.handler("kicad_sch")
-class sch(Drawable):  # ignore the uuid for the most part
+class KicadSch(Drawable):  # ignore the uuid for the most part
   """A schematic page"""
 
   @property
@@ -644,7 +657,7 @@ def kicad_sch(f, fname=None):
   if isinstance(data, bytes):
     data = data.decode()
   data = sexp.parse(data)
-  if isinstance(data[0], sch):
+  if isinstance(data[0], KicadSch):
     data[0].initsch(fname)
     return data[0]
   return None
