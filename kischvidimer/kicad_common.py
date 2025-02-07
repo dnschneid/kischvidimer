@@ -813,11 +813,12 @@ def main(argv):
   # Perform keyword checks to ensure all keywords are handled
   sexp.handler._handlers.clear()
   if "wks" in argv:
-    pass
+    from . import kicad_wks  # noqa: F401
   elif "sym" in argv:
-    pass
+    from . import kicad_sym  # noqa: F401
   else:
-    pass  # includes kicad_sym and kicad_wks
+    # includes kicad_sym and kicad_wks
+    from . import kicad_sch  # noqa: F401
   ret = 0
   for kwfile in argv[1:]:
     if not os.path.isfile(kwfile):
