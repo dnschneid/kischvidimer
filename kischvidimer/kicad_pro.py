@@ -42,6 +42,19 @@ class KicadPro(Comparable):
     )
     return (s,)
 
+  def fillnetlist(self, netlister, diffs, pages=None, p=None):
+    if not pages:
+      return
+    context = self.context()
+    for _filename, (instances, sch) in pages.items():
+      if p:
+        p.write().incr()
+      for path, sheet in instances:
+        netlister.netprefix = self.uuid_to_name(pages, path.uuid(sheet))
+        pgcontext = context + (path, sheet)
+        sch.fillnetlist(netlister, diffs, context=pgcontext)
+    netlister.resolve()
+
   def fillvars(self, variables, diffs, pages=None, p=None):
     variables.define(variables.GLOBAL, "CURRENT_DATE", datetime.date.today())
     variables.define(variables.GLOBAL, "PROJECTNAME", self.project)

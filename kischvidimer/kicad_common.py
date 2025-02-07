@@ -213,6 +213,14 @@ class Drawable(sexp.SExp, Comparable):
       if isinstance(item, Drawable):
         item.fillvars(variables, diffs, context)
 
+  def fillnetlist(self, netlister, diffs, context=None):
+    if not isinstance(context, tuple):
+      context = () if context is None else (context,)
+    context = context + (self,)
+    for item in self.data:
+      if isinstance(item, Drawable):
+        item.fillnetlist(netlister, diffs, context)
+
 
 class Modifier(sexp.SExp, Comparable):
   def svgargs(self, diffs, context):
@@ -384,12 +392,17 @@ class Polyline(Drawable):
   """Graphical polyline"""
 
   @sexp.uses("pts")
+  def pts(self, diffs):
+    # FIXME: diffs
+    return [(xy[0], xy[1]) for xy in self["pts"][0]["xy"]]
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
     # Don't try to render background only if there are only two points?
     # FIXME: diffs?
-    if not draw & Drawable.DRAW_FG and len(self["pts"][0]["xy"]) <= 2:
+    xys = self.pts(diffs)
+    if not draw & Drawable.DRAW_FG and len(xys) <= 2:
       return
     default_color = "notes"
     default_thick = "wire"
@@ -401,7 +414,7 @@ class Polyline(Drawable):
     elif context[-1].type == "symbol":
       default_color = "device"
     args = {
-      "xys": [(xy[0], xy[1]) for xy in self["pts"][0]["xy"]],
+      "xys": xys,
       "color": default_color,
       "thick": default_thick,
       "fill": "none",
@@ -816,7 +829,7 @@ class Variables:
     If the variable isn't found, returns None if variable was a string, or the
     full match text if the variable is a match object.
     """
-    # FIXME: do we need to handle the var="extra text ${var}" case?
+    # FIXME: support querying the netlist
     hist = hist or set()
     orig_variable = None
     if isinstance(variable, re.Match):

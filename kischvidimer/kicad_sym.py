@@ -33,14 +33,38 @@ class PlaceholderHandler(sexp.SExp):
 class PinDef(Drawable):
   """pins in a symbol definition"""
 
-  def get_type_style(self, alternate, diffs):
+  def name_num(self, context, diffs):
+    # FIXME: alternate from context
+    return (self["name"][0][0], self["number"][0][0])
+
+  @sexp.uses("alternate")
+  def get_type_style(self, context, diffs):
+    # FIXME: pull alternate from context
     # FIXME: diffs
     # FIXME: alternate can have diffs too
-    if alternate and "alternate" in self:
+    if 0 == 1 and "alternate" in self:
+      alternate = None
       for alt in self["alternate"]:
         if alternate == alt[0]:
           return (alt[1], alt[2])
     return (self[0], self[1])
+
+  @sexp.uses("at")
+  def pts(self, diffs, context):
+    pos = self["at"][0].pos(diffs)
+    for c in reversed(context):
+      if hasattr(c, "transform_pin"):
+        pos = c.transform_pin(pos, diffs)
+        break
+    return [pos]
+
+  @sexp.uses("hide")
+  def hide(self, diffs):
+    # FIXME: diffs
+    return "hide" in self
+
+  def fillnetlist(self, netlister, diffs, context):
+    self.netbus = netlister.add_sympin(context, self)
 
   @sexp.uses(
     "clock",
@@ -50,7 +74,6 @@ class PinDef(Drawable):
     "inverted",
     "non_logic",
     "output_low",
-    "hide",
     "length",
   )
   def fillsvg(self, svg, diffs, draw, context):
@@ -63,7 +86,7 @@ class PinDef(Drawable):
     # FIXME: unconnected circle
     # FIXME: defaults?
     # FIXME: metadata (electrical type)
-    if "hide" in self:
+    if self.hide(diffs):
       return  # FIXME: render invisible?
 
     pos = self["at"][0].pos(diffs)
@@ -88,7 +111,7 @@ class PinDef(Drawable):
       ("x", 270),
     ):
       flipy = -1
-    style = self[1]
+    style = self.get_type_style(context, diffs)[1]
     dot = "inverted" in style
     end = translated(pos, rotated(length - 1.27 * dot, rot))
     xys = [pos, end]
@@ -231,6 +254,12 @@ def pin_disambiguator(s):
 class SymbolBody(Drawable):
   """The body of a symbol definition"""
 
+  def fillnetlist(self, netlister, diffs, context):
+    if "pin" not in self:
+      return
+    for pin in self["pin"]:
+      pin.fillnetlist(netlister, diffs, context + (self,))
+
   @property
   def unit(self):
     return int(self[0].split("_")[-2])
@@ -242,6 +271,13 @@ class SymbolBody(Drawable):
 
 class SymbolDef(sexp.SExp, Comparable):
   """A single library symbol entity, either in a library or cache"""
+
+  def fillnetlist(self, netlister, diffs, context, unit, variant):
+    to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
+    sym = self._sym(diffs, context)
+    bodies = [b for b in sym["symbol"] if (b.unit, b.variant) in to_render]
+    for body in bodies:
+      body.fillnetlist(netlister, diffs, context + (self,))
 
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
     to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}

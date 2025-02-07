@@ -73,6 +73,7 @@ class Page:
       self.context += proj.context()
     else:
       page.fillvars(variables, diffs, self.context)
+      # FIXME: fill in placeholder netlist
     self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
     self.name = ": ".join(
       n for n in (name, self.svg.vars.get("~pagetitle")) if n
@@ -138,6 +139,7 @@ class DiffUI:
     proj=None,
     worksheet=None,
     variables=None,
+    netlister=None,
     mode=MODE_MERGE,
     verbosity=0,
   ):
@@ -146,6 +148,7 @@ class DiffUI:
     self.ver = ver or ""
     self._proj = proj
     self._variables = variables
+    self._netlister = netlister
     self._pages = []
     self._pagemap = {}  # id(sch) to _pages index
     self._toc = None

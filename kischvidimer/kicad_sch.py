@@ -100,12 +100,20 @@ class TitleBlock(Drawable):
 class Junction(Drawable):
   """junction"""
 
+  def fillnetlist(self, netlister, diffs, context):
+    # TODO: at some point, confirm that there's only one valid net/bus
+    self.netbuses = netlister.add_junction(context, self)
+
+  @sexp.uses("at")
+  def pts(self, diffs):
+    return [self["at"][0].pos(diffs)]
+
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs
-    pos = self["at"][0].pos(diffs)
+    pos = self.pts(diffs)[0]
     diameter = sexp.Decimal(0.915)
     if "diameter" in self and self["diameter"][0][0]:
       diameter = self["diameter"][0][0]
@@ -139,12 +147,19 @@ class Junction(Drawable):
 class NoConnect(Drawable):
   """no_connect"""
 
+  def fillnetlist(self, netlister, diffs, context):
+    self.netbuses = netlister.add_nc(context, self)
+
+  @sexp.uses("at")
+  def pts(self, diffs):
+    return [self["at"][0].pos(diffs)]
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs
     sz = sexp.Decimal(0.6350)
-    pos = self["at"][0].pos(diffs)
+    pos = self.pts(diffs)[0]
     xys = [
       (pos[0] - sz, pos[1] - sz),
       (pos[0] + sz, pos[1] + sz),
@@ -160,6 +175,21 @@ class NoConnect(Drawable):
 class Wire(Polyline, HasUUID):
   """wire or bus"""
 
+  def fillnetlist(self, netlister, diffs, context):
+    self.netbus = netlister.add_wire(context, self)
+
+  def fillsvg(self, svg, diffs, draw, context):
+    super().fillsvg(svg, diffs, draw, context)
+    if draw & Drawable.DRAW_TEXT and getattr(self, "netbus", None):
+      pts = self.pts(diffs)
+      svg.text(
+        self.netbus.name() or "unconnected",
+        pos=((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2),
+        vjustify="top",
+        size=0.5,
+        rotate=90 if pts[0][0] == pts[1][0] else 0,
+      )
+
 
 # FIXME: (hierarchical_label "x" (shape input) (at) (effects) (uuid) (property))
 # FIXME: (label "x" (at) (effects) (uuid) (property))
@@ -168,7 +198,10 @@ class Wire(Polyline, HasUUID):
 class Label(Drawable, HasUUID):
   """any type of label"""
 
-  BUS_RE = re.compile(r"(?:^|[^_~^$]){(?!slash})(.+)}|\[(\d+)[.][.](\d+)\]")
+  BUS_RE = re.compile(r"(?<![_~^$]){(?!slash})(.+)}|\[(\d+)[.][.](\d+)\]")
+
+  def fillnetlist(self, netlister, diffs, context):
+    self.netbus = netlister.add_label(context, self)
 
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs)
@@ -199,6 +232,36 @@ class Label(Drawable, HasUUID):
 
   def bus(self, diffs, context):
     return Label.BUS_RE.search(self.net(diffs, context))
+
+  def expand_bus(self, diffs, context):
+    bus = self.bus(diffs, context)
+    if not bus:
+      return []
+    prefix, suffix = bus.string[: bus.start()], bus.string[bus.end() :]
+    # Suffix appears to get dropped silently in KiCad 8
+    suffix = ""
+    if bus.group(2) is not None:
+      indices = (int(bus.group(2)), int(bus.group(3)))
+      indices = (min(indices), max(indices) + 1)
+      return [(prefix, str(n), f"{prefix}{n}{suffix}") for n in range(*indices)]
+    if prefix:
+      prefix += "."
+    members = [m for m in bus.group(1).split(" ") if m]
+    if len(members) == 1:
+      for c in reversed(context):
+        if "bus_alias" in c:
+          for ba in c["bus_alias"]:
+            if ba[0] == members[0]:
+              members = ba["members"][0].data
+              break
+          else:
+            continue
+          break
+    return [(prefix, m, f"{prefix}{m}{suffix}") for m in members]
+
+  @sexp.uses("at")
+  def pts(self, diffs):
+    return (self["at"][0].pos(diffs),)
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
@@ -290,15 +353,24 @@ class Label(Drawable, HasUUID):
 class BusEntry(Drawable):
   """Instance of a bus entry"""
 
+  def fillnetlist(self, netlister, diffs, context):
+    # TODO: at some point confirm there's exactly one bus and one net
+    self.netbuses = netlister.add_busentry(context, self)
+
+  @sexp.uses("at", "size")
+  def pts(self, diffs):
+    pos = self["at"][0].pos(diffs)
+    size = self["size"][0].data
+    return [pos, (pos[0] + size[0], pos[1] + size[1])]
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs!
-    pos = self["at"][0].pos(diffs)
-    size = self["size"][0].data
+    pts = self.pts(diffs)
     args = {
-      "p1": pos,
-      "p2": (pos[0] + size[0], pos[1] + size[1]),
+      "p1": pts[0],
+      "p2": pts[1],
       "color": "wire",
     }
     args.update(self.svgargs(diffs, context))
@@ -336,6 +408,46 @@ class SymbolInst(Drawable, HasUUID):
     # lib_name specifies page-local overrides of the original library symbol,
     # usually due to out-of-date symbol instances.
     return self.get("lib_name", default=self.get("lib_id"))[0]
+
+  def fillnetlist(self, netlister, diffs, context):
+    # Fill in all pins. Use Svg's transformation implementation
+    lib = context[-1]["lib_symbols"][0]
+    lib_id = self.lib_id(diffs, context)
+    sym = lib.symbol(lib_id)
+    unit = self.unit(diffs, context)
+    convert = self.get("convert", default=[1])[0]
+    sym.fillnetlist(
+      netlister,
+      diffs,
+      context + (self,),
+      unit=unit,
+      variant=convert,
+    )
+
+  def transform_pin(self, pos, diffs):
+    # Reimplementation of what's done in Svg with gstart.
+    # This is done to keep things as Decimals. It's also pretty simple.
+    # 1. invert y (since symbols have inverted y)
+    x, y = pos[0], -pos[1]
+    # 2. rotate
+    rot = self.rot(diffs)
+    if rot == 90:
+      x, y = y, -x
+    elif rot == 180:
+      x, y = -x, -y
+    elif rot == 270:
+      x, y = -y, x
+    else:
+      assert not rot
+    # 3. apply flip
+    mirror = self.mirror(diffs)
+    if mirror == "x":
+      y = -y
+    elif mirror == "y":
+      x = -x
+    # 4. apply translate
+    trans = self["at"][0].pos(diffs)
+    return (x + trans[0], y + trans[1])
 
   def fillsvg(self, svg, diffs, draw, context):
     # Decide what to draw
@@ -451,6 +563,9 @@ kicad_sym.PinInst = PinInst
 
 class PinSheet(Label):
   """A pin on a sheet instance"""
+
+  def fillnetlist(self, netlister, diffs, context):
+    self.netbus = netlister.add_sheetpin(context, self)
 
 
 kicad_sym.PinSheet = PinSheet

@@ -21,6 +21,7 @@ import time
 from . import git, kicad_pro, kicad_sch
 from .diff import threeway
 from .diffui import DiffUI
+from .netlister import Netlister
 from .progress import Progress
 
 
@@ -94,7 +95,7 @@ class Schematic:
   def _genui(self, v=0):
     p = Progress(sys.stderr if v >= 0 else None)
     if p:
-      p.set_incr_max_mult(3)
+      p.set_incr_max_mult(4)
 
     if not self._revs:
       self._revs.append("")
@@ -134,10 +135,12 @@ class Schematic:
     if p:
       p.incr().write()
 
-    # Fill in variables
+    # Fill in netlist and variables
     # FIXME: handle diffs correctly
+    netlister = Netlister()
     variables = kicad_sch.Variables()
     for pageset in pagesets:
+      projs[0].fillnetlist(netlister, [], pageset, p=p)
       projs[0].fillvars(variables, [], pageset, p=p)
 
     ver = git.get_version(os.path.dirname(self._proj))
@@ -153,6 +156,7 @@ class Schematic:
       proj=projs[0],
       worksheet=worksheets[0],
       variables=variables,
+      netlister=netlister,
       mode=len(self._revs),
     )
     for page in pages:
