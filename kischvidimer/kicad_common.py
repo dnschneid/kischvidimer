@@ -235,6 +235,15 @@ class Effects(Modifier):
     # FIXME: default size?
     return None
 
+  @sexp.uses("font", "color")
+  def get_color(self, diffs):
+    # FIXME: diffs
+    if "font" in self and "color" in self["font"][0]:
+      color = self["font"][0]["color"][0]
+      return tuple(color.data)
+    # FIXME: default size?
+    return None
+
   @sexp.uses("justify", "left", "right", "top", "bottom")
   def get_justify(self, diffs):
     # FIXME: diffs
@@ -258,6 +267,7 @@ class Effects(Modifier):
     args = {}
     args["justify"], args["vjustify"] = self.get_justify(diffs)
     args["size"] = self.get_size(diffs)
+    args["color"] = self.get_color(diffs)
     args["hidden"] = self.get_hidden(diffs)
 
     if "href" in self:
@@ -270,6 +280,8 @@ class Effects(Modifier):
       del args["vjustify"]
     if args["size"] is None:
       del args["size"]
+    if args["color"] is None:
+      del args["color"]
     if not args["hidden"]:
       del args["hidden"]
 
@@ -336,18 +348,6 @@ class Stroke(Modifier):
       if self["type"][0][0] != "default":
         args["pattern"] = self["type"][0][0]
     return args
-
-
-class Color(sexp.SExp, Comparable):
-  """color"""
-
-  @property
-  def color(self):
-    return "#" + "".join(f"{c:02X}" for c in self[:3])
-
-  @property
-  def alpha(self):
-    return self[3]
 
 
 @sexp.handler("fill")

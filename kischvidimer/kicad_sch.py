@@ -267,9 +267,12 @@ class Label(Drawable, HasUUID):
           outline.append(outline[0])
       svg.gstart(pos=pos, rotate=rot)
       if outline:
+        ocolor = args["color"]
+        if isinstance(ocolor, str):
+          ocolor = ocolor.replace("sheet", "hier")
         svg.polyline(
           outline,
-          color=args["color"].replace("sheet", "hier"),
+          color=ocolor,
           thick=args["size"] / 8,
         )
       args["rotate"] = -180 * (rot >= 180)
