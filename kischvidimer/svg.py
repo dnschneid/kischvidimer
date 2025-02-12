@@ -550,7 +550,7 @@ class Svg(object):
     w = (z3 - z1) / (z2 - z1)
     c = (z2 - z1) * (w - abs(w) ** 2) / (2j * w.imag) + z1
     r = abs(z1 - c)
-    la = abs(z2 - z1) > abs(z3 - z1)
+    la = (z3 - z1).real * (c - z1).imag - (z3 - z1).imag * (c - z1).real < 0
     return (c.real, c.imag), r, la
 
   def arc(
