@@ -495,11 +495,11 @@ class Sheet(Drawable, HasUUID):
         "fill": "sheet_background",
         "tag": svg.getuid(self),
       }
+      args.update(self.svgargs(diffs, context))
       if not draw & Drawable.DRAW_FG:
         args["thick"] = 0
       if not draw & Drawable.DRAW_BG:
         args["fill"] = "none"
-      args.update(self.svgargs(diffs, context))
       svg.rect(**args)
 
     # Draw the rest of the owl

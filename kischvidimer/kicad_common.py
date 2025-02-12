@@ -357,14 +357,15 @@ class Fill(Modifier):
   @sexp.uses("background", "color")
   def svgargs(self, diffs, context):
     args = {}
+    fill = None
     if "type" in self:
       fill = self["type"][0][0]
       if fill == "background":
         fill = "device_background"
-      elif fill == "color":
-        fill = tuple(self["color"][0].data)
-      if any(fill):
-        args["fill"] = fill
+    if fill == "color" or "color" in self:
+      fill = tuple(self["color"][0].data)
+    if any(fill):
+      args["fill"] = fill
     return args
 
 
