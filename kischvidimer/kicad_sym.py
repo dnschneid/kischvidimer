@@ -71,7 +71,25 @@ class PinDef(Drawable):
     length = float(self.get("length", 0)[0])
     mirror = 1 if rot in (0, 90) else -1
 
+    # Compensate for mirror/rotation in instantiations
+    inst_mirror = None
+    inst_rot = 0
+    for c in context:
+      if c.type == "symbol" and "lib_id" in c:
+        inst_rot, inst_mirror = c.rot_mirror(diffs)
+        break
+
+    svg.text(pos=pos, text=f"{inst_mirror} {inst_rot}")
+
     # Render line ending
+    flipy = 1
+    if (inst_mirror, inst_rot) in (
+      (None, 180),
+      (None, 270),
+      ("x", 0),
+      ("x", 270),
+    ):
+      flipy = -1
     style = self[1]
     dot = "inverted" in style
     end = translated(pos, rotated(length - 1.27 * dot, rot))
@@ -105,14 +123,14 @@ class PinDef(Drawable):
     elif style in ("input_low", "clock_low", "edge_clock_high"):
       # draw input-low
       xys += [
-        translated(end, rotated((-1.27 * mirror, 1.27), rot % 180)),
+        translated(end, rotated((-1.27 * mirror, 1.27 * flipy), rot % 180)),
         translated(end, rotated(-1.27 * mirror, rot % 180)),
       ]
     elif style == "output_low":
       # draw output-low
       xys += [
         translated(end, rotated(-1.27 * mirror, rot % 180)),
-        translated(end, rotated((0, 1.27), rot % 180)),
+        translated(end, rotated((0, 1.27 * flipy), rot % 180)),
       ]
     # Render main line
     svg.polyline(xys=xys, color="device")
@@ -128,13 +146,6 @@ class PinDef(Drawable):
       )
 
     # Render name and number
-    # Compensate for mirror/rotation in instantiations
-    inst_mirror = None
-    inst_rot = 0
-    for c in context:
-      if c.type == "symbol" and "lib_id" in c:
-        inst_rot, inst_mirror = c.rot_mirror(diffs)
-        break
     pin_config = next(
       c.pin_config(diffs) for c in reversed(context) if isinstance(c, SymbolDef)
     )
