@@ -353,6 +353,16 @@ class DiffUI:
     b64 = base64.b64encode(open(icon, "rb").read()).decode("ascii")
     return f"data:image/{imagetype};base64,{b64}"
 
+  def _font(self, font, name):
+    font = os.path.join(os.path.dirname(__file__), "fonts", font)
+    b64 = base64.b64encode(open(font, "rb").read()).decode("ascii")
+    return f"""@font-face {{
+      font-family: '{name}';
+      src: url(data:application/x-font-woff;charset=utf-8;base64,{b64});
+      font-weight: normal;
+      font-style: normal;
+      }}"""
+
   def _fillsvg(self, svg):
     svg.symbols = self._symbols
 
@@ -452,6 +462,7 @@ class DiffUI:
     )
     # Embed styles
     html.append("<style>")
+    html.append(self._font("newstroke-latin.woff", "kicad"))
     for css in ["diffui.css", "js-libraries/material.min.css"]:
       with open(os.path.join(srcdir, css), encoding="utf-8") as f:
         html.extend(

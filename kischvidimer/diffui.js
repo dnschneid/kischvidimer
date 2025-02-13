@@ -1936,7 +1936,6 @@ window.onpopstate = function (evt) {
     const re = /[_^~]\{((?:[^{}]|\{[^}]*\})*)\}/;
     target = unescape(target)
              .replace(re, (_,x) => x.replace(re, "$1"))
-             .replace(/-/g, String.fromCharCode(8211))
              .replace(/\{slash\}/g, "/")
              .split("\n").map(x => x || " ")
              .join("");

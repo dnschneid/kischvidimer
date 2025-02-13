@@ -68,10 +68,10 @@ class Svg:
   }
   # It seems a font of size 1.5775 as an em height of 2.54 in KiCad
   FONT_SIZE = 2.54 / 1.5775  # mm, converting KiCad glyph width to em height
-  FONT_FAMILY = "sans-serif"
+  FONT_FAMILY = "kicad"
   # Scale factor trying to bring the font's width closer to the width in KiCad
   FONT_CONDENSE = 1  # condensed versions may not exist, so don't rely on it
-  FONT_SPACING = -0.1  # in ex
+  FONT_SPACING = 0  # in ex
   # Image scale value, above which to treat the image as pixel art
   IMAGE_PIXEL_SCALE_THRESHOLD = 10
   # Transformation types
@@ -1172,8 +1172,6 @@ class Svg:
     # XML is OK with _^~{}, so it's safe (and required) to escape first
     text = text.replace("{slash}", "/")
     text = Svg.escape(text)
-    # mdash is too wide and ndash is too narrow
-    text = text.replace("-", "&#8211;")  # ndash :/
     text = Svg._ENCODE_BLOCKS_RE.sub(Svg._encode_block, text)
     return text
 

@@ -55,14 +55,7 @@ The HTML file has zero external dependencies and will not attempt to communicate
 with any server (unless you launch a datasheet, of course), so you really can
 treat it just like a PDF.
 
-## Why does it look so ugly?
-
-Glad you asked 🥲
-
-Currently kischvidimer does not have any embedded fonts, so the default KiCad
-font has to be approximated with...Arial.
-
-### KiCad has SVG output!
+## KiCad already has SVG output!
 
 It does! And the output is visually perfect! But the files are large, have hacks
 of their own around text glyphs, and are difficult to inject metadata into. It
