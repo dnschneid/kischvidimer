@@ -79,8 +79,6 @@ class PinDef(Drawable):
         inst_rot, inst_mirror = c.rot_mirror(diffs)
         break
 
-    svg.text(pos=pos, text=f"{inst_mirror} {inst_rot}")
-
     # Render line ending
     flipy = 1
     if (inst_mirror, inst_rot) in (
