@@ -437,8 +437,15 @@ class DiffUI:
       data.setdefault("fill", None)
       data["src"] = None
       # Merge the SVG tag
-      inner = "".join(f' {k}="{v}"' for k, v in attrs(m[0], data).items() if v)
-      return re.sub(r"<svg\s[^>]*>", lambda m: f"<svg{inner}>", s)
+      return re.sub(
+        r"<svg\s[^>]*>",
+        lambda m: "".join(
+          ["<svg"]
+          + [f' {k}="{v}"' for k, v in attrs(m[0], data).items() if v]
+          + [">"]
+        ),
+        s,
+      )
 
     return re.sub(r"<img\s[^>]*>", repl, h)
 
