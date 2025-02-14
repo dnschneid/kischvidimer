@@ -234,7 +234,8 @@ class Label(Drawable, HasUUID):
             offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
           elif shape == "output":
-            outline = [(0, h / 2), (w, h / 2), (h + w, 0)]
+            offset += h / 4
+            outline = [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
           elif shape in ("bidirectional", "tri_state"):
             offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
