@@ -858,8 +858,9 @@ class Svg:
       baseline = self.attr(
         "dominant-baseline", [(vj[1], c) for vj, c in vjust], "baseline"
       )
-      # KiCad ignores trailing newlines
-      splittext = text[i][0].rstrip("\n").split("\n")
+      # KiCad ignores a single trailing newline
+      t = text[i][0][:-1] if text[i][0].endswith("\n") else text[i][0]
+      splittext = t.split("\n")
       for lineno, line in enumerate(splittext):
         colcount = 0
         for colno, t in enumerate(line.split("\t")):
