@@ -15,6 +15,7 @@
 
 import base64
 import math
+import os
 import re
 import subprocess
 from xml.sax.saxutils import escape
@@ -66,12 +67,14 @@ class Svg:
     "wire": 0.1524,  # mm
     "bus": 0.3048,  # mm
   }
-  # It seems a font of size 1.5775 as an em height of 2.54 in KiCad
+  # It seems a font of size 1.5775 has an em height of 2.54 in KiCad
   FONT_SIZE = 2.54 / 1.5775  # mm, converting KiCad glyph width to em height
   FONT_FAMILY = "kicad"
   # Scale factor trying to bring the font's width closer to the width in KiCad
   FONT_CONDENSE = 1  # condensed versions may not exist, so don't rely on it
   FONT_SPACING = 0  # in ex
+  # Cache for font sizing
+  FONT_WIDTH_CACHE = {}
   # Image scale value, above which to treat the image as pixel art
   IMAGE_PIXEL_SCALE_THRESHOLD = 10
   # Transformation types
@@ -1179,13 +1182,48 @@ class Svg:
   _ENCODE_BLOCKS_RE = re.compile(r"[_^~]\{((?:[^{}]|\{[^}]*\})*)\}")
 
   @staticmethod
-  def calcwidth(text, size):
-    # FIXME: use a character width table to calculate the true width
-    # FIXME: handle super/subscript width adjustments
-    text = Svg._ENCODE_BLOCKS_RE.sub(
-      lambda m: Svg._ENCODE_BLOCKS_RE.sub(r"\1", m[1]), text
-    )
-    return len(text) * size
+  def calcwidth(text, size, font="newstroke"):
+    # Load the font map
+    widthmap = Svg.FONT_WIDTH_CACHE.get(font)
+    if widthmap is None:
+      Svg.FONT_WIDTH_CACHE[font] = widthmap = {}
+      try:
+        import fontTools.subset as fts
+
+        path = os.path.join(os.path.dirname(__file__), "fonts", f"{font}.woff")
+        opts = fts.Options()
+        # Scale font metrics such that size * widthmap = character advance
+        # This is based on FONT_WOFF_SCALE in fontconv.py along with some more
+        # reverse tracing of the size.
+        # FIXME: resolve the magic number 24
+        metric_scale = 1 / 29.7 * 50 * 0.0254 / 24
+        with fts.load_font(path, opts, dontLoadGlyphNames=True) as srcfont:
+          cmap = srcfont["cmap"].getBestCmap()
+          hmtx = srcfont["hmtx"].metrics
+          widthmap.update(
+            (chr(c), hmtx[g][0] * metric_scale) for c, g in cmap.items()
+          )
+      except ImportError:
+        pass
+
+    # Handle the different contexts (string vs sub-block vs multiline)
+    if isinstance(text, re.Match):
+      if text[0][0] != "~":
+        size *= 0.8  # match font-size in _encode_block
+      text = text[1]
+    elif "\n" in text:
+      return max(Svg.calcwidth(line, size, font) for line in text.split("\n"))
+
+    # Process formatted blocks and then remove from the string
+    width = 0
+    for m in Svg._ENCODE_BLOCKS_RE.finditer(text):
+      width += Svg.calcwidth(m, 1, font)
+    text = Svg._ENCODE_BLOCKS_RE.sub("", text)
+
+    # Handle the remaining string
+    width += sum(widthmap.get(c, 1) for c in text)
+
+    return width * float(size)
 
   @staticmethod
   def encode(text):
