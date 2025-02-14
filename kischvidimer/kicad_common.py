@@ -506,7 +506,6 @@ class TextBox(Drawable):
     # FIXME: diffs
     is_pg = "${" in self[0]
     args = {
-      "text": Variables.v(context).expand(context + (self,), self[0]),
       "rotate": None,
       "color": "notes",
       "fill": "none",
@@ -531,6 +530,28 @@ class TextBox(Drawable):
         rargs["fill"] = "none"
       svg.rect(**rargs)
     if draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
+      # halve the right margin to account for character spacing
+      wrapwidth = size[0] - margin * 3 / 2
+      text = Variables.v(context).expand(context + (self,), self[0])
+      lines = []
+      # wrap rules: only wrap on space and don't split words.
+      # sequential spaces can cause additional wraps.
+      # wrapped lines are trimmed to the first non-space.
+      for src in text.split("\n"):
+        trim = False
+        words = src.split(" ")
+        line = words[0]
+        for word in words[1:]:
+          if svg.calcwidth(f"{line} {word}", args["size"]) > wrapwidth:
+            lines.append(line)
+            line = word
+            trim = True
+          elif word and trim:
+            line = f"{line} {word}".lstrip(" ")
+          else:
+            line = f"{line} {word}"
+        lines.append(line)
+      args["text"] = text = "\n".join(lines)
       tpos = (pos[0] + size[0] / 2, pos[1] + size[1] / 2)
       if args.get("justify") == "left":
         tpos = (pos[0] + margin, tpos[1])
@@ -554,7 +575,6 @@ class TextBox(Drawable):
         if x in args
       }
       targs["pos"] = tpos
-      # FIXME: implement line wrapping D:
       svg.text(**targs)
 
 
