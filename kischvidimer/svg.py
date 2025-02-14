@@ -866,7 +866,10 @@ class Svg:
           yattr = (
             self.attr(
               "y",
-              [(f"{len(splittext) * (vj[0] - 1):g}ex", c) for vj, c in vjust],
+              [
+                (f"{(len(splittext) - 1) * (vj[0] - 1):g}em", c)
+                for vj, c in vjust
+              ],
               "-0em",
             )
             if len(splittext) > 1 and not lineno
