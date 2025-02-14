@@ -1181,7 +1181,6 @@ class Svg:
     """adds <tspan> elements for any embedded formatting"""
     # NOTE: remember to update diffui.js's generic text matcher to reflect this
     # XML is OK with _^~{}, so it's safe (and required) to escape first
-    text = text.replace("{slash}", "/")
     text = Svg.escape(text)
     text = Svg._ENCODE_BLOCKS_RE.sub(Svg._encode_block, text)
     return text

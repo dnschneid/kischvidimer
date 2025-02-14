@@ -168,7 +168,7 @@ class Wire(Polyline, HasUUID):
 class Label(Drawable, HasUUID):
   """any type of label"""
 
-  BUS_RE = re.compile(r"(?:^|[^_~^$]){(.+)}|\[(\d+)[.][.](\d+)\]")
+  BUS_RE = re.compile(r"(?:^|[^_~^$]){(?!slash})(.+)}|\[(\d+)[.][.](\d+)\]")
 
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs)
@@ -194,8 +194,8 @@ class Label(Drawable, HasUUID):
       return self["shape"][0][0]
     return None
 
-  def net(self, diffs, context):
-    return self[0]
+  def net(self, diffs, context, display=False):
+    return self[0].replace("{slash}", "/") if display else self[0]
 
   def bus(self, diffs, context):
     return Label.BUS_RE.search(self.net(diffs, context))
@@ -221,13 +221,14 @@ class Label(Drawable, HasUUID):
       pos = self["at"][0].pos(diffs)
       rot = self["at"][0].rot(diffs)
       shape = self.shape(diffs)
+      dispnet = self.net(diffs, context, display=True)
       outline = None
       if self.type != "label":
         offset = float(args["size"] / 8)
         # Reference: sch_label.cpp: *::CreateGraphicShape
         # FIXME: text width/height calculations are broken
         if self.type == "global_label":
-          w = float(len(self[0]) * args["size"])
+          w = float(len(dispnet) * args["size"])
           h = float(args["size"] * 2)
           if shape == "input":
             offset += h / 2
@@ -276,9 +277,7 @@ class Label(Drawable, HasUUID):
           thick=args["size"] / 8,
         )
       args["rotate"] = -180 * (rot >= 180)
-      svg.text(
-        self.net(diffs, context), prop=svg.PROP_LABEL, pos=offset, **args
-      )
+      svg.text(dispnet, prop=svg.PROP_LABEL, pos=offset, **args)
       svg.gend()
     if draw & Drawable.DRAW_TEXT and "property" in self:
       for field in self["property"]:
