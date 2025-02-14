@@ -1176,6 +1176,17 @@ class Svg:
       text = text[:-1] + "&#160;"
     return text.replace("  ", " &#160;")
 
+  _ENCODE_BLOCKS_RE = re.compile(r"[_^~]\{((?:[^{}]|\{[^}]*\})*)\}")
+
+  @staticmethod
+  def calcwidth(text, size):
+    # FIXME: use a character width table to calculate the true width
+    # FIXME: handle super/subscript width adjustments
+    text = Svg._ENCODE_BLOCKS_RE.sub(
+      lambda m: Svg._ENCODE_BLOCKS_RE.sub(r"\1", m[1]), text
+    )
+    return len(text) * size
+
   @staticmethod
   def encode(text):
     """adds <tspan> elements for any embedded formatting"""
@@ -1184,8 +1195,6 @@ class Svg:
     text = Svg.escape(text)
     text = Svg._ENCODE_BLOCKS_RE.sub(Svg._encode_block, text)
     return text
-
-  _ENCODE_BLOCKS_RE = re.compile(r"[_^~]\{((?:[^{}]|\{[^}]*\})*)\}")
 
   @staticmethod
   def _encode_block(text):

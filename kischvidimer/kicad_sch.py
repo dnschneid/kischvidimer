@@ -228,7 +228,7 @@ class Label(Drawable, HasUUID):
         # Reference: sch_label.cpp: *::CreateGraphicShape
         # FIXME: text width/height calculations are broken
         if self.type == "global_label":
-          w = float(len(dispnet) * args["size"])
+          w = float(svg.calcwidth(dispnet, args["size"]))
           h = float(args["size"] * 2)
           if shape == "input":
             offset += h / 2
