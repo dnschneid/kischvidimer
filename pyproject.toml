@@ -6,7 +6,9 @@ name = "kischvidimer"
 description = "KiCad schematic HTML viewer generator"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "fonttools>=4.56.0",
+]
 dynamic = ["version"]
 
 [dependency-groups]
