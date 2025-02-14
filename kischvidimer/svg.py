@@ -866,10 +866,7 @@ class Svg:
           yattr = (
             self.attr(
               "y",
-              [
-                ("%.1gem" % ((len(splittext) - 1) * (vj[0] - 1)), c)
-                for vj, c in vjust
-              ],
+              [(f"{len(splittext) * (vj[0] - 1):g}ex", c) for vj, c in vjust],
               "-0em",
             )
             if len(splittext) > 1 and not lineno
@@ -878,7 +875,7 @@ class Svg:
           self.add(
             ["<tspan"]
             + ['x="0"', 'dy="1em"'] * (lineno > 0) * (colno == 0)
-            + ['x="%gex"' % ((colcount // 4 + 1) * 4 * (1 + Svg.FONT_SPACING))]
+            + [f'x="{(colcount // 4 + 1) * 4 * (1 + Svg.FONT_SPACING):g}ex"']
             * (colno > 0)
             + yattr
             + baseline
