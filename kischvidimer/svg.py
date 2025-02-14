@@ -68,7 +68,8 @@ class Svg:
     "bus": 0.3048,  # mm
   }
   # It seems a font of size 1.5775 has an em height of 2.54 in KiCad
-  FONT_SIZE = 2.54 / 1.5775  # mm, converting KiCad glyph width to em height
+  FONT_SIZE = 2.54 / 1.5775  # converting KiCad glyph width to em height
+  FONT_HEIGHT = 4 / 3  # converting KiCad glyph width to "height"
   FONT_FAMILY = "kicad"
   # Scale factor trying to bring the font's width closer to the width in KiCad
   FONT_CONDENSE = 1  # condensed versions may not exist, so don't rely on it

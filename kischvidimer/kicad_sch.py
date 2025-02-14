@@ -225,11 +225,13 @@ class Label(Drawable, HasUUID):
       outline = None
       if self.type != "label":
         offset = float(args["size"] / 8)
+        th = float(args["size"]) * svg.FONT_HEIGHT
+        yoffset = 0
         # Reference: sch_label.cpp: *::CreateGraphicShape
-        # FIXME: text width/height calculations are broken
         if self.type == "global_label":
+          yoffset = th * 0.0715  # from sch_label.cpp
           w = float(svg.calcwidth(dispnet, args["size"]))
-          h = float(args["size"] * 2)
+          h = float(th * 1.5)  # from sch_label.cpp
           if shape == "input":
             offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
@@ -257,7 +259,7 @@ class Label(Drawable, HasUUID):
             offset *= -1
             for i, p in enumerate(outline):
               outline[i] = (p[0] - h, p[1])
-        offset = (offset, 0)
+        offset = (offset, yoffset)
       else:
         offset = (0, 0)
       # Outlines are symmetric across X
