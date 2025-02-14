@@ -1195,8 +1195,8 @@ class Svg:
         # Scale font metrics such that size * widthmap = character advance
         # This is based on FONT_WOFF_SCALE in fontconv.py along with some more
         # reverse tracing of the size.
-        # FIXME: resolve the magic number 24
-        metric_scale = 1 / 29.7 * 50 * 0.0254 / 24
+        # FIXME: resolve the magic number 26.5
+        metric_scale = 1 / 29.7 * 50 * 0.0254 / 26.5
         with fts.load_font(path, opts, dontLoadGlyphNames=True) as srcfont:
           cmap = srcfont["cmap"].getBestCmap()
           hmtx = srcfont["hmtx"].metrics

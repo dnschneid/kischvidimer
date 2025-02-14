@@ -232,14 +232,15 @@ class Label(Drawable, HasUUID):
           h = float(args["size"] * 2)
           if shape == "input":
             offset += h / 2
-            outline = [(0, 0), (h / 2, h / 2), (h / 2 + w, h / 2)]
+            outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
           elif shape == "output":
-            outline = [(0, h / 2), (w, h / 2), (h / 2 + w, 0)]
+            outline = [(0, h / 2), (w, h / 2), (h + w, 0)]
           elif shape in ("bidirectional", "tri_state"):
             offset += h / 2
-            outline = [(0, 0), (h / 2, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
+            outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
           elif shape == "passive":
-            outline = [(0, h / 2), (w, h / 2)]
+            offset += h / 4
+            outline = [(0, h / 2), (w + h / 2, h / 2)]
         elif self.type in ("hierarchical_label", "pin"):
           h = float(args["size"])
           offset += h
