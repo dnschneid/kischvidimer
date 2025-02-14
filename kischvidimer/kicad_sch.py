@@ -224,8 +224,8 @@ class Label(Drawable, HasUUID):
       dispnet = self.net(diffs, context, display=True)
       outline = None
       if self.type != "label":
-        offset = float(args["size"] / 8)
         th = float(args["size"]) * svg.FONT_HEIGHT
+        offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
         yoffset = 0
         # Reference: sch_label.cpp: *::CreateGraphicShape
         if self.type == "global_label":
@@ -236,13 +236,11 @@ class Label(Drawable, HasUUID):
             offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
           elif shape == "output":
-            offset += h / 4
             outline = [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
           elif shape in ("bidirectional", "tri_state"):
             offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
           elif shape == "passive":
-            offset += h / 4
             outline = [(0, h / 2), (w + h / 2, h / 2)]
         elif self.type in ("hierarchical_label", "pin"):
           h = float(args["size"])
