@@ -26,12 +26,10 @@ from .kicad_common import Drawable, Variables, rel_coord, unit_to_alpha
 
 # NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
 # TODO: handle the following?
-# bold
 # color
 # comment
 # drawing_sheet
 # face
-# italic
 # maxheight
 # maxlen
 # name
@@ -232,11 +230,14 @@ class TBText(Repeatable):
     else:
       text = expandfunc(text)
     lr, tb = self.justify
+    bold, italic = self.style()
     svg.text(
       text=text,
       pos=params["pos"],
       size=self.size(params["size"]),
       color=params["color"],
+      bold=bold,
+      italic=italic,
       justify=lr,
       vjustify=tb,
       rotate=self.get("rotate", default=[0])[0],
@@ -249,6 +250,14 @@ class TBText(Repeatable):
       assert size[0] == size[1]
       return size[0] or default
     return default
+
+  @sexp.uses("font", "bold", "italic")
+  def style(self):
+    if "font" in self:
+      bold = "bold" in self["font"][0]
+      italic = "italic" in self["font"][0]
+      return (bold, italic)
+    return (False, False)
 
   @property
   @sexp.uses("justify", "left", "middle", "right", "top", "bottom")

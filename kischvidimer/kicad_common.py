@@ -238,6 +238,15 @@ class Effects(Modifier):
     # FIXME: default size?
     return None
 
+  @sexp.uses("font", "bold", "italic")
+  def get_style(self, diffs):
+    # FIXME: diffs
+    if "font" in self:
+      bold = "bold" in self["font"][0]
+      italic = "italic" in self["font"][0]
+      return (bold, italic)
+    return (False, False)
+
   @sexp.uses("justify", "left", "right", "top", "bottom")
   def get_justify(self, diffs):
     # FIXME: diffs
@@ -263,6 +272,7 @@ class Effects(Modifier):
     args["size"] = self.get_size(diffs)
     args["color"] = self.get_color(diffs)
     args["hidden"] = self.get_hidden(diffs)
+    args["bold"], args["italic"] = self.get_style(diffs)
 
     if "href" in self:
       args["url"] = self["href"][0][0]

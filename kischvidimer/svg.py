@@ -745,6 +745,8 @@ class Svg:
     color="notes",
     justify="middle",
     vjustify="middle",
+    bold=False,
+    italic=False,
     rotate=None,
     hidden=None,
     url=None,
@@ -755,6 +757,8 @@ class Svg:
     hidden = Param.ify(hidden, False)
     text = Param.ify(text)
     pos = Param.ify(pos, (0, 0))
+    bold = [("bold" if b else "normal", c) for b, c in Param.ify(bold)]
+    italic = [("italic" if i else "normal", c) for i, c in Param.ify(italic)]
     size = [(self.size(s), c) for s, c in Param.ify(size)]
     color, opacity = self._color(color, "notes")
     anchor = [(Svg.ANCHOR[str(j).lower()], c) for j, c in Param.ify(justify)]
@@ -813,6 +817,8 @@ class Svg:
       + self.attr("fill", color, "none")
       + self.attr("fill-opacity", opacity, 1, convert=False)
       + self.attr("font-size", size, Svg.FONT_SIZE)
+      + self.attr("font-style", italic, "normal")
+      + self.attr("font-weight", bold, "normal")
       + self.attr("text-anchor", anchor, "start")
       + ['transform="scale(-1 1)"'] * self._mirror_text
       + Svg._tagattr(tag)
