@@ -28,6 +28,7 @@ import threading
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from io import BytesIO
 
 from . import diff as diff_mod
 from . import git, themes
@@ -361,7 +362,21 @@ class DiffUI:
     if ord(max(glyphs)) < 0x2500:
       src = f"{font}-latin"
     font = os.path.join(os.path.dirname(__file__), "fonts", f"{src}.woff")
-    b64 = base64.b64encode(open(font, "rb").read()).decode("ascii")
+    # Use fontTools if installed to only include used glyphs
+    try:
+      import fontTools.subset as fts
+
+      subsetter = fts.Subsetter()
+      subsetter.populate(text="".join(glyphs))
+      options = fts.Options()
+      fontdata = BytesIO()
+      with fts.load_font(font, options, dontLoadGlyphNames=True) as srcfont:
+        subsetter.subset(srcfont)
+        srcfont.save(fontdata)
+      fontdata = fontdata.getvalue()
+    except ImportError:
+      fontdata = open(font, "rb").read()
+    b64 = base64.b64encode(fontdata).decode("ascii")
     return f"""@font-face {{
       font-family: '{name}';
       src: url(data:application/x-font-woff;charset=utf-8;base64,{b64});
