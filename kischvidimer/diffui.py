@@ -353,8 +353,14 @@ class DiffUI:
     b64 = base64.b64encode(open(icon, "rb").read()).decode("ascii")
     return f"data:image/{imagetype};base64,{b64}"
 
-  def _font(self, font, name):
-    font = os.path.join(os.path.dirname(__file__), "fonts", font)
+  def _genfont(self, font, name):
+    glyphs = set()
+    for page in self._pages:
+      glyphs.update(page.svg.glyphs)
+    src = font
+    if ord(max(glyphs)) < 0x2500:
+      src = f"{font}-latin"
+    font = os.path.join(os.path.dirname(__file__), "fonts", f"{src}.woff")
     b64 = base64.b64encode(open(font, "rb").read()).decode("ascii")
     return f"""@font-face {{
       font-family: '{name}';
@@ -462,7 +468,6 @@ class DiffUI:
     )
     # Embed styles
     html.append("<style>")
-    html.append(self._font("newstroke-latin.woff", "kicad"))
     for css in ["diffui.css", "js-libraries/material.min.css"]:
       with open(os.path.join(srcdir, css), encoding="utf-8") as f:
         html.extend(
@@ -508,6 +513,10 @@ class DiffUI:
       open(os.path.join(srcdir, "diffui.js"), encoding="utf-8").read()
     )
     html.append("</script>")
+    # KiCad font (added late to speed up display of the loading dialog)
+    html.append("<style>")
+    html.append(self._genfont("newstroke", "kicad"))
+    html.append("</style>")
     # Data
     html.append("<script>")
     html.append("""/*

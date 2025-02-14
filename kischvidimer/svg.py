@@ -109,6 +109,7 @@ class Svg:
     self.datadir = None
     self.uidtable = None
     self.prune = True
+    self.glyphs = set()
     self._invert_y = []
     self._mirror_text = mirror_text
     self._bounds = None
@@ -839,6 +840,7 @@ class Svg:
         (self.metadata_context, "\n".join(t for t, _ in text))
       )
     for i in range(len(text)):
+      self.glyphs.update(text.get(i)[0])
       if url.get(i)[0]:
         targ = " target='_blank'" * (not url.get(i)[0].startswith("#"))
         self.add([f"<a href='{url.get(i)[0]}'{targ}>"], extend=True)
@@ -989,6 +991,7 @@ class Svg:
         self.pin_text.extend(
           (self.metadata_context,) + t[1:] for t in symsvg.pin_text
         )
+        self.glyphs.update(symsvg.glyphs)
         bounds = symsvg._bounds
         self._update_bounds(
           (bounds[0], self.y(bounds[1])), (bounds[2], self.y(bounds[3]))
