@@ -763,7 +763,8 @@ class Svg:
     pos = Param.ify(pos, (0, 0))
     bold = [("bold" if b else "normal", c) for b, c in Param.ify(bold)]
     italic = [("italic" if i else "normal", c) for i, c in Param.ify(italic)]
-    size = [(self.size(s), c) for s, c in Param.ify(size)]
+    kisize = Param.ify([(self.size(s, False), c) for s, c in Param.ify(size)])
+    emsize = Param.ify([(self.size(s, True), c) for s, c in Param.ify(size)])
     color, opacity = self._color(color, "notes")
     anchor = [(Svg.ANCHOR[str(j).lower()], c) for j, c in Param.ify(justify)]
     ### WORKAROUND for crbug/389845192
@@ -787,25 +788,34 @@ class Svg:
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)
       pos = Param.ify((0, 0))
     # Calculate bounding box
+    # FIXME: get rid of the duplicate calcs by moving it into the render loop
+    # FIXME: revamp the positioning to match better
     textpos = (float(pos[0][0][0]), float(pos[0][0][1]))
-    linecount = text[0][0].count("\n") + 1
-    linewidth = max(len(t) for t in text[0][0].split("\n"))
-    textwidth = size[0][0] / Svg.FONT_SIZE * linewidth
-    thick = size[0][0] / Svg.FONT_SIZE / 8
-    if anchor[0][0] == "middle":
-      textpos = (textpos[0] - textwidth / 2, textpos[1])
-    elif anchor[0][0] == "end":
-      textpos = (textpos[0] - textwidth, textpos[1])
-    textpos = (
-      textpos[0],
-      textpos[1] + self.y(size[0][0] * linecount * vjust[0][0][0]),
+    theight = max(
+      (1 + t[0].count("\n")) * emsize.get(i)[0] for i, t in enumerate(text)
+    )
+    twidth = max(
+      Svg.calcwidth(t[0], kisize.get(i)[0]) for i, t in enumerate(text)
     )
     # Reference: gr_text.cpp: reg=size/8, demibold=size/6, bold=size/5
-    self._update_bounds(
-      textpos,
-      (textpos[0] + textwidth, textpos[1] - self.y(size[0][0] * linecount)),
-      thick=thick,
+    thick = max(s * Svg.FONT_HEIGHT / 5 for s, _ in kisize)
+    if anchor[0][0] == "middle":
+      textpos = (textpos[0] - twidth / 2, textpos[1])
+    elif anchor[0][0] == "end":
+      textpos = (textpos[0] - twidth, textpos[1])
+    textpos = (
+      textpos[0],
+      textpos[1]
+      + theight * vjust[0][0][0]
+      - (kisize[0][0] * 1 / 3 if vjust[0][0][1] == "hanging" else 0),
     )
+    if any(not h for h, _ in hidden):
+      # self.rect((textpos[0], textpos[1] - theight), twidth, theight)
+      self._update_bounds(
+        textpos,
+        (textpos[0] + twidth, textpos[1] - self.y(theight)),
+        thick=thick,
+      )
     xpos_factor = 1
     if self._mirror_text:
       anchor = [
@@ -820,7 +830,7 @@ class Svg:
       + self.attr("y", [(self.y(p[1]), c) for p, c in pos], 0)
       + self.attr("fill", color, "none")
       + self.attr("fill-opacity", opacity, 1, convert=False)
-      + self.attr("font-size", size, Svg.FONT_SIZE)
+      + self.attr("font-size", emsize, Svg.FONT_SIZE)
       + self.attr("font-style", italic, "normal")
       + self.attr("font-weight", bold, "normal")
       + self.attr("text-anchor", anchor, "start")
@@ -891,7 +901,8 @@ class Svg:
             + opacity,
             extend=True,  # stray whitespace in <text> causes misalignment
           ).hascontents(f"{encoded}</tspan>")
-          colcount += len(t)
+          # FIXME: tab calculation still isn't quite right
+          colcount = (colcount // 4 + 1) * 4 + Svg.calcwidth(t, 1)
       if url.get(i)[0]:
         self.add("</a>", extend=True)
     self.add("</text>", extend=True)
@@ -1148,12 +1159,14 @@ class Svg:
       color = "#" + "".join(f"{c:02X}" for c in color[:3])
     return (color, opacity)
 
-  def size(self, size):
-    """Maps a size to the unit size of the font."""
+  def size(self, size, em):
+    """Maps a size to the unit size of the font.
+    If em is true, scale to SVG size (em)
+    """
     size = 1.0 if size is None else size
     if isinstance(size, str) and size.endswith("%"):
       size = float(size[:-1]) / 100
-    return Svg.FONT_SIZE * float(size)
+    return Svg.FONT_SIZE * float(size) if em else float(size)
 
   @staticmethod
   def pattern(pattern, thick):
