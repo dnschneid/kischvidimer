@@ -613,6 +613,8 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
         for obj in self[typ]:
           if "instances" in obj:
             instances.update(obj["instances"][0].paths(project))
+    if not instances:
+      instances.add("/" + HasUUID.uuid(self, generate=True))
     return [
       (fakepath(i.rpartition("/")[0]), fakesheet(i.rpartition("/")[2]))
       for i in instances
