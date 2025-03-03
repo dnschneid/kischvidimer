@@ -598,7 +598,7 @@ class Field(Drawable):
     variables.define(context + (self,), self.name, self.value)
     super().fillvars(variables, diffs, context)
 
-  @sexp.uses("show_name")
+  @sexp.uses("show_name", "hide")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs...
     prop = self.name
@@ -644,6 +644,7 @@ class Field(Drawable):
       "color": color,
       "url": url,
       "tag": tag,
+      "hidden": "hide" in self,
     }
     args.update(self.svgargs(diffs, context))
     svg.text(**args)
