@@ -47,7 +47,7 @@ class Svg:
   }
   VJUST = {
     "bottom": (0, "text-after-edge"),
-    "wks_bottom": (0, "auto"),
+    "wks_bottom": (0, "alphabetic"),
     "middle": (0.5, "central"),
     "top": (1, "hanging"),
   }
@@ -867,7 +867,7 @@ class Svg:
         else self.attr_opacity(text, i=i, name="fill-opacity")
       )
       baseline = self.attr(
-        "dominant-baseline", [(vj[1], c) for vj, c in vjust], "baseline"
+        "dominant-baseline", [(vj[1], c) for vj, c in vjust], "central"
       )
       # KiCad ignores a single trailing newline
       t = text[i][0][:-1] if text[i][0].endswith("\n") else text[i][0]
@@ -1365,6 +1365,7 @@ class Svg:
           'fill="none"',
           f'font-family="{Svg.FONT_FAMILY}"',
           f'font-size="{Svg.tounit(Svg.FONT_SIZE)}"',
+          f'dominant-baseline="{Svg.VJUST["middle"][1]}"',
           f'stroke-width="{Svg.tounit(Svg.THICKNESS["wire"])}"',
           'stroke-linecap="round"',
           'stroke-linejoin="round"',
