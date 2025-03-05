@@ -891,38 +891,28 @@ class Svg:
         # additional tabs.
         charcount = 0
         cursorpos = 0
-        encodedrow = ""
         for colno, t in enumerate(line.split("\t")):
           # FIXME: tab calculation still isn't quite right
+          targetpos = 0
+          gap_em = 0
           if colno:
             charcount = (charcount // 4 + 1) * 4 - 1
-            gap_width = charcount - cursorpos + Svg.calcwidth(" ", 1)
-            while gap_width <= 0:
+            targetpos = charcount + Svg.calcwidth(" ", 1)
+            while targetpos <= cursorpos:
               charcount += 4
-              gap_width += 4
-            gap_em = gap_width / Svg.FONT_HEIGHT
-            for char, gap in (
-              ("&#8195;", 1),  # em space
-              ("&#8196;", 1 / 3),  # 3-per-em space
-              ("&#8197;", 1 / 4),  # 4-per-em space
-              ("&#8198;", 1 / 6),  # 6-per-em space
-              ("&#8202;", 1 / 24),  # hair space, 24-per-em?
-            ):
-              while gap_em >= gap - (1 / 24 / 2):  # allow 50% overshoot
-                encodedrow += char
-                gap_em -= gap
-                cursorpos += gap * Svg.FONT_HEIGHT
-          encodedrow += Svg.encode(t or "")
-          cursorpos += Svg.calcwidth(t, 1)
+              targetpos += 4
+          gap_em = (targetpos - cursorpos) / Svg.FONT_HEIGHT
+          self.add(
+            ["<tspan"]
+            + yattr * (colno == 0)
+            + ['x="0"', 'dy="1em"'] * (lineno > 0) * (colno == 0)
+            + [f'dx="{gap_em:.4g}em"'] * (colno > 0)
+            + baseline
+            + opacity,
+            extend=True,  # stray whitespace in <text> causes misalignment
+          ).hascontents(f"{Svg.encode(t or '') or '&#8203;'}</tspan>")
           charcount += Svg.calcwidth(t, 1, font=None)
-        self.add(
-          ["<tspan"]
-          + ['x="0"', 'dy="1em"'] * (lineno > 0)
-          + yattr
-          + baseline
-          + opacity,
-          extend=True,  # stray whitespace in <text> causes misalignment
-        ).hascontents(f"{encodedrow or ' '}</tspan>")
+          cursorpos = targetpos + Svg.calcwidth(t, 1)
       if url.get(i)[0]:
         self.add("</a>", extend=True)
     self.add("</text>", extend=True)
