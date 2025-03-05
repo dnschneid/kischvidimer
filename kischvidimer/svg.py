@@ -876,33 +876,56 @@ class Svg:
       t = text[i][0][:-1] if text[i][0].endswith("\n") else text[i][0]
       splittext = t.split("\n")
       for lineno, line in enumerate(splittext):
-        colcount = 0
-        for colno, t in enumerate(line.split("\t")):
-          encoded = Svg.encode(t or "") or " "
-          yattr = (
-            self.attr(
-              "y",
-              [
-                (f"{(len(splittext) - 1) * (vj[0] - 1):g}em", c)
-                for vj, c in vjust
-              ],
-              "-0em",
-            )
-            if len(splittext) > 1 and not lineno
-            else []
+        yattr = (
+          self.attr(
+            "y",
+            [
+              (f"{(len(splittext) - 1) * (vj[0] - 1):g}em", c)
+              for vj, c in vjust
+            ],
+            "-0em",
           )
-          self.add(
-            ["<tspan"]
-            + ['x="0"', 'dy="1em"'] * (lineno > 0) * (colno == 0)
-            + [f'x="{(colcount // 4 + 1) * 4 * (1 + Svg.FONT_SPACING):g}ex"']
-            * (colno > 0)
-            + yattr
-            + baseline
-            + opacity,
-            extend=True,  # stray whitespace in <text> causes misalignment
-          ).hascontents(f"{encoded}</tspan>")
+          if len(splittext) > 1 and not lineno
+          else []
+        )
+        # Tab calculation reference: stroke_font.cpp
+        # The target column is on the charcount/4 * fontwidth boundary
+        # If target + one space is less than the existing text width, add
+        # additional tabs.
+        charcount = 0
+        cursorpos = 0
+        encodedrow = ""
+        for colno, t in enumerate(line.split("\t")):
           # FIXME: tab calculation still isn't quite right
-          colcount = (colcount // 4 + 1) * 4 + Svg.calcwidth(t, 1)
+          if colno:
+            charcount = (charcount // 4 + 1) * 4 - 1
+            gap_width = charcount - cursorpos + Svg.calcwidth(" ", 1)
+            while gap_width <= 0:
+              charcount += 4
+              gap_width += 4
+            gap_em = gap_width / Svg.FONT_HEIGHT
+            for char, gap in (
+              ("&#8195;", 1),  # em space
+              ("&#8196;", 1 / 3),  # 3-per-em space
+              ("&#8197;", 1 / 4),  # 4-per-em space
+              ("&#8198;", 1 / 6),  # 6-per-em space
+              ("&#8202;", 1 / 24),  # hair space, 24-per-em?
+            ):
+              while gap_em >= gap - (1 / 24 / 2):  # allow 50% overshoot
+                encodedrow += char
+                gap_em -= gap
+                cursorpos += gap * Svg.FONT_HEIGHT
+          encodedrow += Svg.encode(t or "")
+          cursorpos += Svg.calcwidth(t, 1)
+          charcount += Svg.calcwidth(t, 1, font=None)
+        self.add(
+          ["<tspan"]
+          + ['x="0"', 'dy="1em"'] * (lineno > 0)
+          + yattr
+          + baseline
+          + opacity,
+          extend=True,  # stray whitespace in <text> causes misalignment
+        ).hascontents(f"{encodedrow or ' '}</tspan>")
       if url.get(i)[0]:
         self.add("</a>", extend=True)
     self.add("</text>", extend=True)
@@ -1198,7 +1221,7 @@ class Svg:
   @staticmethod
   def calcwidth(text, size, font="newstroke"):
     # Load the font map
-    widthmap = Svg.FONT_WIDTH_CACHE.get(font)
+    widthmap = Svg.FONT_WIDTH_CACHE.get(font) if font else {}
     if widthmap is None:
       Svg.FONT_WIDTH_CACHE[font] = widthmap = {}
       try:
