@@ -71,9 +71,6 @@ class Svg:
   FONT_SIZE = 2.54 / 1.5775  # converting KiCad glyph width to em height
   FONT_HEIGHT = 4 / 3  # converting KiCad glyph width to "height"
   FONT_FAMILY = "kicad"
-  # Scale factor trying to bring the font's width closer to the width in KiCad
-  FONT_CONDENSE = 1  # condensed versions may not exist, so don't rely on it
-  FONT_SPACING = 0  # in ex
   # Cache for font sizing
   FONT_WIDTH_CACHE = {}
   # Image scale value, above which to treat the image as pixel art
@@ -1368,8 +1365,6 @@ class Svg:
           'fill="none"',
           f'font-family="{Svg.FONT_FAMILY}"',
           f'font-size="{Svg.tounit(Svg.FONT_SIZE)}"',
-          f'font-stretch="{Svg.FONT_CONDENSE * 100:g}%"',
-          f'letter-spacing="{Svg.FONT_SPACING:g}ex"',
           f'stroke-width="{Svg.tounit(Svg.THICKNESS["wire"])}"',
           'stroke-linecap="round"',
           'stroke-linejoin="round"',
