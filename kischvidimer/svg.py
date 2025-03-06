@@ -380,14 +380,17 @@ class Svg:
       return not prune
     # If all that's between this end tag and the start tag are a bunch of
     # animations, delete the whole set
+    gcount = max(1, len(transforms))
     for d in self.data[-1::-1]:
       if d.startswith("<g"):
-        while self.data and self.data[-1].startswith("<g"):
-          self.data.pop()
-        return False
+        while self.data and not self.data.pop().startswith("<g"):
+          pass
+        gcount -= 1
+        if not gcount:
+          return False
       elif not d.startswith("<animate"):
         break
-    self.add("</g>" * max(1, len(transforms)))
+    self.add("</g>" * gcount)
     return True
 
   def astart(self, target):
