@@ -46,6 +46,11 @@ class KicadPro(Comparable):
     if not pages:
       return
     context = self.context()
+    # Collect bus aliases so that all pages can use them
+    for _filename, (_instances, sch) in pages.items():
+      if "bus_alias" in sch:
+        for ba in sch["bus_alias"]:
+          context[0].add(ba)
     for _filename, (instances, sch) in pages.items():
       if p:
         p.write().incr()
