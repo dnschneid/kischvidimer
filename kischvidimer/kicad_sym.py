@@ -292,6 +292,23 @@ class SymbolDef(sexp.SExp, Comparable):
       for field in properties.values():
         field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
 
+  def get_pins(self, diffs, context, variant=1, cache=False):
+    # Returns a dict of pin names and a list of pin numbers for each name
+    if cache and hasattr(self, "_get_pins_cache"):
+      return self._get_pins_cache
+    pins = {}
+    sym = self._sym(diffs, context)
+    bodies = [b for b in sym["symbol"] if b.variant in (0, variant)]
+    for body in bodies:
+      if "pin" not in body:
+        continue
+      for pin in body["pin"]:
+        name, num = pin.name_num(context, diffs)
+        pins.setdefault(name, []).append(num)
+    if cache:
+      self._get_pins_cache = pins
+    return pins
+
   def show_unit(self, diffs, context):
     sym = self._sym(diffs, context)
     return max(b.unit for b in sym["symbol"]) > 1

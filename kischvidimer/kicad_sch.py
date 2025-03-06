@@ -462,7 +462,7 @@ class SymbolInst(Drawable, HasUUID):
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
-      convert = self.get("convert", default=[1])[0]
+      convert = self.variant(diffs, context)
       svg.gstart(
         pos=pos,
         rotate=rot,
@@ -510,6 +510,7 @@ class SymbolInst(Drawable, HasUUID):
       default=Field.getprop(self, "Reference", default="?"),
     )
 
+  @sexp.uses("unit")
   def unit(self, diffs, context, as_alpha=False):
     unit = instancedata(
       "unit",
@@ -520,6 +521,10 @@ class SymbolInst(Drawable, HasUUID):
     if not as_alpha:
       return unit
     return unit_to_alpha(unit)
+
+  @sexp.uses("convert")
+  def variant(self, diffs, context):
+    return self.get("convert", default=[1])[0]
 
   def as_comp(self, context):
     # returns (refdes, {dict of properties, with chr(1) containing local uuid})
