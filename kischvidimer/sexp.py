@@ -210,7 +210,7 @@ class SExp:
         subs.insert(0, item)
     elif isinstance(item, Atom):
       self._atoms[item] = self._atoms.get(item, 0) + 1
-    self.sexp.insert(i)
+    self.sexp.insert(i, item)
 
   def remove(self, atoms=None, func=None):
     if atoms is None and func is None:
