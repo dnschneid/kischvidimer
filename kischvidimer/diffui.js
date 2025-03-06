@@ -2135,6 +2135,9 @@ function genpdf() {
     win.onload = function () { win.print(); win.close(); };
     win.onbeforeprint = function () { win.document.title = schematicTitle; };
 
+    // Copy in fonts
+    document.fonts.forEach(f => win.document.fonts.add(f));
+
     // Black-on-white theme
     setTheme(themeBW, win.document.body);
 
