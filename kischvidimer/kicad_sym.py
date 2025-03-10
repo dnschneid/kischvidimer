@@ -306,8 +306,19 @@ class SymbolDef(sexp.SExp, Comparable):
 
   def get_pins(self, diffs, context, variant=1):
     # Returns a dict of pin names and a list of pin numbers for each name
-    if not diffs and hasattr(self, "_get_pins_cache"):
-      return self._get_pins_cache
+    # FIXME: we don't have sufficient context if there are alternates on units
+    #        across multiple pages
+    cacheentry = None
+    if not diffs:
+      # cache per refdes, as a simple way of handling alternates.
+      if not hasattr(self, "_get_pins_cache"):
+        self._get_pins_cache = {}
+      for c in reversed(context):
+        if hasattr(c, "refdes"):
+          cacheentry = c.refdes([], context)
+          break
+      if cacheentry in self._get_pins_cache:
+        return self._get_pins_cache[cacheentry]
     pins = {}
     sym = self._sym(diffs, context)
     bodies = [b for b in sym["symbol"] if b.variant in (0, variant)]
@@ -317,8 +328,8 @@ class SymbolDef(sexp.SExp, Comparable):
       for pin in body["pin"]:
         name, num = pin.name_num(diffs, context)
         pins.setdefault(name, []).append(num)
-    if not diffs:
-      self._get_pins_cache = pins
+    if cacheentry is not None:
+      self._get_pins_cache[cacheentry] = pins
     return pins
 
   def show_unit(self, diffs, context):
