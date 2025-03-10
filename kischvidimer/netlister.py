@@ -18,6 +18,8 @@
 #  * A net that is connected between two blocks and not named at the higher
 #    level should not simply pick the lexicographically-minimum name. There is
 #    some other criteria that KiCad uses that needs to be investigated.
+#    See connection_graph.cpp; there's a preference for hierarchical outputs but
+#    there's more to it than that.
 
 import re
 from collections import namedtuple
