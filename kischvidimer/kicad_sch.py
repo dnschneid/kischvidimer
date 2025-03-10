@@ -409,6 +409,21 @@ class SymbolInst(Drawable, HasUUID):
     # usually due to out-of-date symbol instances.
     return self.get("lib_name", default=self.get("lib_id"))[0]
 
+  def get_alternates(self, diffs, context):
+    if not diffs and hasattr(self, "_get_alternates_cache"):
+      return self._get_alternates_cache
+    if "pin" not in self:
+      return {}
+    context = context + (self,)
+    alternates = {}
+    for pin in self["pin"]:
+      alternate = pin.get_alternate(diffs, context)
+      if alternate is not None:
+        alternates[pin.number] = alternate
+    if not diffs:
+      self._get_alternates_cache = alternates
+    return alternates
+
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
     lib = context[-1]["lib_symbols"][0]
@@ -555,12 +570,13 @@ kicad_sym.SymbolInst = SymbolInst
 class PinInst(sexp.SExp, Comparable, HasUUID):
   """pins in a symbol instance"""
 
-  """
-		(pin "1"
-			(uuid "91e8ed47-d04f-4b18-94c6-d8c70729bd8c")
-			(alternate "pwr_in")
-		)
-                """
+  @property
+  def number(self):
+    return self[0]
+
+  @sexp.uses("alternate")
+  def get_alternate(self, diffs, context):
+    return self.get("alternate", default=[None])[0]
 
 
 kicad_sym.PinInst = PinInst

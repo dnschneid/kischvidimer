@@ -930,6 +930,12 @@ class Svg:
     Returns True if the symbol was successfully instantiated; otherwise you
     should draw something yourself.
     """
+    # FIXME: this is a terrible hack for alternates, and doesn't support diffs
+    alternates = ""
+    if context and hasattr(context[-1], "get_alternates"):
+      alternates = context[-1].get_alternates([], context)
+      alternates = "\n".join(f"{n}={a}" for n, a in sorted(alternates.items()))
+      alternates = f"{hash(alternates):x}"
     lib = Param.ify(lib)
     lib_id = Param.ify(lib_id)
     unit = Param.ify(unit)
@@ -942,6 +948,7 @@ class Svg:
             f"{lib.get(i)[0].sym_hash(lib_id.get(i)[0]):x}",
             str(unit.get(i)[0]),
             str(variant.get(i)[0]),
+            alternates,
             str(self._rotate_state(i) // 90),
             "m" * self._mirror_state(i),
             f"{draw:x}",

@@ -18,7 +18,6 @@
 #  * A net that is connected between two blocks and not named at the higher
 #    level should not simply pick the lexicographically-minimum name. There is
 #    some other criteria that KiCad uses that needs to be investigated.
-#  * Alternates are not considered
 
 import re
 from collections import namedtuple
@@ -444,10 +443,10 @@ class Netlister:
         ref = c.refdes([], context)
         show_unit = c.show_unit([], context)
         variant = c.variant([], context)
-        pins = symbol_def.get_pins([], context, variant=variant, cache=True)
+        pins = symbol_def.get_pins([], context, variant=variant)
         break
-    name, number = pin.name_num(context, [])
-    pintype = pin.get_type_style(context, [])[0]
+    name, number = pin.name_num([], context)
+    pintype = pin.get_type_style([], context)[0]
     is_unique = len(pins[name]) == 1
     # FIXME: alternates can cause electrical type of hidden pin to be power
     # input (or not). does that still make it a power net?

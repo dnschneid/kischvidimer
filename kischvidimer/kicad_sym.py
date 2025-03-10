@@ -33,21 +33,32 @@ class PlaceholderHandler(sexp.SExp):
 class PinDef(Drawable):
   """pins in a symbol definition"""
 
-  def name_num(self, context, diffs):
+  def name_num(self, diffs, context):
     # FIXME: alternate from context
-    return (self["name"][0][0], self["number"][0][0])
+    alternate = self.alternate(diffs, context)
+    return (alternate or self["name"][0][0], self["number"][0][0])
 
-  @sexp.uses("alternate")
-  def get_type_style(self, context, diffs):
-    # FIXME: pull alternate from context
+  def get_type_style(self, diffs, context):
     # FIXME: diffs
     # FIXME: alternate can have diffs too
-    if 0 == 1 and "alternate" in self:
-      alternate = None
+    alternate = self.alternate(diffs, context)
+    if alternate is not None:
       for alt in self["alternate"]:
         if alternate == alt[0]:
           return (alt[1], alt[2])
+      # TODO: what to do when alternate is not found?
     return (self[0], self[1])
+
+  @sexp.uses("alternate")
+  def alternate(self, diffs, context):
+    if "alternate" not in self:
+      return None
+    num = self["number"][0][0]
+    for c in reversed(context):
+      if hasattr(c, "get_alternates"):
+        alternates = c.get_alternates(diffs, context)
+        return alternates.get(num)
+    return None
 
   @sexp.uses("at")
   def pts(self, diffs, context):
@@ -82,7 +93,6 @@ class PinDef(Drawable):
     # REFERENCE: LIB_PIN::PlotSymbol, LIB_PIN::PlotPinTexts
     # FIXME: diffs
     # FIXME: effects
-    # FIXME: alternates
     # FIXME: unconnected circle
     # FIXME: defaults?
     # FIXME: metadata (electrical type)
@@ -111,7 +121,7 @@ class PinDef(Drawable):
       ("x", 270),
     ):
       flipy = -1
-    style = self.get_type_style(context, diffs)[1]
+    style = self.get_type_style(diffs, context)[1]
     dot = "inverted" in style
     end = translated(pos, rotated(length - 1.27 * dot, rot))
     xys = [pos, end]
@@ -199,9 +209,11 @@ class PinDef(Drawable):
       swap_side = True
     if inst_mirror and not (rot + inst_rot) % 180:
       swap_side = not swap_side
+
+    name_num = self.name_num(diffs, context)
     for is_name, part in enumerate(("number", "name")):
       # FIXME: save the metadata
-      text = self[part][0][0]
+      text = name_num[not is_name]
       if pin_config[part]["hide"] or text == "~":
         text = ""
       xoffset = rotated(pin_config[part]["xoffset"], rot)
@@ -292,9 +304,9 @@ class SymbolDef(sexp.SExp, Comparable):
       for field in properties.values():
         field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
 
-  def get_pins(self, diffs, context, variant=1, cache=False):
+  def get_pins(self, diffs, context, variant=1):
     # Returns a dict of pin names and a list of pin numbers for each name
-    if cache and hasattr(self, "_get_pins_cache"):
+    if not diffs and hasattr(self, "_get_pins_cache"):
       return self._get_pins_cache
     pins = {}
     sym = self._sym(diffs, context)
@@ -303,9 +315,9 @@ class SymbolDef(sexp.SExp, Comparable):
       if "pin" not in body:
         continue
       for pin in body["pin"]:
-        name, num = pin.name_num(context, diffs)
+        name, num = pin.name_num(diffs, context)
         pins.setdefault(name, []).append(num)
-    if cache:
+    if not diffs:
       self._get_pins_cache = pins
     return pins
 
