@@ -24,9 +24,11 @@ from .kicad_common import (
   HasUUID,
   Polyline,
   Variables,
+  draw_uc_at,
   instancedata,
   unit_to_alpha,
 )
+from .netlister import Netlister
 
 # FIXME: check eeschema/schematic.keywords for completeness
 #        on last check, there are around 79 unused atoms
@@ -110,29 +112,21 @@ class Junction(Drawable):
 
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
-    if not draw & Drawable.DRAW_FG:
+    # FIXME: this has a false per-page dependency due to netlist queries.
+    #        Can this be resolved?
+    if not draw & Drawable.DRAW_FG_PG:
       return
     # FIXME: diffs
     pos = self.pts(diffs)[0]
     diameter = sexp.Decimal(0.915)
     if "diameter" in self and self["diameter"][0][0]:
       diameter = self["diameter"][0][0]
-    # Change color if bus vs wire
-    color = None
-    # FIXME: replace this with a proper point database
-    for c in reversed(context):
-      if "bus" in c:
-        for bus in c["bus"]:
-          if "pts" in bus:
-            for pt in bus["pts"][0]["xy"]:
-              if pos == pt.pos():
-                color = "bus_junction"
-            if color:
-              break
-        if color:
-          break
-    else:
-      color = "junction"
+    color = "junction"
+    try:
+      if Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0:
+        color = "bus_junction"
+    except KeyError:
+      pass
     if "color" in self and any(self["color"][0].data):
       color = self["color"][0].data
     svg.circle(
@@ -180,6 +174,10 @@ class Wire(Polyline, HasUUID):
 
   def fillsvg(self, svg, diffs, draw, context):
     super().fillsvg(svg, diffs, draw, context)
+    if draw & Drawable.DRAW_FG_PG and self.type == "wire":
+      for pos in self.pts(diffs):
+        if Netlister.n(context).get_node_count(context, pos) == 1:
+          draw_uc_at(svg, pos, color="wire")  # FIXME: not the correct color?
     if draw & Drawable.DRAW_TEXT and getattr(self, "netbus", None):
       pts = self.pts(diffs)
       svg.text(
@@ -265,7 +263,8 @@ class Label(Drawable, HasUUID):
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
-    if draw & Drawable.DRAW_FG:
+    args = pos = None
+    if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {
         "size": 1.27,
@@ -282,6 +281,7 @@ class Label(Drawable, HasUUID):
         args["color"] = self["color"][0].data
       args.update(self.svgargs(diffs, context))
       pos = self["at"][0].pos(diffs)
+    if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
       shape = self.shape(diffs)
       dispnet = self.net(diffs, context, display=True)
@@ -343,7 +343,19 @@ class Label(Drawable, HasUUID):
         )
       args["rotate"] = -180 * (rot >= 180)
       svg.text(dispnet, prop=svg.PROP_LABEL, pos=offset, **args)
+      # FIXME: draw unconnected square on ends
       svg.gend()
+    if (
+      draw & Drawable.DRAW_FG_PG
+      and Netlister.n(context).get_node_count(
+        context, pos, is_bus=bool(self.bus(diffs, context))
+      )
+      == 1
+    ):
+      uc_color = args["color"]
+      if isinstance(uc_color, str):
+        uc_color = uc_color.replace("sheet", "hier")
+      draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
     if draw & Drawable.DRAW_TEXT and "property" in self:
       for field in self["property"]:
         field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
@@ -430,7 +442,7 @@ class SymbolInst(Drawable, HasUUID):
     lib_id = self.lib_id(diffs, context)
     sym = lib.symbol(lib_id)
     unit = self.unit(diffs, context)
-    convert = self.get("convert", default=[1])[0]
+    convert = self.variant(diffs, context)
     sym.fillnetlist(
       netlister,
       diffs,
@@ -473,6 +485,7 @@ class SymbolInst(Drawable, HasUUID):
       # FIXME: diffs, of course
       lib = context[-1]["lib_symbols"][0]
       lib_id = self.lib_id(diffs, context)
+      sym = lib.symbol(lib_id)
       pos = self["at"][0].pos(diffs)
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
@@ -489,6 +502,22 @@ class SymbolInst(Drawable, HasUUID):
       svg.instantiate(
         subdraw, lib, lib_id, unit=unit, variant=convert, context=(self,)
       )
+      # Draw unconnected circles
+      if subdraw & Drawable.DRAW_PINS:  # FIXME: should this be DRAW_FG_PG?
+        n = Netlister.n(context)
+        # NOTE: context passed to sym (intentionally) does not include self, so
+        #       returned pts will be untransformed
+        for pos in sym.get_con_pin_coords(diffs, context, unit, convert):
+          abs_pos = self.transform_pin(pos, diffs)
+          if n.get_net(context, abs_pos).is_floating_sympin():
+            pos = (pos[0], -pos[1])
+            svg.circle(
+              pos=pos,
+              radius=sexp.Decimal(0.3175),
+              fill="none",
+              color="device",  # FIXME: not the correct color
+              thick="ui",
+            )
       svg.gend()
     super().fillsvg(svg, diffs, draw, context)
 

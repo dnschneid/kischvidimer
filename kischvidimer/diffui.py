@@ -46,6 +46,7 @@ class Page:
     conflicts,
     proj,
     variables,
+    netlister,
     uidtable,
     symbols,
     worksheet,
@@ -69,6 +70,8 @@ class Page:
     self.svg.metadata_context = None
     variables = variables or Variables()
     self.context = variables.context()
+    if netlister:
+      self.context += netlister.context()
     if proj:
       self.context += proj.context()
     else:
@@ -275,6 +278,7 @@ class DiffUI:
       conflicts,
       self._proj,
       self._variables,
+      self._netlister,
       self._uidtable,
       self._symbols,
       self._worksheet,

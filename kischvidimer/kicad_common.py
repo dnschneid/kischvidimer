@@ -92,6 +92,18 @@ def instancedata(field, diffs, context, default=None):
   return default
 
 
+def draw_uc_at(svg, pos, color):
+  # FIXME: handle diffs
+  sz = 0.3  # FIXME: number?
+  svg.rect(
+    pos=(float(pos[0]) - sz, float(pos[1]) - sz),
+    width=sz * 2,
+    height=sz * 2,
+    color=color,
+    thick="ui",
+  )
+
+
 def translated(pos, offset):
   if not isinstance(offset, tuple):
     offset = (offset, 0)
@@ -173,15 +185,21 @@ class Drawable(sexp.SExp, Comparable):
   DRAW_SYMFG = DRAW_PINS  # context: schematic, includes pins/fg/text
   DRAW_TEXT_PG = 1 << 6  # page-specific text (variables)
   DRAW_PROPS_PG = 1 << 7  # page-specific props (variables, refdes)
-  DRAW_TEXT = 1 << 8
-  DRAW_PROPS = 1 << 9
-  DRAW_FG = 1 << 10
-  DRAW_MODES = 11
+  DRAW_FG_PG = 1 << 8  # page-specific foreground elements
+  DRAW_TEXT = 1 << 9
+  DRAW_PROPS = 1 << 10
+  DRAW_FG = 1 << 11
+  DRAW_MODES = 12
   DRAW_ALL = (1 << DRAW_MODES) - 1
   DRAW_SEQUENCE = tuple(1 << i for i in range(DRAW_MODES))
   DRAW_STAGE_COMMON_BG = DRAW_WKS | DRAW_IMG | DRAW_BG
   DRAW_STAGE_PAGE_SPECIFIC = (
-    DRAW_WKS_PG | DRAW_SYMBG | DRAW_SYMFG | DRAW_TEXT_PG | DRAW_PROPS_PG
+    DRAW_WKS_PG
+    | DRAW_SYMBG
+    | DRAW_SYMFG
+    | DRAW_TEXT_PG
+    | DRAW_PROPS_PG
+    | DRAW_FG_PG
   )
   DRAW_STAGE_COMMON_FG = DRAW_TEXT | DRAW_PROPS | DRAW_FG
 

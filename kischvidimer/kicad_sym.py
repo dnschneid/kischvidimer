@@ -166,16 +166,6 @@ class PinDef(Drawable):
     # Render main line
     svg.polyline(xys=xys, color="device")
 
-    # Render lack of connection (MOVE ELSEWHERE)
-    if False:
-      svg.circle(
-        pos=pos,
-        radius=sexp.Decimal(0.3175),
-        fill="none",
-        color="device",
-        thick="ui",
-      )
-
     # Render name and number
     pin_config = next(
       c.pin_config(diffs) for c in reversed(context) if isinstance(c, SymbolDef)
@@ -330,6 +320,23 @@ class SymbolDef(sexp.SExp, Comparable):
         pins.setdefault(name, []).append(num)
     if cacheentry is not None:
       self._get_pins_cache[cacheentry] = pins
+    return pins
+
+  def get_con_pin_coords(self, diffs, context, unit, variant=1):
+    # Returns a list of coordinates where unconnected markers can appear
+    pins = set()
+    sym = self._sym(diffs, context)
+    to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
+    bodies = [b for b in sym["symbol"] if (b.unit, b.variant) in to_render]
+    for body in bodies:
+      if "pin" not in body:
+        continue
+      for pin in body["pin"]:
+        if (
+          not pin.hide(diffs)
+          and pin.get_type_style(diffs, context)[0] != "no_connect"
+        ):
+          pins.update(pin.pts(diffs, context))
     return pins
 
   def show_unit(self, diffs, context):

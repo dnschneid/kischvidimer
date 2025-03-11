@@ -24,6 +24,7 @@
 import re
 from collections import namedtuple
 
+from . import sexp
 from .kicad_common import HasUUID, unit_to_alpha
 from .kicad_sym import SymbolBody, SymbolDef
 
@@ -50,6 +51,23 @@ class NetBus:
     self._mergedinto = None
     self._names = set()
     self._ncs = set()
+    self._has_wires = False
+
+  def is_floating_sympin(self):
+    # FIXME: replace(?) with an InstCoord unique node counter
+    while self._mergedinto is not None:
+      self = self._mergedinto
+    if self._has_wires or self._ncs:
+      return False
+    has_sympin = False
+    for n in self._names:
+      if (
+        n[0] not in NetBus.CATS_SYMPIN or has_sympin and has_sympin != n[-1].ref
+      ):
+        return False
+      else:
+        has_sympin = n[-1].ref
+    return bool(has_sympin)
 
   def merge_into(self, item):
     assert self._mergedinto is None
@@ -58,6 +76,7 @@ class NetBus:
     if item is not self:
       item._names.update(self._names)
       item._ncs.update(self._ncs)
+      item._has_wires = item._has_wires or self._has_wires
       self._mergedinto = item
     return item
 
@@ -113,6 +132,9 @@ class NetBus:
 
   def add_nc(self, instance):
     self._ncs.add(instance)
+
+  def add_wire(self, instance, wire):
+    self._has_wires = True
 
   def __eq__(self, other):
     while other._mergedinto is not None:
@@ -344,21 +366,59 @@ class Netlister:
     self._unresolved_buses = []
     self._nodes_by_inst = {}
     self._wires_by_inst = {}
+    self._instcoord_count = {}  # connection count by coordinate
     self.netprefix = "/"  # updated by callers to set the local net name prefix
 
-  # def get_net(self, context, item):
-  #  self.resolve()
-  #  for is_bus
-  #  ic = InstCoord(context, item, is_bus)
+  def context(self):
+    s = sexp.SExp.init(
+      [
+        sexp.Atom("~netlister"),
+      ]
+    )
+    s.netlister = self
+    return (s,)
+
+  @staticmethod
+  def n(context):
+    """Finds the first netlister instance in the context
+    Returns a dummy class with get_net and get_node_count if not found.
+    """
+    if isinstance(context, Netlister):
+      return context
+    for c in context:
+      if hasattr(c, "netlister"):
+        return c.netlister
+
+    class Dummy:
+      def get_net(self, context, xy, is_bus=False):
+        return NetBus.new(is_bus)
+
+      def get_node_count(self, context, xy, is_bus=False):
+        return -1
+
+    return Dummy()
+
+  def get_net(self, context, xy, is_bus=False):
+    """Returns a NetBus for the given coordinate+is_bus"""
+    assert not self._unresolved_buses
+    ic = InstCoord(context, xy, is_bus)
+    return self._by_instcoord.getrep(ic)
+
+  def get_node_count(self, context, xy, is_bus=False):
+    """Returns the node count at a point+is_bus."""
+    ic = InstCoord(context, xy, is_bus)
+    return self._instcoord_count[ic]
 
   def _add_node(self, ic, item):
     if ic in self._by_instcoord:
+      self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
       return self._by_instcoord.getrep(ic)
     wires = self._wires_by_inst.setdefault(ic.instance, [])
     node = NetObj(item, ic.is_bus)
     netbus = None
     for wire in wires:
       if wire.test(node):
+        self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
         netbus = self._by_instcoord.getrep(
           InstCoord(ic.instance, wire.xys[0], ic.is_bus)
         )
@@ -366,6 +426,7 @@ class Netlister:
     else:
       netbus = NetBus.new(ic.is_bus)
     self._by_instcoord[ic] = netbus
+    self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
     return netbus
 
   def _add_wire(self, inst, wire):
@@ -376,6 +437,7 @@ class Netlister:
       node = nodes[i]
       if wire.test(node):
         ic = InstCoord(inst, node.xys[0], node.is_bus)
+        self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
         if netbus is None:
           netbus = self._by_instcoord.getrep(ic)
         else:
@@ -467,6 +529,7 @@ class Netlister:
     netbus = Net()
     # Pins cause wire breaks in the editor, so can do point checks
     ic = InstCoord(context, pin.pts([], context)[0], False)
+    self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
     if is_pwr:
       il = InstLabel(context, pinnet, True)
       netbus = self._by_instlabel.getrep(il, netbus)
@@ -496,10 +559,12 @@ class Netlister:
     netbus = self._add_wire(ic, NetObj(wire, is_bus))
     for xy in wire.pts([]):
       ic = InstCoord(context, xy, is_bus)
+      self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
       if netbus is None:
         netbus = self._by_instcoord.getrep(ic, NetBus.new(is_bus))
       else:
         netbus = self._by_instcoord.setrep(ic, netbus)
+    netbus.add_wire(context, wire)
     return netbus
 
   def add_busentry(self, context, busentry):
@@ -509,6 +574,7 @@ class Netlister:
     for is_bus in False, True:
       for pt in pts:
         ic = InstCoord(context, pt, is_bus)
+        self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
         nbs.append(self._by_instcoord.getrep(ic, NetBus.new(is_bus)))
     return nbs
 
