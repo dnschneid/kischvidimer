@@ -94,8 +94,6 @@ class Schematic:
 
   def _genui(self, v=0):
     p = Progress(sys.stderr if v >= 0 else None)
-    if p:
-      p.set_incr_max_mult(4)
 
     if not self._revs:
       self._revs.append("")
@@ -104,7 +102,8 @@ class Schematic:
     worksheets = []
     pagesets = []
     for rev in self._revs:
-      p.set_text("Loading " + self._proj).set_val(0).set_max(1).write().incr()
+      p.set_text("Loading " + self._proj)
+      p.set_incr_max_mult(4).set_val(0).set_max(1).write().incr()
       f = git.open_rb(self._proj, rev)
       projs.append(kicad_pro.kicad_pro(f, fname=self._proj))
       pagesets.append(projs[-1].get_pages(self._proj, rev, p))

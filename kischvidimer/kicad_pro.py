@@ -51,13 +51,15 @@ class KicadPro(Comparable):
       if "bus_alias" in sch:
         for ba in sch["bus_alias"]:
           context[0].add(ba)
-    for _filename, (instances, sch) in pages.items():
+    for filename, (instances, sch) in pages.items():
       if p:
-        p.write().incr()
+        p.set_text(f"Netlisting {filename[:-10]}").write().incr()
       for path, sheet in instances:
         netlister.netprefix = self.uuid_to_name(pages, path.uuid(sheet))
         pgcontext = context + (path, sheet)
         sch.fillnetlist(netlister, diffs, context=pgcontext)
+    if p:
+      p.set_text(f"Netlisting {self.project}").incr_max(1).write().incr()
     netlister.resolve()
 
   def fillvars(self, variables, diffs, pages=None, p=None):
@@ -70,15 +72,17 @@ class KicadPro(Comparable):
     pgcount = sum(len(i) for i, _ in pages.values())
     variables.define(variables.GLOBAL, variables.PAGECOUNT, pgcount)
     context = self.context()
-    for _filename, (instances, sch) in pages.items():
+    for filename, (instances, sch) in pages.items():
       if p:
-        p.write().incr()
+        p.set_text(f"Processing {filename[:-10]}").write().incr()
       for path, sheet in instances:
         pgcontext = context + (path, sheet)
         variables.define(
           pgcontext, variables.PAGENO, int(path.get("page", [0])[0])
         )
         sch.fillvars(variables, diffs, context=pgcontext)
+    if p:
+      p.set_text(f"Processing {self.project}").incr_max(1).write().incr()
 
   def get_pages(self, projfile, rev, p):
     """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).
