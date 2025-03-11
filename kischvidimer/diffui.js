@@ -1662,7 +1662,7 @@ function matchesTerm(x, y) {
  */
 function displayTooltip(elem, target, fix) {
     let tooltip = document.getElementById('tooltip');
-    if (!elem) {
+    if (!elem || !elem.name) {
         tooltip.style.display = 'none';
         tooltipFixed = false;
         return;
@@ -1733,6 +1733,12 @@ function getTooltipContext(elem) {
             }
         }
     } else {
+        // Handle nets
+        for (let e = elem; e; e = e.parentElement) {
+            if (e.hasAttribute('t')) {
+                return `Net: ${getElem(e).name}`;
+            }
+        }
         rawText = 'Part symbol';
         let props = getElem(elem).indexed;
         let value = getProp(props, "value");
@@ -1745,9 +1751,16 @@ function getTooltipContext(elem) {
 
 function getTooltipLinks(elem) {
     if (elem.type === 'net') {
+        let elemid = elem.name;
+        for (const [id, nm] of Object.entries(data.nets.names)) {
+            if (nm == elem.name) {
+                elemid = id;
+                break;
+            }
+        }
         let pgs = [];
         for (let pg in data.nets.map) {
-            if (elem.name in data.nets.map[pg]) {
+            if (elemid in data.nets.map[pg]) {
                 if (pg < 0) {
                     // handle bus
                 } else {
@@ -1755,7 +1768,7 @@ function getTooltipLinks(elem) {
                 }
             }
         }
-        return getPages(pgs, data.nets.names[elem.name], "blue", false);
+        return getPages(pgs, data.nets.names[elemid], "blue", false);
     } else if (elem.type === 'component') {
         return getPages(data.comps[elem.name].map(e => getProp(e,0)), elem.name, "blue", false);
     } else {
@@ -1808,7 +1821,20 @@ function getIndexedElem(closest, name, typ) {
             }
             return null;
         case 'net':
-            return data.nets[name];
+            for (const [id, nm] of Object.entries(data.nets.names)) {
+                if (nm == name) {
+                    name = id;
+                    break;
+                }
+            }
+            let index = {};
+            for (const [pg, nets] of Object.entries(data.nets.map)) {
+                if (pg >= 0 && name in nets) {
+                    index[pg] = nets[name];
+                }
+                // FIXME: containing buses
+            }
+            return index;
         default:
             return null;
     }
@@ -1819,7 +1845,13 @@ function getElemName(closest, typ) {
         case 'component':
             return getLocation(currentPageIndex, closest.getAttribute('p'));
         case 'net':
-            return closest.childNodes[closest.childNodes.length - 1].textContent;
+            const tid = closest.getAttribute('t');
+            for (const [netid, nodes] of Object.entries(data.nets.map[currentPageIndex])) {
+                if (nodes.indexOf(tid) !== -1) {
+                    return data.nets.names[netid];
+                }
+            }
+            return undefined;
         case 'ghost':
             return 'GHOST';
         default:
@@ -1917,8 +1949,26 @@ window.onpopstate = function (evt) {
     }
 
     // Match nets
+    // FIXME: match local names too
     let netsMatched = [];
-    for (let prop of svgPage.getElementsByTagName('text')) {
+    let netid = undefined;
+    console.log(target);
+    for (const [id, nm] of Object.entries(data.nets.names)) {
+        if (nm.toUpperCase() === target) {
+            netid = id;
+            break;
+        }
+    }
+    if (netid in data.nets.map[pageIndex]) {
+        console.log(netid, data.nets.map[pageIndex][netid]);
+        netsMatched = Array.from(svgPage.querySelectorAll(
+            data.nets.map[pageIndex][netid].map(
+                tid => `[t='${tid}']`
+            ).join(", ")
+        ));
+        //FIXME: handle buses
+    }
+    /*for (let node of svgPage.getElementsByTagName('text')) {
         let elem = getElem(prop);
         if (elem.type === 'net' && elem.name === target) {
             // Highlight the surrounding group (net name + line)
@@ -1928,7 +1978,7 @@ window.onpopstate = function (evt) {
             }
             netsMatched.push(grp);
         }
-    }
+    }*/
     if (netsMatched.length) {
         highlight(netsMatched, true, true, true);
         return;
@@ -2024,6 +2074,7 @@ function highlight(elems, state, scroll, unhighlightOthers) {
             // invisible 1x1 rect to ensure the effect does not get culled.
             let bbox = elem.getBBox();
             if (!bbox.width || !bbox.height) {
+                // FIXME: this doesn't work for path elements. It requires a wrapping g element
                 let rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttributeNS(null, 'x', bbox.x);
                 rect.setAttributeNS(null, 'y', bbox.y);
@@ -2185,7 +2236,8 @@ function cycleInstance(direction, elem, closest) {
     let is_group = false;
 
     if (closest.type === 'net') {
-        pageList = data.nets[closest.name];
+        pageList = Object.keys(getElem(elem).indexed);
+        is_group = true;
     } else if (closest.type === 'component') {
         pageList = data.comps[closest.name].map(i => getProp(i,0));
         is_group = true;
@@ -2268,6 +2320,11 @@ function cycleInstance(direction, elem, closest) {
 function getMatches(elem) {
     // Return list of all duplicate instances of elem on current page
     if (elem.type === "net" || elem.type === "component") {
+        // FIXME: busentries are part of both a net and a bus, so rather than
+        // tracking by .name (which only has one), this needs to build up the
+        // list like in the history handler. Naturally that makes it difficult
+        // to say "find stuff like this element", so cycling may need to be
+        // restructured somehow
         return Array.from(svgPage.querySelectorAll(
             ELEM_TYPE_SELECTORS[elem.type].join(', '))).filter(e => {
                 return getElem(e).name == elem.name;
