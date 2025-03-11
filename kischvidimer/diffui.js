@@ -184,11 +184,14 @@ document.addEventListener("DOMContentLoaded", function () {
             */
         }
         // Launch an associated, visible url first
-        if (target.hasAttribute('tag')) {
-            let a = svgPage.querySelector(`[tag="${target.getAttribute('tag')}"]>a`);
-            if (a) {
-                a.onclick();
-                return;
+        for (let targp = target; targp; targp = targp.parentElement) {
+            if (targp.hasAttribute('p')) {
+                let a = svgPage.querySelector(`[p="${targp.getAttribute('p')}"] a`);
+                if (a) {
+                    a.onclick();
+                    return;
+                }
+                break;
             }
         }
         // Launch any prop url

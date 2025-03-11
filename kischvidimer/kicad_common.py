@@ -640,7 +640,6 @@ class Field(Drawable):
     show_name = "show_name" in self  # TODO: is this ever "no"?
     if show_name:
       text = f"{prop}: {text}"
-    tag = svg.getuid(context[-1])
     url = None
     if prop == "Reference":
       color = "referencepart"
@@ -674,7 +673,6 @@ class Field(Drawable):
       "rotate": 0,
       "color": color,
       "url": url,
-      "tag": tag,
       "hidden": "hide" in self,
     }
     args.update(self.svgargs(diffs, context))

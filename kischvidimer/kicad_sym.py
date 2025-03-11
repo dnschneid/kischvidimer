@@ -99,6 +99,9 @@ class PinDef(Drawable):
     if self.hide(diffs):
       return  # FIXME: render invisible?
 
+    name_num = self.name_num(diffs, context)
+    svg.gstart(path=name_num[1])
+
     pos = self["at"][0].pos(diffs)
     rot = self["at"][0].rot(diffs)
     length = float(self.get("length", 0)[0])
@@ -200,7 +203,6 @@ class PinDef(Drawable):
     if inst_mirror and not (rot + inst_rot) % 180:
       swap_side = not swap_side
 
-    name_num = self.name_num(diffs, context)
     for is_name, part in enumerate(("number", "name")):
       # FIXME: save the metadata
       text = name_num[not is_name]
@@ -228,6 +230,8 @@ class PinDef(Drawable):
       svg.text(text, **args)
       if swap_side:
         svg.gend()
+
+    svg.gend()  # pin path
 
 
 class PinSheet(PlaceholderHandler):

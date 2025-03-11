@@ -481,6 +481,7 @@ class SymbolInst(Drawable, HasUUID):
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
+    svg.gstart(path=self.uuid(generate=True))
     if subdraw:
       # FIXME: diffs, of course
       lib = context[-1]["lib_symbols"][0]
@@ -496,8 +497,6 @@ class SymbolInst(Drawable, HasUUID):
         rotate=rot,
         mirror=mirror,
         hidden=False,
-        path=self.uuid(generate=True),
-        tag=svg.getuid(self),
       )
       svg.instantiate(
         subdraw, lib, lib_id, unit=unit, variant=convert, context=(self,)
@@ -520,6 +519,7 @@ class SymbolInst(Drawable, HasUUID):
             )
       svg.gend()
     super().fillsvg(svg, diffs, draw, context)
+    svg.gend()  # path
 
   def show_unit(self, diffs, context):
     for c in reversed(context):
@@ -651,6 +651,8 @@ class Sheet(Drawable, HasUUID):
     pos = self["at"][0].pos(diffs)
     size = self["size"][0].data
 
+    svg.gstart(path=self.uuid(generate=True))
+
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
       args = {
@@ -659,7 +661,6 @@ class Sheet(Drawable, HasUUID):
         "height": size[1],
         "color": "sheet",
         "fill": "sheet_background",
-        "tag": svg.getuid(self),
       }
       args.update(self.svgargs(diffs, context))
       if not draw & Drawable.DRAW_FG:
@@ -670,6 +671,8 @@ class Sheet(Drawable, HasUUID):
 
     # Draw the rest of the owl
     super().fillsvg(svg, diffs, draw, context)
+
+    svg.gend()  # path
 
   def paths(self, project=None):
     """Returns a list of path elements for a project"""

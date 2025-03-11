@@ -1160,8 +1160,8 @@ class Svg:
     if not tag:
       return []
     if isinstance(tag, int):
-      return [f'tag="{tag:x}"']
-    return [f'tag="{tag}"']
+      return [f't="{tag:x}"']
+    return [f't="{tag}"']
 
   def color(self, color):
     """Maps a CAD tool color to an SVG-compatible color."""
