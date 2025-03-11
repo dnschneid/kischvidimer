@@ -159,7 +159,7 @@ class DiffUI:
     self._mode = mode
     self._tempdir = None
     self._symbols = {}
-    self._uidtable = []
+    self._uidtable = {}
     self._uiprocess = None
     self._response = None
     self._worksheet = worksheet
@@ -220,6 +220,14 @@ class DiffUI:
       self.generate_toc()
     add_to_index(self._toc)
 
+    # FIXME: need to track local net names
+    nm_uid_gen = Svg()  # FIXME: this really shouldn't be part of Svg
+    nm_uid_gen.uidtable = self._uidtable
+    self.schematic_index["nets"] = self._netlister.generate_netmap(nm_uid_gen)
+    netmap = self.schematic_index["nets"]["map"]
+    if None in netmap:  # bus memberships
+      netmap[-1] = netmap.pop(None)
+
     for i, (ui_page, page) in enumerate(
       zip(toc_page_map, self.schematic_index["pages"])
     ):
@@ -231,11 +239,8 @@ class DiffUI:
           inst[chr(0)] = i  # store page index in 0-prop
           self.schematic_index["comps"].setdefault(c, []).append(inst)
 
-      page_nets = ui_page.sch.get_nets(
-        instance, variables=self._variables, include_power=True
-      )
-      for n in page_nets:
-        self.schematic_index["nets"].setdefault(n, []).append(i)
+      # For the netmap, change instance names into page indices
+      netmap[i] = netmap.pop(instance)
 
       for s in ui_page.conflicts:
         self.schematic_index["diffs"].setdefault(ui_page.id, []).append(
@@ -259,6 +264,7 @@ class DiffUI:
           ]
         )
 
+      # FIXME: treat properties separate from generic text
       for uuid, text in ui_page.svg.generic_text:
         if uuid in (None, instance):
           self.schematic_index["text"].setdefault(text, []).append(i)
@@ -393,9 +399,6 @@ class DiffUI:
       font-weight: normal;
       font-style: normal;
       }}"""
-
-  def _fillsvg(self, svg):
-    svg.symbols = self._symbols
 
   @staticmethod
   def _compress(s):

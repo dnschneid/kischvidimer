@@ -44,9 +44,7 @@ let ELEM_TYPE_SELECTORS = {
         'symbol'
     ],
     'net': [
-        '[prop="SIG_NAME"]',
-        '[prop="NETGROUP"]',
-        '[prop="HDL_POWER"]'
+        '[t]',
     ],
     'ghost': [
         '.ghost'
@@ -1448,14 +1446,24 @@ function filterSearch(filter) {
             }
         }
     }
-    for (let net in data.nets) {
-        let matchDistance = matchesTerm(filter, net);
+    for (const [id, name] of Object.entries(data.nets.names)) {
+        let matchDistance = matchesTerm(filter, name);
         if (matchDistance < matchThreshold) {
-            matchMatrix[matchDistance].push({
-                pages: data.nets[net],
-                display: net,
+            let matchinfo = {
+                pages: [],
+                display: name,
                 type: 'net'
-            });
+            };
+            matchMatrix[matchDistance].push(matchinfo);
+            for (let pg in data.nets.map) {
+                if (id in data.nets.map[pg]) {
+                    if (pg < 0) {
+                        // handle bus
+                    } else {
+                        matchinfo.pages.push(pg);
+                    }
+                }
+            }
         }
     }
     for (let pin in data.pins) {
@@ -1737,7 +1745,17 @@ function getTooltipContext(elem) {
 
 function getTooltipLinks(elem) {
     if (elem.type === 'net') {
-        return getPages(data.nets[elem.name], elem.name, "blue", false);
+        let pgs = [];
+        for (let pg in data.nets.map) {
+            if (elem.name in data.nets.map[pg]) {
+                if (pg < 0) {
+                    // handle bus
+                } else {
+                    pgs.push(pg);
+                }
+            }
+        }
+        return getPages(pgs, data.nets.names[elem.name], "blue", false);
     } else if (elem.type === 'component') {
         return getPages(data.comps[elem.name].map(e => getProp(e,0)), elem.name, "blue", false);
     } else {

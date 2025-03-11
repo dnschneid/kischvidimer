@@ -414,7 +414,7 @@ class Polyline(Drawable):
     # FIXME: diffs
     return [(xy[0], xy[1]) for xy in self["pts"][0]["xy"]]
 
-  def fillsvg(self, svg, diffs, draw, context):
+  def fillsvg(self, svg, diffs, draw, context, tag=None):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
     # Don't try to render background only if there are only two points?
@@ -437,6 +437,8 @@ class Polyline(Drawable):
       "thick": default_thick,
       "fill": "none",
     }
+    if tag is not None:
+      args["tag"] = tag
     args.update(self.svgargs(diffs, context))
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0

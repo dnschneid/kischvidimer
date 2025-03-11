@@ -134,6 +134,7 @@ class Junction(Drawable):
       radius=diameter / 2,
       color="none",
       fill=color,
+      tag=svg.getuid(self),
     )
 
 
@@ -161,7 +162,7 @@ class NoConnect(Drawable):
       (pos[0] + sz, pos[1] - sz),
       (pos[0] - sz, pos[1] + sz),
     ]
-    svg.polyline(xys, color="noconnect")
+    svg.polyline(xys, color="noconnect", tag=svg.getuid(self))
 
 
 # FIXME: (wire (pts (xy) (xy)) (stroke) (uuid))
@@ -173,20 +174,11 @@ class Wire(Polyline, HasUUID):
     self.netbus = netlister.add_wire(context, self)
 
   def fillsvg(self, svg, diffs, draw, context):
-    super().fillsvg(svg, diffs, draw, context)
+    super().fillsvg(svg, diffs, draw, context, tag=svg.getuid(self))
     if draw & Drawable.DRAW_FG_PG and self.type == "wire":
       for pos in self.pts(diffs):
         if Netlister.n(context).get_node_count(context, pos) == 1:
           draw_uc_at(svg, pos, color="wire")  # FIXME: not the correct color?
-    if draw & Drawable.DRAW_TEXT and getattr(self, "netbus", None):
-      pts = self.pts(diffs)
-      svg.text(
-        self.netbus.name() or "unconnected",
-        pos=((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2),
-        vjustify="top",
-        size=0.5,
-        rotate=90 if pts[0][0] == pts[1][0] else 0,
-      )
 
 
 # FIXME: (hierarchical_label "x" (shape input) (at) (effects) (uuid) (property))
@@ -263,6 +255,7 @@ class Label(Drawable, HasUUID):
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
+    svg.gstart(tag=svg.getuid(self))
     args = pos = None
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
@@ -356,9 +349,8 @@ class Label(Drawable, HasUUID):
       if isinstance(uc_color, str):
         uc_color = uc_color.replace("sheet", "hier")
       draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
-    if draw & Drawable.DRAW_TEXT and "property" in self:
-      for field in self["property"]:
-        field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
+    super().fillsvg(svg, diffs, draw, context)
+    svg.gend()  # tag
 
 
 @sexp.handler("bus_entry")
@@ -384,6 +376,7 @@ class BusEntry(Drawable):
       "p1": pts[0],
       "p2": pts[1],
       "color": "wire",
+      "tag": svg.getuid(self),
     }
     args.update(self.svgargs(diffs, context))
     svg.line(**args)
@@ -810,20 +803,20 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
         comps.setdefault(ref, []).append(data)
     return comps
 
-  def get_nets(self, instance, variables, include_power=True):
-    # FIXME: include_power -> include symbols with invisible power_input pins
-    #        I think these can be variable-defined, unfortunately
-    # Just get local nets for now
-    # FIXME: properly return connection names, in addition to somehow indexing
-    #        local nets
-    variables = variables or Variables()
-    nets = set()
-    for labtyp in "global_label", "hierarchical_label", "label":
-      if labtyp not in self:
-        continue
-      for label in self[labtyp]:
-        nets.add(label.net([], instance))
-    return nets
+  # def get_nets(self, instance, variables, include_power=True):
+  #  # FIXME: include_power -> include symbols with invisible power_input pins
+  #  #        I think these can be variable-defined, unfortunately
+  #  # Just get local nets for now
+  #  # FIXME: properly return connection names, in addition to somehow indexing
+  #  #        local nets
+  #  variables = variables or Variables()
+  #  nets = set()
+  #  for labtyp in "global_label", "hierarchical_label", "label":
+  #    if labtyp not in self:
+  #      continue
+  #    for label in self[labtyp]:
+  #      nets.add(label.net([], instance))
+  #  return nets
 
 
 def kicad_sch(f, fname=None):

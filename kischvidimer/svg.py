@@ -148,18 +148,18 @@ class Svg:
     self.pin_text = []
 
   def getuid(self, obj):
-    """Returns an instance-unique ID for the object.
+    """Returns an instance-unique ID string for the object.
     If uidtable is set, the ID will be sequential. If multiple SVGs are to be
     used in the same doc, make sure to set uidtable to point to the same list.
     If uidtable is None, returns a non-sequential but likely unique ID.
     """
+    objid = hash(obj) if isinstance(obj, str) else id(obj)
     if self.uidtable is None:
-      return f"{id(obj):X}"
-    try:
-      return self.uidtable.index(id(obj)) + 1
-    except ValueError:
-      self.uidtable.append(id(obj))
-      return len(self.uidtable)
+      return f"{objid:X}"
+    uid = self.uidtable.get(objid)
+    if uid is None:
+      uid = self.uidtable[objid] = len(self.uidtable) + 1  # avoid 0
+    return f"{uid:X}"
 
   def _apply_transforms(self, pos):
     # Apply the stack of transformations back-to-front
@@ -399,7 +399,9 @@ class Svg:
   def aend(self):
     self.add("</a>")
 
-  def line(self, p1=(0, 0), p2=None, color="wire", thick="wire", pattern=None):
+  def line(
+    self, p1=(0, 0), p2=None, color="wire", thick="wire", pattern=None, tag=None
+  ):
     p1 = Param.ify(p1, (0, 0))
     p2 = Param.ify(p2, (0, 0))
     # FIXME: don't emit anything if color is none?
@@ -424,6 +426,7 @@ class Svg:
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + Svg._tagattr(tag)
     ).nocontents()
 
   def rect(
@@ -509,6 +512,7 @@ class Svg:
     fill=None,
     thick="wire",
     pattern=None,
+    tag=None,
   ):
     pos = Param.ify(pos, (0, 0))
     radius = Param.ify(radius)
@@ -542,6 +546,7 @@ class Svg:
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + Svg._tagattr(tag)
     ).nocontents()
 
   @staticmethod
@@ -653,7 +658,9 @@ class Svg:
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
     ).nocontents()
 
-  def polyline(self, xys, color="notes", fill=None, thick="wire", pattern=None):
+  def polyline(
+    self, xys, color="notes", fill=None, thick="wire", pattern=None, tag=None
+  ):
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
     """
@@ -698,6 +705,7 @@ class Svg:
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + Svg._tagattr(tag)
     ).nocontents()
 
   def image(self, data, pos=(0, 0), scale=1):
