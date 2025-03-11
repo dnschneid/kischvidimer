@@ -62,7 +62,7 @@ class KicadPro(Comparable):
       p.set_text(f"Netlisting {self.project}").incr_max(1).write().incr()
     netlister.resolve()
 
-  def fillvars(self, variables, diffs, pages=None, p=None):
+  def fillvars(self, variables, diffs, pages=None, netlister=None, p=None):
     variables.define(variables.GLOBAL, "CURRENT_DATE", datetime.date.today())
     variables.define(variables.GLOBAL, "PROJECTNAME", self.project)
     for key, value in self.variables.items():
@@ -72,6 +72,8 @@ class KicadPro(Comparable):
     pgcount = sum(len(i) for i, _ in pages.values())
     variables.define(variables.GLOBAL, variables.PAGECOUNT, pgcount)
     context = self.context()
+    if netlister:
+      context += netlister.context()
     for filename, (instances, sch) in pages.items():
       if p:
         p.set_text(f"Processing {filename[:-10]}").write().incr()

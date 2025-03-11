@@ -140,7 +140,7 @@ class Schematic:
     variables = kicad_sch.Variables()
     for pageset in pagesets:
       projs[0].fillnetlist(netlister, [], pageset, p=p)
-      projs[0].fillvars(variables, [], pageset, p=p)
+      projs[0].fillvars(variables, [], pageset, netlister=netlister, p=p)
 
     ver = git.get_version(os.path.dirname(self._proj))
     ver += time.strftime(" (%Y-%m-%d %H:%M)")

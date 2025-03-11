@@ -75,7 +75,7 @@ class Page:
     if proj:
       self.context += proj.context()
     else:
-      page.fillvars(variables, diffs, self.context)
+      page.fillvars(variables, diffs, self.context, netlister=netlister)
       # FIXME: fill in placeholder netlist
     self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
     self.name = ": ".join(
