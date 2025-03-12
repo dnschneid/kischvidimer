@@ -1952,7 +1952,6 @@ window.onpopstate = function (evt) {
     // FIXME: match local names too
     let netsMatched = [];
     let netid = undefined;
-    console.log(target);
     for (const [id, nm] of Object.entries(data.nets.names)) {
         if (nm.toUpperCase() === target) {
             netid = id;
@@ -1960,7 +1959,6 @@ window.onpopstate = function (evt) {
         }
     }
     if (netid in data.nets.map[pageIndex]) {
-        console.log(netid, data.nets.map[pageIndex][netid]);
         netsMatched = Array.from(svgPage.querySelectorAll(
             data.nets.map[pageIndex][netid].map(
                 tid => `[t='${tid}']`
@@ -1968,17 +1966,6 @@ window.onpopstate = function (evt) {
         ));
         //FIXME: handle buses
     }
-    /*for (let node of svgPage.getElementsByTagName('text')) {
-        let elem = getElem(prop);
-        if (elem.type === 'net' && elem.name === target) {
-            // Highlight the surrounding group (net name + line)
-            let grp = prop;
-            while (grp && grp.tagName !== 'g') {
-                grp = grp.parentElement;
-            }
-            netsMatched.push(grp);
-        }
-    }*/
     if (netsMatched.length) {
         highlight(netsMatched, true, true, true);
         return;
@@ -2067,6 +2054,10 @@ function highlight(elems, state, scroll, unhighlightOthers) {
     }
 
     for (let elem of elems) {
+        // If we already have a highlighter hack group, switch to it
+        if (elem.parentElement.hasAttribute("highlighter")) {
+            elem = elem.parentElement;
+        }
         // actually change the highlight class
         if (state) {
             // Lines tend to have zero width or height and may result in a zero-area
@@ -2074,7 +2065,14 @@ function highlight(elems, state, scroll, unhighlightOthers) {
             // invisible 1x1 rect to ensure the effect does not get culled.
             let bbox = elem.getBBox();
             if (!bbox.width || !bbox.height) {
-                // FIXME: this doesn't work for path elements. It requires a wrapping g element
+                // Can't add the rect to anythong other than a group
+                if (elem.tagName !== "g") {
+                    let highlighter = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    highlighter.setAttributeNS(null, 'highlighter', '');
+                    elem.parentNode.insertBefore(highlighter, elem);
+                    highlighter.appendChild(elem);
+                    elem = highlighter;
+                }
                 let rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttributeNS(null, 'x', bbox.x);
                 rect.setAttributeNS(null, 'y', bbox.y);
