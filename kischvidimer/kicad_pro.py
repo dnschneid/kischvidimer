@@ -187,8 +187,11 @@ class KicadPro(Comparable):
     for filepath, (instances, sch) in pages.items():
       for path, sheet in instances:
         uuid = path.uuid(sheet)
+        pageno = path.get("page", [0])[0]
+        if isinstance(pageno, str):
+          pageno = int(pageno.strip("#") or 0)
         inst = {
-          "page": int(path.get("page", [0])[0]),
+          "page": pageno,
           "name": self.uuid_to_name(pages, uuid),
           "uuid": uuid,
           "file": filepath,
