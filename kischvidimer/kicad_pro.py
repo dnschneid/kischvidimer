@@ -56,6 +56,7 @@ class KicadPro(Comparable):
         p.set_text(f"Netlisting {filename[:-10]}").write().incr()
       for path, sheet in instances:
         netlister.netprefix = self.uuid_to_name(pages, path.uuid(sheet))
+        assert netlister.netprefix
         pgcontext = context + (path, sheet)
         sch.fillnetlist(netlister, diffs, context=pgcontext)
     if p:
@@ -130,6 +131,17 @@ class KicadPro(Comparable):
         pages.setdefault(relpath, ([],))[0].append((path, sheet))
       if p:
         p.incr().write()
+    # Prune unreachable instances
+    to_remove = []
+    for filepath, (instances, _sch) in pages.items():
+      for i, (path, sheet) in enumerate(instances):
+        uuid = path.uuid(sheet)
+        if not self.uuid_to_name(pages, uuid):
+          to_remove.append((filepath, i))
+    for filepath, i in reversed(to_remove):
+      del pages[filepath][0][i : i + 1]
+      if not pages[filepath][0]:
+        del pages[filepath]
     return pages
 
   def get_worksheet(self, rev, p):
@@ -182,9 +194,7 @@ class KicadPro(Comparable):
           "file": filepath,
           "sch": sch,
         }
-        # Prune unreachable stale instances
-        if not inst["name"]:
-          continue
+        assert inst["name"]  # stale instances should have been pruned already
         subhier = hier
         uuidparts = uuid.split("/")
         for subid in uuidparts[1:-1]:
