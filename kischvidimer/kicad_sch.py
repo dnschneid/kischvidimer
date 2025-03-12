@@ -629,12 +629,12 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       sheets.extend((p, sheet) for p in sheet.paths(project))
     return sheets
 
-  def get_components(self, instance, variables):
+  def get_components(self, context, instance):
     # returns a dict mapping refdes to dict of properties
+    # Context should include project and variables, ideally
     if "symbol" not in self:
       return {}
-    variables = variables or Variables()
-    context = variables.context() + (fakepath(instance), self)
+    context += (fakepath(instance), self)
     comps = {}
     for sym in self["symbol"]:
       ref, data = sym.as_comp(context)

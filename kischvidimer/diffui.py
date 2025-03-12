@@ -68,24 +68,24 @@ class Page:
     self.svg.worksheet = worksheet
     self.svg.metadata_context = None
     variables = variables or Variables()
-    context = variables.context()
+    self.context = variables.context()
     if proj:
-      context += proj.context()
+      self.context += proj.context()
     else:
-      page.fillvars(variables, diffs, context)
+      page.fillvars(variables, diffs, self.context)
     self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
     self.name = ": ".join(
       n for n in (name, self.svg.vars.get("~pagetitle")) if n
     )
     # Common background elements
     page.fillsvg(
-      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_BG, context=context
+      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_BG, context=self.context
     )
     # Page-specific elements
     for path, sheet in instances:
       uuid = path.uuid(sheet)
       self.svg.metadata_context = uuid
-      pgcontext = context + (path, sheet)
+      pgcontext = self.context + (path, sheet)
       self.svg.gstart(hidden=[(True, None), (False, f"instance {uuid}")])
       page.fillsvg(
         self.svg, diffs, Drawable.DRAW_STAGE_PAGE_SPECIFIC, context=pgcontext
@@ -94,7 +94,7 @@ class Page:
     self.svg.metadata_context = None
     # Common foreground elements
     page.fillsvg(
-      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_FG, context=context
+      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_FG, context=self.context
     )
     # Clear out symbol library; this is tracked elsewhere
     self.svg.symbols = {}
@@ -103,6 +103,9 @@ class Page:
     for diffpair in self.conflicts + self.safediffs:
       for diffs in diffpair:
         yield from diffs
+
+  def get_components(self, instance):
+    return self.sch.get_components(self.context, instance)
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
@@ -215,9 +218,7 @@ class DiffUI:
       zip(toc_page_map, self.schematic_index["pages"])
     ):
       instance = page["inst"]
-      page_components = ui_page.sch.get_components(
-        instance, variables=self._variables
-      )
+      page_components = ui_page.get_components(instance)
 
       for c in page_components:
         for inst in page_components[c]:
