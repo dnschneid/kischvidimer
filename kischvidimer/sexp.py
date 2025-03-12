@@ -164,13 +164,13 @@ class SExp:
 
   @property
   def type(self):
-    if isinstance(self.sexp[0], Atom):
+    if self.sexp and isinstance(self.sexp[0], Atom):
       return self.sexp[0]
     return None
 
   @property
   def data(self):
-    if isinstance(self.sexp[0], Atom):
+    if self.sexp and isinstance(self.sexp[0], Atom):
       return self.sexp[1:]
     return self.sexp
 
