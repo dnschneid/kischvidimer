@@ -359,6 +359,8 @@ class DiffUI:
     glyphs = set()
     for page in self._pages:
       glyphs.update(page.svg.glyphs)
+    if not glyphs:
+      return ""
     src = font
     if ord(max(glyphs)) < 0x2500:
       src = f"{font}-latin"

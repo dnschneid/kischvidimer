@@ -82,6 +82,13 @@ class KicadPro(Comparable):
         p.set_text(f"Loading {rev + ':' if rev else ''}{relpath}").write()
       f = git.open_rb(filepath, rev)
       sch = kicad_sch.kicad_sch(f, filepath)
+      if sch is None:
+        msg = f"Unable to load {rev + ':' if rev else ''}{relpath}"
+        if p:
+          p.msg(msg)
+        else:
+          print(msg, file=sys.stderr)
+        continue
       # Handle the root page, whose path is self-defined by uuid
       if relpath not in pages:
         root_path = sch.root_path

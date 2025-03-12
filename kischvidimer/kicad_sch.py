@@ -665,7 +665,8 @@ def kicad_sch(f, fname=None):
   data = sexp.parse(data)
   if isinstance(data[0], KicadSch):
     data[0].initsch(fname)
-    return data[0]
+    if "version" in data[0] and data[0]["version"][0].is_supported:
+      return data[0]
   return None
 
 

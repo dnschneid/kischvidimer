@@ -48,11 +48,15 @@ class HasUUID:
 class Version(sexp.SExp, Comparable):
   """File version"""
 
-  MAX_VERSION = 20231120
+  MIN_VERSION = 20220000  # kicad 6.99
+  MAX_VERSION = 20231120  # kicad 8
 
   def __init__(self, s):
     super().__init__(s)
-    assert self.data[0] <= self.MAX_VERSION
+
+  @property
+  def is_supported(self):
+    return self.MIN_VERSION <= self.data[0] <= self.MAX_VERSION
 
 
 def unit_to_alpha(unit):

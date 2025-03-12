@@ -33,6 +33,13 @@ class Progress:
     self._spin = 0
     self._spin_dir = 1
 
+  def msg(self, text):
+    """Prints out a message and continues progress."""
+    self.clear()
+    print(text, file=self._fout or sys.stderr)
+    self.write()
+    return self
+
   def incr(self, amount=1):
     """Increments the value and returns itself."""
     return self.set_val(self._val + amount)
