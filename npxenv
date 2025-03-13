@@ -1,3 +1,4 @@
+#!/bin/sh -eu
 # SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -12,42 +13,16 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
-RUN := uv run
+NODE_VERSION='latest'
 
-all: build
+if [ -z "${VIRTUAL_ENV-}" ]; then
+  echo "Only run ${0} in a python virtual environment" >&2
+  exit 2
+elif [ -z "${1-}" ]; then
+  echo "Usage: ${0} cmd [params ...]" >&2
+  exit 2
+fi
 
-build:
-	uv build
+hash npx 2>/dev/null || nodeenv -q -p --node="${NODE_VERSION}"
 
-setup:
-	${RUN} pre-commit install
-
-pre-commit:
-	${RUN} pre-commit run --all-files
-
-format:
-	${RUN} pre-commit run --all-files ruff-format
-	${RUN} pre-commit run --all-files prettier
-
-lint:
-	${RUN} pre-commit run --all-files ruff
-	${RUN} pre-commit run --all-files quick-lint-js
-
-clean:
-	rm -rf \
-		build/ \
-		dist/ \
-		*.egg-info/ \
-		__pycache__/ \
-		kischvidimer/__picache__/ \
-		kischvidimer/_version.py \
-
-
-.PHONY: \
-	all \
-	build \
-	clean \
-	format \
-	lint \
-	pre-commit \
-	setup \
+exec npx -y -s "${@}"

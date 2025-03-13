@@ -49,3 +49,22 @@ repos:
       args: [ --fix ]
     # Run the formatter.
     - id: ruff-format
+
+- repo: local
+  hooks:
+    - id: quick-lint-js
+      name: quick-lint-js
+      entry: ./npxenv quick-lint-js
+      args: []
+      language: python
+      additional_dependencies: [ nodeenv ]
+      types_or: [ javascript ]
+      exclude: \.min\.
+    - id: prettier
+      name: prettier
+      entry: ./npxenv prettier
+      args: [ --no-config, --write ]
+      language: python
+      additional_dependencies: [ nodeenv ]
+      types_or: [ css, html, javascript ]
+      exclude: \.min\.
