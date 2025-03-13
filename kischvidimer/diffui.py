@@ -240,7 +240,8 @@ class DiffUI:
           self.schematic_index["comps"].setdefault(c, []).append(inst)
 
       # For the netmap, change instance names into page indices
-      netmap[i] = netmap.pop(instance)
+      if instance in netmap:
+        netmap[i] = netmap.pop(instance)
 
       for s in ui_page.conflicts:
         self.schematic_index["diffs"].setdefault(ui_page.id, []).append(
