@@ -478,6 +478,19 @@ class DiffUI:
     exportvars = set()
     impcount = -1
 
+    def libimp(m):
+      if m[1] in imports:
+        return ""
+      imports[m[1]] = (None, True)
+      lib = []
+      libpath = os.path.join(os.path.dirname(path), f"{m[1]}.min.js")
+      with open(libpath, encoding="utf-8") as f:
+        for line in f:
+          if line and "sourceMappingURL" not in line:
+            lib.append(line.strip())
+      js_blocks.append("\n".join(lib))
+      return ""
+
     def subimp(m):
       modnm = os.path.splitext(os.path.basename(m[2]))[0]
       globnm, _ = imports.setdefault(modnm, (f"__ksvdm_mod_{modnm}", False))
@@ -494,26 +507,15 @@ class DiffUI:
       exports.update(e.strip() for e in m[3].split(",") if e.strip())
       return ""
 
-    def libimp(m):
-      lib = []
-      libpath = os.path.join(os.path.dirname(path), f"{m[1]}.min.js")
-      with open(libpath, encoding="utf-8") as f:
-        for line in f:
-          if line and "sourceMappingURL" not in line:
-            lib.append(line.strip())
-      js_blocks.append("\n".join(lib))
-      return ""
-
     # Swap in inserted js
     js = re.sub(r"(?m)^.*// diffui stub.*$", insert_js, js, count=1)
-
-    # Delete fake library imports
-    js = re.sub(r'(?m)^import {[^}]*} from "([^"]+)".*$\n', libimp, js)
 
     while impcount:
       # Delete remaining stub lines
       js = re.sub(r"(?m)^.*// diffui stub.*$\n", "", js)
-      # Detect imports
+      # Detect library imports
+      js = re.sub(r'(?m)^import {[^}]*} from "([^"]+)".*$\n', libimp, js)
+      # Detect module imports
       js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
       # Prepend new imports, modifying export lines. Not truly DAG-capable
       for modnm, (globnm, imported) in imports.items():
