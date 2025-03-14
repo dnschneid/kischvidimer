@@ -589,7 +589,9 @@ class DiffUI:
           line.strip() for line in f if "sourceMappingURL" not in line
         )
     html.append("</style>")
-    # Embed js and html
+    # Embed HTML
+    html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
+    # Embed js
     uidata = {
       "vers": git.get_version(srcdir),
       "schTitle": title[-1],
@@ -615,10 +617,7 @@ class DiffUI:
     }
     uidata_js = f"const uiData = {json.dumps(uidata, sort_keys=True)}"
     js_blocks = DiffUI.loadjs(os.path.join(srcdir, "diffui.js"), uidata_js)
-    for i, js_block in enumerate(js_blocks):
-      # Insert controls before the final code block
-      if i == len(js_blocks) - 1:
-        html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
+    for js_block in js_blocks:
       html += ("<script>", js_block, "</script>")
     # KiCad font (added late to speed up display of the loading dialog)
     html.append("<style>")
