@@ -2505,7 +2505,7 @@ function genpdf() {
       " </title></head><body>",
   );
   win.document.write(
-    '<style type="text/css" media="print">@page { size: 17in 11in; }</style>',
+    '<style type="text/css" media="print">@page { size: 17in 11in; margin: 0.1in; }</style>',
   );
   win.document.write(
     '<style type="text/css" media="print">svg { page-break-after: always; }</style>',
