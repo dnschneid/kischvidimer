@@ -6,9 +6,10 @@ image: python:latest
 pre-commit:
   cache:
     paths:
-      - build/cache/pip
+      - build/cache
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/build/cache/pip"
+    PRE_COMMIT_HOME: "$CI_PROJECT_DIR/build/cache/pre-commit"
   before_script:
     - pip install pre-commit
   script:
