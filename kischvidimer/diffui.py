@@ -465,8 +465,10 @@ class DiffUI:
     return re.sub(r"<img\s[^>]*>", repl, h)
 
   @staticmethod
-  def loadjs(path):
+  def loadjs(path, insert_js):
     # Loads in a javascript file and replaces imports/exports with inline code
+    # Returns a list of javascript blocks to add
+    js_blocks = []  # library files
     with open(path, encoding="utf-8") as f:
       js = f.read()
     # Ensure the header stays on top
@@ -492,8 +494,24 @@ class DiffUI:
       exports.update(e.strip() for e in m[3].split(",") if e.strip())
       return ""
 
+    def libimp(m):
+      lib = []
+      libpath = os.path.join(os.path.dirname(path), f"{m[1]}.min.js")
+      with open(libpath, encoding="utf-8") as f:
+        for line in f:
+          if line and "sourceMappingURL" not in line:
+            lib.append(line.strip())
+      js_blocks.append("\n".join(lib))
+      return ""
+
+    # Swap in inserted js
+    js = re.sub(r"(?m)^.*// diffui stub.*$", insert_js, js, count=1)
+
+    # Delete fake library imports
+    js = re.sub(r'(?m)^import {[^}]*} from "([^"]+)".*$\n', libimp, js)
+
     while impcount:
-      # Delete stub lines
+      # Delete remaining stub lines
       js = re.sub(r"(?m)^.*// diffui stub.*$\n", "", js)
       # Detect imports
       js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
@@ -518,7 +536,9 @@ class DiffUI:
           f"{subjs};\n{exportstr}}};\n{js}"
         )
         imports[modnm] = (globnm, True)
-    return "".join((header, headersep, js))
+
+    js_blocks.append("".join((header, headersep, js)))
+    return js_blocks
 
   def genhtml(self, is_app=False):
     self._update_index()
@@ -567,20 +587,7 @@ class DiffUI:
           line.strip() for line in f if "sourceMappingURL" not in line
         )
     html.append("</style>")
-    # Embed js libraries
-    html.append("<script>")
-    jsdir = os.path.join(srcdir, "js-libraries")
-    for lib in os.listdir(jsdir):
-      if lib.endswith(".min.js"):
-        with open(os.path.join(jsdir, lib), encoding="utf-8") as f:
-          html.extend(
-            line.strip() for line in f if "sourceMappingURL" not in line
-          )
-    html.append("</script>")
-    # Controls
-    html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
-    # Code
-    html.append("<script>")
+    # Embed js and html
     uidata = {
       "vers": git.get_version(srcdir),
       "schTitle": title[-1],
@@ -604,9 +611,13 @@ class DiffUI:
       ),
       "themes": themes.todict(),
     }
-    html.append(f"const uiData = {json.dumps(uidata, sort_keys=True)}")
-    html.append(DiffUI.loadjs(os.path.join(srcdir, "diffui.js")))
-    html.append("</script>")
+    uidata_js = f"const uiData = {json.dumps(uidata, sort_keys=True)}"
+    js_blocks = DiffUI.loadjs(os.path.join(srcdir, "diffui.js"), uidata_js)
+    for i, js_block in enumerate(js_blocks):
+      # Insert controls before the final code block
+      if i == len(js_blocks) - 1:
+        html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
+      html += ("<script>", js_block, "</script>")
     # KiCad font (added late to speed up display of the loading dialog)
     html.append("<style>")
     html.append(self._genfont("newstroke", "kicad"))

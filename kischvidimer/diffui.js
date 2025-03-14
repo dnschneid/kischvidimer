@@ -13,12 +13,13 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-const componentHandler = {}; // diffui stub
-const Hammer = {}; // diffui stub
-const pageData = {}; // diffui stub
-const pako = {}; // diffui stub
-const svgPanZoom = {}; // diffui stub
+import { componentHandler } from "js-libraries/material";
+import { Hammer } from "js-libraries/hammer";
+import { pako } from "js-libraries/pako_inflate";
+import { svgPanZoom } from "js-libraries/svg-pan-zoom";
+
 const uiData = {}; // diffui stub
+const pageData = {}; // diffui stub
 
 let currentPanZoom = null;
 // internally we track the index onto data.pages, but externally it's the page name
