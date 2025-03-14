@@ -524,29 +524,36 @@ class DiffUI:
     html.append(DiffUI.loadhtml(os.path.join(srcdir, "diffui.html")))
     # Code
     html.append("<script>")
-    html.append(f'let uiVersion = "{git.get_version(srcdir)}";')
-    safetitle = title[-1].replace("\\", "\\\\").replace('"', '\\"')
-    safevers = self.ver.replace("\\", "\\\\").replace('"', '\\"')
-    html.append(f'let schematicTitle = "{safetitle}";')
-    html.append(f'let schematicVersion = "{safevers}";')
-    html.append(f"let uiMode = {self._mode};")
-    if self._mode >= DiffUI.MODE_DIFF:
-      difficon = self._icon(f"{DiffUI.MODE_ICONS[self._mode]}.svg")
-      html.append(f"let diffIcon = '{difficon}';")
-    fburl = ""
-    if self._variables:
-      fburl = self._variables.resolve(self._variables.GLOBAL, "feedbackURL")
-    html.append(f"let feedbackURL = '{fburl or ''}';")
-    html.append(f"let themeDefault = '{themes.themes()[0][0]}';")
-    bwtheme = next(
-      t[0]
-      for t in themes.themes()
-      if "black" in t[0].lower() and "white" in t[0].lower()
-    )
-    html.append(f"let themeBW = '{bwtheme}';")
-    html.append(f"let themes = {json.dumps(themes.todict())};")
+    uidata = {
+      "vers": git.get_version(srcdir),
+      "schTitle": title[-1],
+      "schVers": self.ver,
+      "uiMode": self._mode,
+      "diffIcon": (
+        self._icon(f"{DiffUI.MODE_ICONS[self._mode]}.svg")
+        if self._mode >= DiffUI.MODE_DIFF
+        else ""
+      ),
+      "fbUrl": (
+        self._variables.resolve(self._variables.GLOBAL, "feedbackURL") or ""
+        if self._variables
+        else ""
+      ),
+      "themeDefault": themes.themes()[0][0],
+      "themeBW": next(
+        t[0]
+        for t in themes.themes()
+        if "black" in t[0].lower() and "white" in t[0].lower()
+      ),
+      "themes": themes.todict(),
+    }
+    html.append(f"const uiData = {json.dumps(uidata, sort_keys=True)}")
     html.append(
-      open(os.path.join(srcdir, "diffui.js"), encoding="utf-8").read()
+      re.sub(
+        r"(?m)^.*// diffui stub.*$",
+        "",
+        open(os.path.join(srcdir, "diffui.js"), encoding="utf-8").read(),
+      )
     )
     html.append("</script>")
     # KiCad font (added late to speed up display of the loading dialog)

@@ -13,6 +13,13 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+const componentHandler = {}; // diffui stub
+const Hammer = {}; // diffui stub
+const pageData = {}; // diffui stub
+const pako = {}; // diffui stub
+const svgPanZoom = {}; // diffui stub
+const uiData = {}; // diffui stub
+
 let currentPanZoom = null;
 // internally we track the index onto data.pages, but externally it's the page name
 let currentPageIndex = null;
@@ -65,14 +72,16 @@ document.addEventListener("DOMContentLoaded", function () {
   // handle case with no pages
   if (!data.pages.length) {
     svgPage.innerText =
-      uiMode < 2 ? "No pages to display." : "No changes to display.";
+      uiData.uiMode < 2 ? "No pages to display." : "No changes to display.";
     toggleDialog(document.getElementById("loadingdialog"), false);
     return;
   }
 
   // Initialize theme
   let tprev = "lwfbgphrv"; // order of the theme colors to use to render the label
-  document.querySelector(".themeselect").innerHTML = Object.entries(themes)
+  document.querySelector(".themeselect").innerHTML = Object.entries(
+    uiData.themes,
+  )
     .map(
       ([name, data]) => `
         <label style="margin-bottom:10px" class="mdl-radio mdl-js-radio mdl-js-ripple-effect"
@@ -89,25 +98,25 @@ document.addEventListener("DOMContentLoaded", function () {
             </span></label>`,
     )
     .join("");
-  setTheme(getSetting("SchematicTheme", themeDefault));
+  setTheme(getSetting("SchematicTheme", uiData.themeDefault));
 
   document.getElementById("zoomcontrols").style.display =
     getSetting("ShowZoomControls") == "shown" ? "inline" : "none";
   componentHandler.upgradeDom();
   fillPageList(data.pages);
 
-  if (uiMode >= 2) {
+  if (uiData.uiMode >= 2) {
     initializeExclusions();
     initializeCheckModel();
   }
 
-  if (uiMode >= 2) {
+  if (uiData.uiMode >= 2) {
     document.getElementById("diffbutton").getElementsByTagName("img")[0].src =
-      diffIcon;
+      uiData.diffIcon;
     document.getElementById("diffbutton").style.display = "";
   }
   for (let elem of document.getElementsByClassName("threewayshown")) {
-    elem.style.display = uiMode < 3 ? "none" : "";
+    elem.style.display = uiData.uiMode < 3 ? "none" : "";
   }
 
   window.onpopstate();
@@ -418,7 +427,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document
     .getElementById("settingsbutton")
     .addEventListener("click", function () {
-      document.getElementById("uiversion").innerText = `UI: ${uiVersion}`;
+      document.getElementById("uiversion").innerText = `UI: ${uiData.vers}`;
 
       // show zoom control selection
       if (getSetting("ShowZoomControls") == "shown") {
@@ -443,7 +452,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       let toption = document.getElementById(
-        "toption-" + getSetting("SchematicTheme", themeDefault),
+        "toption-" + getSetting("SchematicTheme", uiData.themeDefault),
       );
       if (toption) {
         toption.parentNode.MaterialRadio.check();
@@ -451,20 +460,20 @@ document.addEventListener("DOMContentLoaded", function () {
       let dialog = document.getElementById("settingsdialog");
       toggleDialog(dialog, true);
     });
-  if (feedbackURL && /https?:[/][/]/.test(feedbackURL)) {
+  if (uiData.fbUrl && /https?:[/][/]/.test(uiData.fbUrl)) {
     document.getElementById("feedbackbutton").parentNode.style.display =
       "inline";
     document
       .getElementById("feedbackbutton")
       .addEventListener("click", function () {
-        openurl(feedbackURL);
+        openurl(uiData.fbUrl);
       });
   }
   document.getElementById("printbutton").addEventListener("click", function () {
     genpdf();
   });
   document.getElementById("uiversion").addEventListener("click", function () {
-    copyToClipboard(uiVersion, "kischvidimer version");
+    copyToClipboard(uiData.vers, "kischvidimer version");
   });
   document
     .getElementById("closesettings")
@@ -594,7 +603,7 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   });
 
-  if (uiMode > 1) {
+  if (uiData.uiMode > 1) {
     document
       .getElementById("diffbutton")
       .addEventListener("mousedown", function () {
@@ -643,8 +652,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  document.getElementById("schematic-title").textContent = schematicTitle;
-  document.getElementById("schematic-version").textContent = schematicVersion;
+  document.getElementById("schematic-title").textContent = uiData.schTitle;
+  document.getElementById("schematic-version").textContent = uiData.schVers;
 
   initHammer();
 });
@@ -695,7 +704,7 @@ function crossProbe(cmd, target) {
       // Use a nominal timeout to avoid huge CPU usage if we hit a standard webserver
       setTimeout(crossProbe, 100);
       // Try to parse the result; might throw an exception
-      resp = JSON.parse(e.target.response);
+      const resp = JSON.parse(e.target.response);
       if (
         resp &&
         "cmd" in resp &&
@@ -716,14 +725,17 @@ function crossProbe(cmd, target) {
 }
 
 function setTheme(name, target) {
-  if (!(name in themes)) {
+  if (!(name in uiData.themes)) {
     name = "Default";
   }
   if (!target) {
     setSetting("SchematicTheme", name);
   }
-  for (v in themes[name]) {
-    (target || document.body).style.setProperty("--" + v, themes[name][v]);
+  for (const v in uiData.themes[name]) {
+    (target || document.body).style.setProperty(
+      "--" + v,
+      uiData.themes[name][v],
+    );
   }
   applyAnimationColorWorkaround();
 }
@@ -797,7 +809,7 @@ function pushHash(target) {
 function fillPageList(pages) {
   let listElem = document.getElementById("pagelist");
   for (let i = 0; i < pages.length; i++) {
-    p = pages[i];
+    const p = pages[i];
     if (!data.diffs[p.id]) {
       data.diffs[p.id] = [];
     }
@@ -1067,7 +1079,7 @@ function injectPage(pageIndex) {
     panToElems([page], 0.01); // the tiniest bit of margin
   }
 
-  if (uiMode > 1) {
+  if (uiData.uiMode > 1) {
     fillDiffTable();
   }
   applyAnimationColorWorkaround();
@@ -1075,7 +1087,7 @@ function injectPage(pageIndex) {
 }
 
 function applyAnimationColorWorkaround() {
-  let theme = getSetting("SchematicTheme", themeDefault);
+  let theme = getSetting("SchematicTheme", uiData.themeDefault);
   // workaround the fact that we cannot animate css variables.
   document.querySelectorAll("animate[fromvar]").forEach((animElem) => {
     let fromVar = animElem
@@ -1085,8 +1097,8 @@ function applyAnimationColorWorkaround() {
       .getAttribute("tovar")
       .match(/(?<=var\(--)[a-zA-Z]+(?=\))/);
     if (fromVar && toVar) {
-      animElem.setAttribute("from", themes[theme][fromVar]);
-      animElem.setAttribute("to", themes[theme][toVar]);
+      animElem.setAttribute("from", uiData.themes[theme][fromVar]);
+      animElem.setAttribute("to", uiData.themes[theme][toVar]);
     }
   });
 }
@@ -1456,8 +1468,9 @@ function getAnimationElement(name) {
 function getDiffRow(diff) {
   let trs = "";
   let columnLengths = [diff[0].length, diff[1].length];
-  let max = uiMode < 3 ? 1 : Math.max(columnLengths[0], columnLengths[1]);
-  for (i = 0; i < max; i++) {
+  let max =
+    uiData.uiMode < 3 ? 1 : Math.max(columnLengths[0], columnLengths[1]);
+  for (let i = 0; i < max; i++) {
     let trClassList = [
       diff[0] && diff[0][0] && diff[0][0].c ? "conflict" : "",
       i > 0 ? "collapsedtr" : "",
@@ -1480,7 +1493,7 @@ function getDiffRow(diff) {
         if (i > 0) {
           diff[j][i].collapsed = true;
         }
-      } else if (uiMode > 2) {
+      } else if (uiData.uiMode > 2) {
         trs += `<td class="${tdClass}"></td><td class="${tdClass}"></td>`;
       }
     }
@@ -1498,7 +1511,7 @@ function expandMultiple(span, tr, diffId) {
     i < Math.max(diff.parent[0].length, diff.parent[1].length);
     i++
   ) {
-    for (j of [0, 1]) {
+    for (let j of [0, 1]) {
       if (i in diff.parent[j]) {
         diff.parent[j][i].collapsed = false;
       }
@@ -1525,7 +1538,7 @@ function collapseMultiple(span, tr, diffId) {
   // first, add collapse style from hidden TRs
   let max = Math.max(diff.parent[0].length, diff.parent[1].length);
   for (let i = 1; i < max; i++) {
-    for (j of [0, 1]) {
+    for (let j of [0, 1]) {
       if (i in diff.parent[j]) {
         diff.parent[j][i].collapsed = true;
       }
@@ -2488,7 +2501,7 @@ function genpdf() {
   let win = window.open("", "printwin", "height=600, width=800");
   win.document.write(
     "<html><head><title>Preparing to print " +
-      schematicTitle +
+      escapeHTML(uiData.schTitle) +
       " </title></head><body>",
   );
   win.document.write(
@@ -2506,14 +2519,14 @@ function genpdf() {
     win.close();
   };
   win.onbeforeprint = function () {
-    win.document.title = schematicTitle;
+    win.document.title = uiData.schTitle;
   };
 
   // Copy in fonts
   document.fonts.forEach((f) => win.document.fonts.add(f));
 
   // Black-on-white theme
-  setTheme(themeBW, win.document.body);
+  setTheme(uiData.themeBW, win.document.body);
 
   win.document.write(decodeData(pageData["library"]));
   win.document.querySelectorAll("svg")[0].style.display = "none";
