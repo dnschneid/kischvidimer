@@ -464,6 +464,62 @@ class DiffUI:
 
     return re.sub(r"<img\s[^>]*>", repl, h)
 
+  @staticmethod
+  def loadjs(path):
+    # Loads in a javascript file and replaces imports/exports with inline code
+    with open(path, encoding="utf-8") as f:
+      js = f.read()
+    # Ensure the header stays on top
+    header, headersep, js = js.partition("\n\n")
+    imports = {}  # file -> (global variable name, is_imported)
+    exports = set()
+    exportvars = set()
+    impcount = -1
+
+    def subimp(m):
+      modnm = os.path.splitext(os.path.basename(m[2]))[0]
+      globnm, _ = imports.setdefault(modnm, (f"__ksvdm_mod_{modnm}", False))
+      return f"const {m[1]} = {globnm}"
+
+    def subexp(m):
+      if m[2]:
+        if m[1].startswith("function "):
+          exports.add(m[2])
+          return m[1]
+        else:
+          exportvars.add(m[2])
+          return m[2]
+      exports.update(e.strip() for e in m[3].split(",") if e.strip())
+      return ""
+
+    while impcount:
+      # Delete stub lines
+      js = re.sub(r"(?m)^.*// diffui stub.*$", "", js)
+      # Detect imports
+      js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
+      # Prepend new imports, modifying export lines. Not truly DAG-capable
+      for modnm, (globnm, imported) in imports.items():
+        if imported:
+          continue
+        subpath = os.path.join(os.path.dirname(path), f"{modnm}.js")
+        with open(subpath, encoding="utf-8") as f:
+          subjs = f.read()
+        # Replace export with self-assignment
+        exports.clear()
+        subjs = re.sub(r"\bexport ([^{\s]+ (\w+)|{([^}]+)};?)", subexp, subjs)
+        subjs = subjs.strip()
+        if exportvars:
+          subjs = re.sub(
+            r"\b" + r"\b|\b".join(exportvars) + r"\b", r"__.\g<0>", subjs
+          )
+        exportstr = "".join(f"this.{e}={e};" for e in sorted(exports))
+        js = (
+          f"const {globnm}=new function(){{const __=this;\n"
+          f"{subjs};\n{exportstr}}};\n{js}"
+        )
+        imports[modnm] = (globnm, True)
+    return "".join((header, headersep, js))
+
   def genhtml(self, is_app=False):
     self._update_index()
 
@@ -549,13 +605,7 @@ class DiffUI:
       "themes": themes.todict(),
     }
     html.append(f"const uiData = {json.dumps(uidata, sort_keys=True)}")
-    html.append(
-      re.sub(
-        r"(?m)^.*// diffui stub.*$",
-        "",
-        open(os.path.join(srcdir, "diffui.js"), encoding="utf-8").read(),
-      )
-    )
+    html.append(DiffUI.loadjs(os.path.join(srcdir, "diffui.js")))
     html.append("</script>")
     # KiCad font (added late to speed up display of the loading dialog)
     html.append("<style>")
