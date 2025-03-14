@@ -744,7 +744,7 @@ function decodeData(data) {
     // Optimized base116 decoder assumes valid codepoints and full padding.
     // Gzip doesn't care about trailing null bytes, so no need to strip them.
     let code = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!"#$%&()*+,-.:;<=>?@[]^_`{|}~ '
-        + '\007\010\011\013\014\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037\177';
+        + '\x07\b\t\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x7F';
     let dec = new Uint8Array(128);
     for (let i = 0; i < code.length; i++) {
         dec[code.charCodeAt(i)] = i;
