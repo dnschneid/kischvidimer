@@ -494,7 +494,7 @@ class DiffUI:
 
     while impcount:
       # Delete stub lines
-      js = re.sub(r"(?m)^.*// diffui stub.*$", "", js)
+      js = re.sub(r"(?m)^.*// diffui stub.*$\n", "", js)
       # Detect imports
       js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
       # Prepend new imports, modifying export lines. Not truly DAG-capable
