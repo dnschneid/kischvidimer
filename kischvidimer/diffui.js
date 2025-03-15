@@ -14,22 +14,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { componentHandler } from "js-libraries/material";
-import { Hammer } from "js-libraries/hammer";
 import { pako } from "js-libraries/pako_inflate";
-import { svgPanZoom } from "js-libraries/svg-pan-zoom";
+import * as Viewport from "viewport";
+import * as Tooltip from "tooltip";
 
 const uiData = {}; // diffui stub
 const pageData = {}; // diffui stub
 
-let currentPanZoom = null;
 // internally we track the index onto data.pages, but externally it's the page name
 let currentPageIndex = null;
 let svgPage = document.getElementById("svgPage");
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
 let xprobe = null;
-
-let tooltipFixed = false;
 
 let filteredDiffRows = new Set();
 let diffMap = {};
@@ -41,10 +38,6 @@ let searchMatchesOnPage = [];
 
 let pageSeparation = 150; // svg coords
 let panPageHysteresis = 100; // client coords
-
-let panCounter = 0;
-
-let hammer = null;
 
 let ELEM_TYPE_SELECTORS = {
   component: ["[p]", "symbol"],
@@ -224,20 +217,16 @@ document.addEventListener("DOMContentLoaded", function () {
       for (let prop in elem.indexed) {
         let val = elem.indexed[prop];
         if (/^https?:[/][/]/.test(val)) {
-          openurl(val.split(/\s/)[0]);
+          Viewport.openurl(val.split(/\s/)[0]);
           return;
         }
       }
     }
   };
 
-  window.addEventListener("resize", function () {
-    currentPanZoom.resize();
-  });
-
   // Handle tooltips
   svgPage.onmouseover = function (e) {
-    if (tooltipFixed || e.buttons) {
+    if (Tooltip.isfixed() || e.buttons) {
       return;
     }
     let elem = getElem(e.target);
@@ -246,11 +235,11 @@ document.addEventListener("DOMContentLoaded", function () {
     } else if (elem.type === "component" && elem.indexed) {
       displayTooltip(elem, e.target);
     } else {
-      displayTooltip(false);
+      Tooltip.hide(true);
     }
   };
   svgPage.onmousemove = function (evt) {
-    if (!tooltipFixed) {
+    if (!Tooltip.isfixed()) {
       let tooltip = document.getElementById("tooltip");
       tooltip.style.left =
         Math.min(evt.pageX + 20, window.innerWidth - tooltip.offsetWidth) +
@@ -263,41 +252,13 @@ document.addEventListener("DOMContentLoaded", function () {
     // store the mouse event in case we need to emulate mousedown on ghost transition
     svgPage.mouseEvent = evt;
   };
-  svgPage.addEventListener("touchstart", (evt) => {
-    // with page changing, we expect a touch target to be removed from the DOM
-    // https://developer.mozilla.org/en-US/docs/Web/API/Touch/target
-    // ^ we need to attach the touch listeners to the target directly in order to preserve the touchmoves
-    let panned = [evt.targetTouches[0].clientX, evt.targetTouches[0].clientY];
-    let onTouchMove = (e) => {
-      if (true || !evt.target.closest("#svgPage")) {
-        let delta = [
-          e.targetTouches[0].clientX - panned[0],
-          e.targetTouches[0].clientY - panned[1],
-        ];
-        currentPanZoom.panBy({ x: delta[0], y: delta[1] });
-        panned = [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
-      }
-    };
-    let onTouchEnd = () => {
-      panned = [0, 0];
-      evt.target.removeEventListener("touchmove", onTouchMove);
-      evt.target.removeEventListener("touchend", onTouchEnd);
-    };
-    evt.target.addEventListener("touchmove", onTouchMove);
-    evt.target.addEventListener("touchend", onTouchEnd);
-  });
   svgPage.onmouseout = function () {
-    if (!tooltipFixed) {
-      displayTooltip(false);
+    if (!Tooltip.isfixed()) {
+      Tooltip.hide(true);
     }
   };
   svgPage.onmousedown = function () {
-    if (tooltipFixed) {
-      tooltipFixed = false;
-      let tooltip = document.getElementById("tooltip");
-      tooltip.style.display = "none";
-      tooltip.style.opacity = 0.8;
-    }
+    Tooltip.hide();
   };
   svgPage.onmouseup = function (e) {
     if (e.button === 3) {
@@ -305,10 +266,8 @@ document.addEventListener("DOMContentLoaded", function () {
     } else if (e.button === 4) {
       window.history.forward();
     } else {
-      let tooltip = document.getElementById("tooltip");
-      if (tooltip.style.display !== "none") {
-        tooltip.style.opacity = 1;
-        tooltipFixed = true;
+      if (Tooltip.isvisible()) {
+        Tooltip.show(true);
         let elem = getElem(e.target);
         if (elem.type === "net" && elem.name !== "GND") {
           crossProbe("NET", elem.name);
@@ -329,23 +288,11 @@ document.addEventListener("DOMContentLoaded", function () {
     // prevents the fake mousedown from triggering on page switch
     svgPage.mouseEvent = null;
 
-    if (e.target.tagName != "INPUT") {
-      if (e.key == "ArrowUp") {
-        currentPanZoom.panBy({ x: 0, y: 100 });
-      } else if (e.key == "ArrowDown") {
-        currentPanZoom.panBy({ x: 0, y: -100 });
-      } else if (e.key == "ArrowLeft") {
-        currentPanZoom.panBy({ x: 100, y: 0 });
-      } else if (e.key == "ArrowRight") {
-        currentPanZoom.panBy({ x: -100, y: 0 });
-      } else if (e.key == "PageUp") {
+    if (e.target.tagName != "INPUT" && Viewport.onkeydown(e) !== false) {
+      if (e.key == "PageUp") {
         cyclePage(-1);
       } else if (e.key == "PageDown") {
         cyclePage(1);
-      } else if (e.key == "=" || e.key == "+") {
-        zoomIn();
-      } else if (e.key == "-" || e.key == "_") {
-        zoomOut();
       }
     }
     if (e.key == "Enter" && searchIsActive()) {
@@ -420,9 +367,9 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   });
 
-  document.getElementById("zoomcontrolout").addEventListener("click", zoomOut);
-  document.getElementById("zoomcontrolfit").addEventListener("click", zoomFit);
-  document.getElementById("zoomcontrolin").addEventListener("click", zoomIn);
+  document.getElementById("zoomcontrolout").addEventListener("click", Viewport.zoomOut);
+  document.getElementById("zoomcontrolfit").addEventListener("click", Viewport.zoomFit);
+  document.getElementById("zoomcontrolin").addEventListener("click", Viewport.zoomIn);
 
   //init settings
   document
@@ -467,7 +414,7 @@ document.addEventListener("DOMContentLoaded", function () {
     document
       .getElementById("feedbackbutton")
       .addEventListener("click", function () {
-        openurl(uiData.fbUrl);
+        Viewport.openurl(uiData.fbUrl);
       });
   }
   document.getElementById("printbutton").addEventListener("click", function () {
@@ -655,36 +602,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById("schematic-title").textContent = uiData.schTitle;
   document.getElementById("schematic-version").textContent = uiData.schVers;
-
-  initHammer();
 });
-
-function initHammer() {
-  let initialScale = 1;
-
-  hammer = Hammer(svgPage, {
-    inputClass: Hammer.SUPPORT_POINTER_EVENTS
-      ? Hammer.PointerEventInput
-      : Hammer.TouchInput,
-  });
-
-  hammer.get("pinch").set({ enable: true });
-  hammer.on("pinchstart pinchmove", function (ev) {
-    // On pinch start remember initial zoom
-    if (ev.type === "pinchstart") {
-      initialScale = currentPanZoom.getZoom();
-    }
-    // ev.scale accumulates, so treat it as relative to the initial scale
-    currentPanZoom.zoomAtPoint(initialScale * ev.scale, {
-      x: ev.center.x,
-      y: ev.center.y,
-    });
-  });
-  // Prevent moving the page on some devices when panning over SVG
-  svgPage.addEventListener("touchmove", function (e) {
-    e.preventDefault();
-  });
-}
 
 function crossProbe(cmd, target) {
   // Don't cross-probe unless the button has been pressed
@@ -937,139 +855,8 @@ function injectPage(pageIndex) {
   let svg = null;
   if (currentPageIndex !== pageIndex || currentPageIndex === null) {
     currentPageIndex = pageIndex;
-    // Load up the html data into a temporary div tag
-    let svgData = document.createElement("div");
-    svgData.innerHTML = decodeData(pageData[svgID]);
-    // Configure the svg
-    svg = svgData.firstElementChild;
-    svg.style.width = "100%";
-    svg.style.height = "100%";
-    svg.id = "activesvg";
-    // Make the active instance visible and delete the rest
-    selectInstance(svg, instance);
-    // Upgrade any links to use openurl
-    for (let a of svg.getElementsByTagName("a")) {
-      a.removeAttribute("target");
-      a.onclick = function () {
-        openurl(a.href.animVal);
-        return false;
-      };
-    }
-    // Move contents of svg into a temporary svg, keeping just the top svg tag
-    svgData = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svgData.append(...svg.children);
-    // Replace the current page DOM with this single svg tag
-    svgPage.replaceChildren(svg);
-    svgPage.viewBoxOriginal = page.box;
-
-    // Create the svgpanzoom with the shell SVG
-    currentPanZoom = svgPanZoom(svg, {
-      zoomScaleSensitivity: 0.2,
-      dblClickZoomEnabled: false,
-      onZoom: function () {
-        if (tooltipFixed) {
-          tooltipFixed = false;
-          let tooltip = document.getElementById("tooltip");
-          tooltip.style.display = "none";
-          tooltip.style.opacity = "0.8";
-        }
-        // we never want to emulate mousedown on ghost transition caused by zooming
-        svgPage.mouseEvent = null;
-      },
-      onPan: function (c) {
-        panCounter++;
-        if (tooltipFixed) {
-          tooltipFixed = false;
-          let tooltip = document.getElementById("tooltip");
-          tooltip.style.display = "none";
-          tooltip.style.opacity = "0.8";
-        }
-
-        let y = currentPanZoom.getPan().y;
-        let panYExtents = getPanYPageExtents();
-
-        // handle page transitions for pan-past-boundary
-        if (y < panYExtents[0] - panPageHysteresis) {
-          cyclePage(
-            1,
-            1,
-            svgPage.mouseEvent,
-            panYExtents[0] - panPageHysteresis - y,
-          );
-        } else if (y > panYExtents[1] + panPageHysteresis) {
-          cyclePage(
-            -1,
-            -1,
-            svgPage.mouseEvent,
-            y - panYExtents[1] - panPageHysteresis,
-          );
-        }
-        // increase opacity of ghost pages as they approach the boundary
-        Array.from(svgPage.getElementsByClassName("ghostafter")).forEach(
-          (g) => {
-            g.style.filter = `opacity(${Math.max(Math.exp((panYExtents[0] - y) / panPageHysteresis), 0.2)})`;
-          },
-        );
-        Array.from(svgPage.getElementsByClassName("ghostbefore")).forEach(
-          (g) => {
-            g.style.filter = `opacity(${Math.max(Math.exp((y - panYExtents[1]) / panPageHysteresis), 0.2)})`;
-          },
-        );
-      },
-      customEventsHandler: {
-        haltEventListeners: [
-          "touchstart",
-          "touchend",
-          "touchmove",
-          "touchleave",
-          "touchcancel",
-        ],
-        init: function () {},
-        destroy: function () {},
-      },
-    });
-
-    // Now that svgpanzoom is set up, add the content back in
-    svg.firstElementChild.append(...svgData.children);
-
-    // append ghost pages to the svg
-    let ghostSvg = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "svg",
-    );
-
-    // create ghost pages
-    // only populate 4 ghost pages: 2 before and 2 after current page
-    // from testing with default zoom min, seeing more than 2 past the current page is not likely
-    let yOffset = 0;
-    let pageOffset = 0;
-    for (
-      let i = Math.max(0, pageIndex - 2);
-      i < Math.min(data.pages.length, pageIndex + 3);
-      i++
-    ) {
-      let targetSvg = ghostSvg;
-      if (i == pageIndex) {
-        pageOffset = yOffset;
-        yOffset += page.box[3] + pageSeparation;
-        continue;
-      }
-      yOffset += addGhostPage(
-        ghostSvg,
-        i,
-        yOffset,
-        i > pageIndex,
-        svgPage.viewBoxOriginal[2],
-      );
-    }
-
-    ghostSvg.setAttribute("x", svgPage.viewBoxOriginal[0]);
-    ghostSvg.setAttribute("y", -pageOffset + svgPage.viewBoxOriginal[1]);
-    ghostSvg.setAttribute("width", svgPage.viewBoxOriginal[2]);
-    ghostSvg.setAttribute("height", yOffset);
-    ghostSvg.setAttribute("class", "ghost");
-
-    svg.firstElementChild.appendChild(ghostSvg);
+    Viewport.loadPage(page, decodeData(pageData[svgID]));
+    Viewport.createGhostPages();
   }
 
   if (
@@ -1100,58 +887,6 @@ function applyAnimationColorWorkaround() {
     if (fromVar && toVar) {
       animElem.setAttribute("from", uiData.themes[theme][fromVar]);
       animElem.setAttribute("to", uiData.themes[theme][toVar]);
-    }
-  });
-}
-
-function addGhostPage(ghostSvg, pageIndex, yOffset, pageBelow, activeWidth) {
-  let page = data.pages[pageIndex];
-  let ghostRect = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "rect",
-  );
-  let arrowChar = pageBelow ? "↓" : "↑";
-  let viewBox = page.box;
-  let xOffset = -(viewBox[2] - activeWidth) / 2;
-
-  ghostRect.setAttribute("x", xOffset);
-  ghostRect.setAttribute("y", yOffset);
-  ghostRect.setAttribute("width", viewBox[2]);
-  ghostRect.setAttribute("height", viewBox[3]);
-  ghostRect.setAttribute("class", "ghostpage");
-
-  let ghostText = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "text",
-  );
-
-  ghostText.setAttribute("x", xOffset + viewBox[2] / 2);
-  ghostText.setAttribute("y", yOffset + (pageBelow ? 300 : viewBox[3] - 300));
-  ghostText.setAttribute(
-    "dominant-baseline",
-    pageBelow ? "hanging" : "text-after-edge",
-  );
-  ghostText.innerHTML = `${arrowChar} ${page.name} ${arrowChar}`;
-
-  let ghostG = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  ghostG.setAttribute("class", pageBelow ? "ghostafter" : "ghostbefore");
-  ghostG.append(ghostRect, ghostText);
-  onPanlessClick(ghostG, () => {
-    pushHash(data.pages[pageIndex].name);
-    window.onpopstate();
-  });
-  ghostSvg.append(ghostG);
-  return viewBox[3] + pageSeparation;
-}
-
-function onPanlessClick(elem, callback) {
-  // something like onclick, but suppressed if there is any panning
-  elem.addEventListener("mousedown", () => {
-    elem.panCounter = panCounter;
-  });
-  elem.addEventListener("mouseup", () => {
-    if (elem.panCounter == panCounter) {
-      callback();
     }
   });
 }
@@ -1763,62 +1498,15 @@ function cycleResultPage(delta) {
   populateMatches();
 }
 
-function getPanYFromPageRatio(ratio) {
-  // ratio = 0 returns the pan that centers at top of schematic
-  // ratio = 0.5 returns the pan that centers the schematic in Y
-  // ratio = 1 returns the pan that centers at bottom of schematic
-  let extents = getPanYPageExtents();
-  return extents[0] + ratio * (extents[1] - extents[0]);
-}
-
-function getPanYPageExtents() {
-  // returns [a, b], where
-  //   a = pan Y value that centers the top edge of the schematic page
-  //   b = pan Y value that centers the bottom edge of the schematic page
-  let pageHeight = svgPage.viewBoxOriginal[3];
-  let realZoom = currentPanZoom.getSizes().realZoom;
-  let centerOffset = svgPage.offsetHeight / 2;
-  let viewBoxFactor = realZoom * (svgPage.viewBoxOriginal[1] + pageHeight);
-  return [
-    centerOffset - viewBoxFactor,
-    centerOffset - viewBoxFactor + pageHeight * realZoom,
-  ];
-}
-
 function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
-  let initialPan = currentPanZoom.getPan();
-  let initialZoom = currentPanZoom.getZoom();
-  let initialRealZoom = currentPanZoom.getSizes().realZoom;
-  let initialViewBox = svgPage.viewBoxOriginal;
+  let origPos = Viewport.savePos();
   if (
     currentPageIndex + delta >= 0 &&
     currentPageIndex + delta < data.pages.length
   ) {
     pushHash(data.pages[currentPageIndex + delta].name);
     window.onpopstate();
-    // FIXME: this code doesn't work correctly with tall pages
-    // handle pan-caused page switch by immediately panning to the equivalent x,y,zoom that they came from
-    let pageScaling = svgPage.viewBoxOriginal[2] / initialViewBox[2];
-    // xOffset is caused by centering pages of different size
-    let xOffset = (initialViewBox[2] - svgPage.viewBoxOriginal[2]) / 2;
-    if (retainPan) {
-      currentPanZoom.zoom(initialZoom * pageScaling);
-      currentPanZoom.pan({
-        x:
-          initialPan.x +
-          (xOffset + initialViewBox[0] - svgPage.viewBoxOriginal[0]) *
-            initialRealZoom,
-        y:
-          getPanYFromPageRatio((retainPan + 1) / 2) +
-          retainPan * (initialRealZoom * pageSeparation - panPageHysteresis) +
-          leftoverPanY,
-      });
-      // emulate a mousedown to preserve the same pan across pages
-      if (mouseEvent) {
-        mouseEvent.initEvent("mousedown", true, true);
-        document.getElementById("activesvg").dispatchEvent(mouseEvent);
-      }
-    }
+    Viewport.restorePos(origPos);
   }
 }
 
@@ -1897,9 +1585,8 @@ function matchesTerm(x, y) {
  */
 function displayTooltip(elem, target, fix) {
   let tooltip = document.getElementById("tooltip");
-  if (!elem || !elem.name) {
-    tooltip.style.display = "none";
-    tooltipFixed = false;
+  if (!elem.name) {
+    Tooltip.hide(true);
     return;
   }
 
@@ -1938,7 +1625,7 @@ function displayTooltip(elem, target, fix) {
         let is_link = /^https?:[/][/]/.test(data);
         if (is_link) {
           let href = data.replace(/["\\]/g, "");
-          txt += `<a href="${href}" onclick="openurl(unescape('${escape(data)}')); return false;">`;
+          txt += `<a href="${href}" onclick="Viewport.openurl(unescape('${escape(data)}')); return false;">`;
           let split = data.split("/");
           if (split.length > 4) {
             data = split
@@ -1960,13 +1647,7 @@ function displayTooltip(elem, target, fix) {
     document.getElementById("propdiv").style.display = "none";
   }
 
-  tooltip.style.display = "inline";
-  if (fix) {
-    tooltip.style.opacity = 1;
-  } else {
-    tooltip.style.opacity = 0.8;
-  }
-  tooltipFixed = fix;
+  Tooltip.show(fix);
 }
 
 function getTooltipContext(elem) {
@@ -2139,35 +1820,6 @@ function getLocation(pageIndex, path) {
   }
 }
 
-/** Launches a URL in a new window.
- * If we're in an isolated browser, request the python server to launch the URL
- * in a proper browser. Otherwise, just open a new window.
- */
-function openurl(url) {
-  if (!url || url.startsWith("#")) {
-    pushHash(url.substr(1));
-    window.onpopstate();
-  } else if (
-    document.location.hostname !== "localhost" ||
-    document.location.pathname !== "/"
-  ) {
-    window.open(url, "_blank");
-  } else {
-    fetch("./openurl", {
-      method: "POST",
-      body: JSON.stringify({ url: url }),
-    })
-      .then((res) => {
-        if (res.status >= 300) {
-          window.open(url, "_blank");
-        }
-      })
-      .catch((error) => {
-        window.open(url, "_blank");
-      });
-  }
-}
-
 /** Navigates to the referenced target when back/forward are hit.
  */
 window.onpopstate = function (evt) {
@@ -2192,7 +1844,7 @@ window.onpopstate = function (evt) {
     injectPage(pageIndex);
   }
 
-  displayTooltip(false);
+  Tooltip.hide(true);
 
   if (!target && pageIndex == -1) {
     window.location.hash = "#" + data.pages[0].name;
@@ -2385,22 +2037,7 @@ function highlight(elems, state, scroll, unhighlightOthers) {
 function getBounds(elems) {
   let clientRects = elems.map((e) => {
     if (e.contentbox) {
-      // back-calculate the page coordinates of the content box.
-      // the box expands to fit the window so just use the center and zoom
-      let center = getCenter(svgPage.getBoundingClientRect());
-      let realZoom = currentPanZoom.getSizes().realZoom;
-      return {
-        left: center.x + (e.contentbox[0] - e.box[0] - e.box[2] / 2) * realZoom,
-        top: center.y + (e.contentbox[1] - e.box[1] - e.box[3] / 2) * realZoom,
-        right:
-          center.x +
-          (e.contentbox[0] + e.contentbox[2] - e.box[0] - e.box[2] / 2) *
-            realZoom,
-        bottom:
-          center.y +
-          (e.contentbox[1] + e.contentbox[3] - e.box[1] - e.box[3] / 2) *
-            realZoom,
-      };
+      return Viewport.contentBoxToPageCoords(e);
     } else {
       return e.getBoundingClientRect();
     }
@@ -2428,11 +2065,9 @@ function panToElems(targetElems, padding) {
   padding = padding === undefined ? 0.8 : 1 - padding;
 
   if (!elemBounds) {
-    zoomFit();
+    Viewport.zoomFit();
     return;
   }
-
-  panToCenter(getCenter(elemBounds));
 
   // calculate svg viewport width offset based on open sidebars
   let widthOffset = 0;
@@ -2442,41 +2077,7 @@ function panToElems(targetElems, padding) {
     widthOffset = -document.getElementById("animationtoolbox").offsetWidth;
   }
 
-  // zoom to a level that at least captures the bounds (0.8 sets 10% padding for zoom)
-  currentPanZoom.zoom(
-    Math.min(
-      5,
-      ...[
-        (padding * (currentPanZoom.getSizes().width + widthOffset)) /
-          (elemBounds.right - elemBounds.left),
-        (padding * currentPanZoom.getSizes().height) /
-          (elemBounds.bottom - elemBounds.top),
-      ],
-    ),
-  );
-
-  // pan left to center the target if a sidebar is open
-  if (widthOffset) {
-    currentPanZoom.panBy({
-      x: widthOffset / 2,
-      y: 0,
-    });
-  }
-}
-
-function panToCenter(targetCenter) {
-  let svgCenter = getCenter(svgPage.getBoundingClientRect());
-  currentPanZoom.panBy({
-    x: svgCenter.x - targetCenter.x,
-    y: svgCenter.y - targetCenter.y,
-  });
-}
-
-function getCenter(bbox) {
-  return {
-    x: (bbox.left + bbox.right) / 2,
-    y: (bbox.top + bbox.bottom) / 2,
-  };
+  Viewport.panToBounds(elemBounds, widthOffset);
 }
 
 function getPageIndex(pageName) {
@@ -2651,21 +2252,6 @@ function getMatches(elem) {
     });
   }
   return [];
-}
-
-function zoomIn() {
-  currentPanZoom.zoomIn();
-}
-
-function zoomFit() {
-  currentPanZoom.resize();
-  currentPanZoom.fit();
-  currentPanZoom.center();
-  currentPanZoom.zoom(1);
-}
-
-function zoomOut() {
-  currentPanZoom.zoomOut();
 }
 
 function searchIsActive() {
