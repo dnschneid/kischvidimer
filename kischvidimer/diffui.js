@@ -16,7 +16,6 @@
 import { componentHandler } from "js-libraries/material";
 import { pako } from "js-libraries/pako_inflate";
 import * as Viewport from "viewport";
-import * as Tooltip from "tooltip";
 
 const uiData = {}; // diffui stub
 const pageData = {}; // diffui stub
@@ -226,7 +225,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Handle tooltips
   svgPage.onmouseover = function (e) {
-    if (Tooltip.isfixed() || e.buttons) {
+    if (Viewport.Tooltip.isfixed() || e.buttons) {
       return;
     }
     let elem = getElem(e.target);
@@ -235,11 +234,11 @@ document.addEventListener("DOMContentLoaded", function () {
     } else if (elem.type === "component" && elem.indexed) {
       displayTooltip(elem, e.target);
     } else {
-      Tooltip.hide(true);
+      Viewport.Tooltip.hide(true);
     }
   };
   svgPage.onmousemove = function (evt) {
-    if (!Tooltip.isfixed()) {
+    if (!Viewport.Tooltip.isfixed()) {
       let tooltip = document.getElementById("tooltip");
       tooltip.style.left =
         Math.min(evt.pageX + 20, window.innerWidth - tooltip.offsetWidth) +
@@ -253,12 +252,12 @@ document.addEventListener("DOMContentLoaded", function () {
     svgPage.mouseEvent = evt;
   };
   svgPage.onmouseout = function () {
-    if (!Tooltip.isfixed()) {
-      Tooltip.hide(true);
+    if (!Viewport.Tooltip.isfixed()) {
+      Viewport.Tooltip.hide(true);
     }
   };
   svgPage.onmousedown = function () {
-    Tooltip.hide();
+    Viewport.Tooltip.hide();
   };
   svgPage.onmouseup = function (e) {
     if (e.button === 3) {
@@ -266,8 +265,8 @@ document.addEventListener("DOMContentLoaded", function () {
     } else if (e.button === 4) {
       window.history.forward();
     } else {
-      if (Tooltip.isvisible()) {
-        Tooltip.show(true);
+      if (Viewport.Tooltip.isvisible()) {
+        Viewport.Tooltip.show(true);
         let elem = getElem(e.target);
         if (elem.type === "net" && elem.name !== "GND") {
           crossProbe("NET", elem.name);
@@ -1586,7 +1585,7 @@ function matchesTerm(x, y) {
 function displayTooltip(elem, target, fix) {
   let tooltip = document.getElementById("tooltip");
   if (!elem.name) {
-    Tooltip.hide(true);
+    Viewport.Tooltip.hide(true);
     return;
   }
 
@@ -1647,7 +1646,7 @@ function displayTooltip(elem, target, fix) {
     document.getElementById("propdiv").style.display = "none";
   }
 
-  Tooltip.show(fix);
+  Viewport.Tooltip.show(fix);
 }
 
 function getTooltipContext(elem) {
@@ -1844,7 +1843,7 @@ window.onpopstate = function (evt) {
     injectPage(pageIndex);
   }
 
-  Tooltip.hide(true);
+  Viewport.Tooltip.hide(true);
 
   if (!target && pageIndex == -1) {
     window.location.hash = "#" + data.pages[0].name;

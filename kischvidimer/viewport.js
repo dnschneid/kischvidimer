@@ -16,6 +16,7 @@
 import { Hammer } from "js-libraries/hammer";
 import { svgPanZoom } from "js-libraries/svg-pan-zoom";
 import * as Tooltip from "tooltip";
+export { Tooltip };
 
 let currentPanZoom = null;
 let hammer = null;
