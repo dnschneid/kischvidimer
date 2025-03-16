@@ -18,12 +18,18 @@ import { svgPanZoom } from "js-libraries/svg-pan-zoom";
 import * as Tooltip from "tooltip";
 export { Tooltip };
 
+const pageSeparation = 150; // svg coords
+const panPageHysteresis = 100; // client coords
+
+let svgPage = null;
 let currentPanZoom = null;
 let hammer = null;
 let panCounter = 0;
 let originalViewBox = null;
 
 document.addEventListener("DOMContentLoaded", function () {
+  svgPage = document.getElementById("svgPage");
+
   window.addEventListener("resize", function () {
     currentPanZoom.resize();
   });
@@ -88,7 +94,7 @@ function initHammer() {
  */
 export function openurl(url) {
   if (!url || url.startsWith("#")) {
-    pushHash(url.substr(1));
+    window.history.pushState(null, "", url);
     window.onpopstate();
   } else if (
     document.location.hostname !== "localhost" ||
@@ -111,12 +117,12 @@ export function openurl(url) {
   }
 }
 
-export function loadPage(page, decoded) {
+export function loadPage(page, decoded, cyclePageFunc) {
   // Load up the html data into a temporary div tag
   let svgData = document.createElement("div");
   svgData.innerHTML = decoded;
   // Configure the svg
-  svg = svgData.firstElementChild;
+  let svg = svgData.firstElementChild;
   svg.style.width = "100%";
   svg.style.height = "100%";
   svg.id = "activesvg";
@@ -155,14 +161,14 @@ export function loadPage(page, decoded) {
 
       // handle page transitions for pan-past-boundary
       if (y < panYExtents[0] - panPageHysteresis) {
-        cyclePage(
+        cyclePageFunc(
           1,
           1,
           svgPage.mouseEvent,
           panYExtents[0] - panPageHysteresis - y,
         );
       } else if (y > panYExtents[1] + panPageHysteresis) {
-        cyclePage(
+        cyclePageFunc(
           -1,
           -1,
           svgPage.mouseEvent,
@@ -170,16 +176,12 @@ export function loadPage(page, decoded) {
         );
       }
       // increase opacity of ghost pages as they approach the boundary
-      Array.from(svgPage.getElementsByClassName("ghostafter")).forEach(
-        (g) => {
-          g.style.filter = `opacity(${Math.max(Math.exp((panYExtents[0] - y) / panPageHysteresis), 0.2)})`;
-        },
-      );
-      Array.from(svgPage.getElementsByClassName("ghostbefore")).forEach(
-        (g) => {
-          g.style.filter = `opacity(${Math.max(Math.exp((y - panYExtents[1]) / panPageHysteresis), 0.2)})`;
-        },
-      );
+      Array.from(svgPage.getElementsByClassName("ghostafter")).forEach((g) => {
+        g.style.filter = `opacity(${Math.max(Math.exp((panYExtents[0] - y) / panPageHysteresis), 0.2)})`;
+      });
+      Array.from(svgPage.getElementsByClassName("ghostbefore")).forEach((g) => {
+        g.style.filter = `opacity(${Math.max(Math.exp((y - panYExtents[1]) / panPageHysteresis), 0.2)})`;
+      });
     },
     customEventsHandler: {
       haltEventListeners: [
@@ -198,14 +200,24 @@ export function loadPage(page, decoded) {
   svg.firstElementChild.append(...svgData.children);
 }
 
+export function selectInstance(container, inst) {
+  // Shows the specified instance and deletes all the rest
+  Array.from(container.getElementsByClassName("instance")).forEach((anim) => {
+    if (inst === undefined || anim.classList.contains(inst)) {
+      anim.parentNode.removeAttribute("opacity");
+      anim.outerHTML = "";
+      inst = null;
+    } else {
+      anim.parentNode.outerHTML = "";
+    }
+  });
+}
+
 export function createGhostPages(pages, pageIndex) {
   let page = pages[pageIndex];
   let instance = page.inst;
   // append ghost pages to the svg
-  let ghostSvg = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "svg",
-  );
+  let ghostSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 
   // create ghost pages
   // only populate 4 ghost pages: 2 before and 2 after current page
@@ -239,11 +251,18 @@ export function createGhostPages(pages, pageIndex) {
   ghostSvg.setAttribute("height", yOffset);
   ghostSvg.setAttribute("class", "ghost");
 
-  svg.firstElementChild.appendChild(ghostSvg);
+  // Append to SVG
+  svgPage.firstElementChild.firstElementChild.appendChild(ghostSvg);
 }
 
-
-function addGhostPage(ghostSvg, pages, pageIndex, yOffset, pageBelow, activeWidth) {
+function addGhostPage(
+  ghostSvg,
+  pages,
+  pageIndex,
+  yOffset,
+  pageBelow,
+  activeWidth,
+) {
   let page = pages[pageIndex];
   let ghostRect = document.createElementNS(
     "http://www.w3.org/2000/svg",
@@ -276,7 +295,7 @@ function addGhostPage(ghostSvg, pages, pageIndex, yOffset, pageBelow, activeWidt
   ghostG.setAttribute("class", pageBelow ? "ghostafter" : "ghostbefore");
   ghostG.append(ghostRect, ghostText);
   onPanlessClick(ghostG, () => {
-    pushHash(data.pages[pageIndex].name);
+    window.history.pushState(null, "", "#" + pages[pageIndex].name);
     window.onpopstate();
   });
   ghostSvg.append(ghostG);
@@ -296,7 +315,7 @@ function onPanlessClick(elem, callback) {
 }
 
 export function savePos() {
-  let state = {}
+  let state = {};
   state.pan = currentPanZoom.getPan();
   state.zoom = currentPanZoom.getZoom();
   state.realZoom = currentPanZoom.getSizes().realZoom;
@@ -304,30 +323,22 @@ export function savePos() {
   return state;
 }
 
-export function restorePos(state) {
+export function restorePos(state, panDir, panY) {
   // FIXME: this code doesn't work correctly with tall pages
   // handle pan-caused page switch by immediately panning to the equivalent x,y,zoom that they came from
   let pageScaling = originalViewBox[2] / state.viewBox[2];
   // xOffset is caused by centering pages of different size
   let xOffset = (state.viewBox[2] - originalViewBox[2]) / 2;
-  if (retainPan) {
-    currentPanZoom.zoom(state.zoom * pageScaling);
-    currentPanZoom.pan({
-      x:
-        state.pan.x +
-        (xOffset + state.viewBox[0] - originalViewBox[0]) *
-          state.realZoom,
-      y:
-        getPanYFromPageRatio((retainPan + 1) / 2) +
-        retainPan * (state.realZoom * pageSeparation - panPageHysteresis) +
-        leftoverPanY,
-    });
-    // emulate a mousedown to preserve the same pan across pages
-    if (mouseEvent) {
-      mouseEvent.initEvent("mousedown", true, true);
-      document.getElementById("activesvg").dispatchEvent(mouseEvent);
-    }
-  }
+  currentPanZoom.zoom(state.zoom * pageScaling);
+  currentPanZoom.pan({
+    x:
+      state.pan.x +
+      (xOffset + state.viewBox[0] - originalViewBox[0]) * state.realZoom,
+    y:
+      getPanYFromPageRatio((panDir + 1) / 2) +
+      panDir * (state.realZoom * pageSeparation - panPageHysteresis) +
+      panY,
+  });
 }
 
 function getPanYFromPageRatio(ratio) {
@@ -362,17 +373,15 @@ export function contentBoxToPageCoords(e) {
     top: center.y + (e.contentbox[1] - e.box[1] - e.box[3] / 2) * realZoom,
     right:
       center.x +
-      (e.contentbox[0] + e.contentbox[2] - e.box[0] - e.box[2] / 2) *
-        realZoom,
+      (e.contentbox[0] + e.contentbox[2] - e.box[0] - e.box[2] / 2) * realZoom,
     bottom:
       center.y +
-      (e.contentbox[1] + e.contentbox[3] - e.box[1] - e.box[3] / 2) *
-        realZoom,
+      (e.contentbox[1] + e.contentbox[3] - e.box[1] - e.box[3] / 2) * realZoom,
   };
 }
 
-export function panToBounds(bounds, widthOffset) {
-  panToCenter(getCenter(elemBounds));
+export function panToBounds(bounds, padding, widthOffset) {
+  panToCenter(getCenter(bounds));
 
   // zoom to a level that at least captures the bounds (0.8 sets 10% padding for zoom)
   currentPanZoom.zoom(
@@ -380,9 +389,9 @@ export function panToBounds(bounds, widthOffset) {
       5,
       ...[
         (padding * (currentPanZoom.getSizes().width + widthOffset)) /
-          (elemBounds.right - elemBounds.left),
+          (bounds.right - bounds.left),
         (padding * currentPanZoom.getSizes().height) /
-          (elemBounds.bottom - elemBounds.top),
+          (bounds.bottom - bounds.top),
       ],
     ),
   );
@@ -426,7 +435,7 @@ export function zoomOut() {
   currentPanZoom.zoomOut();
 }
 
-export function onKeyDown(e) {
+export function onkeydown(e) {
   if (e.key == "ArrowUp") {
     currentPanZoom.panBy({ x: 0, y: 100 });
   } else if (e.key == "ArrowDown") {

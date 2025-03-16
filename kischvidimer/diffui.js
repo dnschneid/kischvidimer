@@ -22,7 +22,7 @@ const pageData = {}; // diffui stub
 
 // internally we track the index onto data.pages, but externally it's the page name
 let currentPageIndex = null;
-let svgPage = document.getElementById("svgPage");
+let svgPage = null;
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
 let xprobe = null;
@@ -34,9 +34,6 @@ let matchPage = 0;
 let matchesPerPage = 10;
 let searchMatches = [];
 let searchMatchesOnPage = [];
-
-let pageSeparation = 150; // svg coords
-let panPageHysteresis = 100; // client coords
 
 let ELEM_TYPE_SELECTORS = {
   component: ["[p]", "symbol"],
@@ -57,6 +54,8 @@ function setSetting(name, value) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  svgPage = document.getElementById("svgPage");
+
   // Load schematic data
   if (typeof data === "string") {
     data = JSON.parse(decodeData(data));
@@ -101,9 +100,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (uiData.uiMode >= 2) {
     initializeExclusions();
     initializeCheckModel();
-  }
 
-  if (uiData.uiMode >= 2) {
     document.getElementById("diffbutton").getElementsByTagName("img")[0].src =
       uiData.diffIcon;
     document.getElementById("diffbutton").style.display = "";
@@ -185,19 +182,10 @@ document.addEventListener("DOMContentLoaded", function () {
       target.classList.add("highlight");
       return;
       /* FIXME: this is probably for handling diffs
-            for (let i = 0; i < target.childNodes.length; ++i) {
-                if (target.childNodes[i].nodeType === 3 && !/^\s+$/.test(target.childNodes[i].textContent)) {
-                    copyToClipboard(target.childNodes[i].textContent);
-                    if (!target.classList.contains('highlight')) {
-                        setTimeout(function () {
-                            target.classList.remove('highlight');
-                        }, 500);
-                    }
-                    target.classList.add('highlight');
-                    return;
-                }
-            }
-            */
+      for (let i = 0; i < target.childNodes.length; ++i) {
+        if (target.childNodes[i].nodeType === 3 && !/^\s+$/.test(target.childNodes[i].textContent)) {
+          copyToClipboard(target.childNodes[i].textContent);
+      */
     }
     // Launch an associated, visible url first
     for (let targp = target; targp; targp = targp.parentElement) {
@@ -366,9 +354,15 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   });
 
-  document.getElementById("zoomcontrolout").addEventListener("click", Viewport.zoomOut);
-  document.getElementById("zoomcontrolfit").addEventListener("click", Viewport.zoomFit);
-  document.getElementById("zoomcontrolin").addEventListener("click", Viewport.zoomIn);
+  document
+    .getElementById("zoomcontrolout")
+    .addEventListener("click", Viewport.zoomOut);
+  document
+    .getElementById("zoomcontrolfit")
+    .addEventListener("click", Viewport.zoomFit);
+  document
+    .getElementById("zoomcontrolin")
+    .addEventListener("click", Viewport.zoomIn);
 
   //init settings
   document
@@ -799,19 +793,6 @@ function decodeData(data) {
   return pako.inflate(buffer, { to: "string" });
 }
 
-function selectInstance(container, inst) {
-  // Shows the specified instance and deletes all the rest
-  Array.from(container.getElementsByClassName("instance")).forEach((anim) => {
-    if (inst === undefined || anim.classList.contains(inst)) {
-      anim.parentNode.removeAttribute("opacity");
-      anim.outerHTML = "";
-      inst = null;
-    } else {
-      anim.parentNode.outerHTML = "";
-    }
-  });
-}
-
 function injectPage(pageIndex) {
   // first thing, we need to highlight in the left bar the page that has been loaded
   let allLinks = document.getElementById("pagelist").getElementsByTagName("a");
@@ -851,11 +832,10 @@ function injectPage(pageIndex) {
   let page = data.pages[pageIndex];
   let svgID = page.id;
   let instance = page.inst;
-  let svg = null;
   if (currentPageIndex !== pageIndex || currentPageIndex === null) {
     currentPageIndex = pageIndex;
-    Viewport.loadPage(page, decodeData(pageData[svgID]));
-    Viewport.createGhostPages();
+    Viewport.loadPage(page, decodeData(pageData[svgID]), cyclePage);
+    Viewport.createGhostPages(data.pages, pageIndex);
   }
 
   if (
@@ -1498,14 +1478,22 @@ function cycleResultPage(delta) {
 }
 
 function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
-  let origPos = Viewport.savePos();
   if (
-    currentPageIndex + delta >= 0 &&
-    currentPageIndex + delta < data.pages.length
+    currentPageIndex + delta < 0 ||
+    currentPageIndex + delta >= data.pages.length
   ) {
-    pushHash(data.pages[currentPageIndex + delta].name);
-    window.onpopstate();
-    Viewport.restorePos(origPos);
+    return;
+  }
+  let origPos = Viewport.savePos();
+  pushHash(data.pages[currentPageIndex + delta].name);
+  window.onpopstate();
+  if (retainPan) {
+    Viewport.restorePos(origPos, retainPan, leftoverPanY);
+  }
+  // emulate a mousedown to preserve the same pan across pages
+  if (mouseEvent) {
+    mouseEvent.initEvent("mousedown", true, true);
+    document.getElementById("activesvg").dispatchEvent(mouseEvent);
   }
 }
 
@@ -2076,7 +2064,7 @@ function panToElems(targetElems, padding) {
     widthOffset = -document.getElementById("animationtoolbox").offsetWidth;
   }
 
-  Viewport.panToBounds(elemBounds, widthOffset);
+  Viewport.panToBounds(elemBounds, padding, widthOffset);
 }
 
 function getPageIndex(pageName) {
@@ -2134,7 +2122,7 @@ function genpdf() {
 
   for (let p of [...data.pages].sort((a, b) => a.pn - b.pn)) {
     win.document.write(decodeData(pageData[p.id]));
-    selectInstance(win.document, p.inst);
+    Viewport.selectInstance(win.document, p.inst);
   }
 
   win.document.write("</body></html>");
