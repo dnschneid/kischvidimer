@@ -630,9 +630,9 @@ class DiffUI:
     rights are reserved to that author unless expressly stated otherwise in the
     rendered schematic.\n*/""")
     zindex = self._compress(json.dumps(self.schematic_index, sort_keys=True))
-    html.append(f"var data = '{zindex}';")
+    html.append(f"var indexData = '{zindex}';")
     if self._pages:
-      html.append("var pageData = {")
+      html.append("var svgData = {")
       lib = Svg(header=False, auto_animate=False)
       lib.symbols = self._symbols
       html.append(f"library: '{self._compress(repr(lib))}',")

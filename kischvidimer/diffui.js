@@ -14,14 +14,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { componentHandler } from "js-libraries/material";
-import { pako } from "js-libraries/pako_inflate";
 import * as Viewport from "viewport";
+import * as DB from "database";
 
 const uiData = {}; // diffui stub
-const pageData = {}; // diffui stub
 
-// internally we track the index onto data.pages, but externally it's the page name
-let currentPageIndex = null;
 let svgPage = null;
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
@@ -35,11 +32,12 @@ let matchesPerPage = 10;
 let searchMatches = [];
 let searchMatchesOnPage = [];
 
-let ELEM_TYPE_SELECTORS = {
-  component: ["[p]", "symbol"],
-  net: ["[t]"],
-  ghost: [".ghost"],
-};
+// Ordering creates precedence when matching to mouse actions
+let ELEM_TYPE_SELECTORS = [
+  ["net", ["[t]"]],
+  ["component", ["[p]", "symbol"]],
+  ["ghost", [".ghost"]],
+];
 
 function getSetting(name, defaultValue) {
   let stored = window.localStorage.getItem(name);
@@ -56,13 +54,11 @@ function setSetting(name, value) {
 document.addEventListener("DOMContentLoaded", function () {
   svgPage = document.getElementById("svgPage");
 
-  // Load schematic data
-  if (typeof data === "string") {
-    data = JSON.parse(decodeData(data));
-  }
+  DB.init();
+  Viewport.init();
 
   // handle case with no pages
-  if (!data.pages.length) {
+  if (!DB.numPages()) {
     svgPage.innerText =
       uiData.uiMode < 2 ? "No pages to display." : "No changes to display.";
     toggleDialog(document.getElementById("loadingdialog"), false);
@@ -95,7 +91,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("zoomcontrols").style.display =
     getSetting("ShowZoomControls") == "shown" ? "inline" : "none";
   componentHandler.upgradeDom();
-  fillPageList(data.pages);
+  fillPageList();
 
   if (uiData.uiMode >= 2) {
     initializeExclusions();
@@ -343,11 +339,10 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   document.getElementById("tooltiplink").addEventListener("click", function () {
-    let pageName = data.pages[currentPageIndex].name;
     copyToClipboard(
       window.location.href.split("#")[0] +
         "#" +
-        pageName +
+        DB.pageName() +
         "," +
         document.getElementById("tooltipname").textContent,
       "link",
@@ -460,30 +455,28 @@ document.addEventListener("DOMContentLoaded", function () {
       let unselectedDiffList = [];
 
       // flag user if there are conflicts without any selection
-      for (let page in data.diffs) {
-        for (let diffPair of data.diffs[page]) {
-          let conflictChecked = 0;
-          let rowIsConflict = false;
-          for (let diffList of diffPair) {
-            for (let diff of diffList) {
-              if (!diff.checked) {
-                unselectedDiffList.push(diff.id);
-              }
-              if (diff.c) {
-                rowIsConflict = true;
-                conflictChecked += diff.checked ? 1 : 0;
-              }
+      DB.forEachDiff(DB.ALL, (diffPair, pageIndex) => {
+        let conflictChecked = 0;
+        let rowIsConflict = false;
+        for (let diffList of diffPair) {
+          for (let diff of diffList) {
+            if (!diff.checked) {
+              unselectedDiffList.push(diff.id);
             }
-          }
-          if (rowIsConflict && !conflictChecked) {
-            if (!unresolvedConflictPages[page]) {
-              unresolvedConflictPages[page] = 1;
-            } else {
-              unresolvedConflictPages[page] += 1;
+            if (diff.c) {
+              rowIsConflict = true;
+              conflictChecked += diff.checked ? 1 : 0;
             }
           }
         }
-      }
+        if (rowIsConflict && !conflictChecked) {
+          if (!unresolvedConflictPages[pageIndex]) {
+            unresolvedConflictPages[pageIndex] = 1;
+          } else {
+            unresolvedConflictPages[pageIndex] += 1;
+          }
+        }
+      });
 
       if (Object.keys(unresolvedConflictPages).length) {
         document.getElementById("unresolvedWarning").style.display = null;
@@ -492,7 +485,7 @@ document.addEventListener("DOMContentLoaded", function () {
           Object.keys(unresolvedConflictPages)
             .map(
               (k) =>
-                `<li>${unresolvedConflictPages[k]} unresolved in ${data.pages[k].name}</li>`,
+                `<li>${unresolvedConflictPages[k]} unresolved in ${DB.pageName(k)}</li>`,
             )
             .join("") +
           "</ul>Unselected changes will be abandoned entirely.";
@@ -513,23 +506,21 @@ document.addEventListener("DOMContentLoaded", function () {
     let unselectedDiffList = [];
 
     // push un-selected diffs to be POSTed
-    for (let page in data.diffs) {
-      for (let diffPair of data.diffs[page]) {
-        let conflictChecked = 0;
-        let rowIsConflict = false;
-        for (let diffList of diffPair) {
-          for (let diff of diffList) {
-            if (!diff.checked) {
-              unselectedDiffList.push(diff.id);
-            }
-            if (diff.c) {
-              rowIsConflict = true;
-              conflictChecked += diff.checked ? 1 : 0;
-            }
+    DB.forEachDiff(DB.ALL, (diffPair) => {
+      let conflictChecked = 0;
+      let rowIsConflict = false;
+      for (let diffList of diffPair) {
+        for (let diff of diffList) {
+          if (!diff.checked) {
+            unselectedDiffList.push(diff.id);
+          }
+          if (diff.c) {
+            rowIsConflict = true;
+            conflictChecked += diff.checked ? 1 : 0;
           }
         }
       }
-    }
+    });
 
     // body is simple json list of diff id's that are not checked
     fetch("./apply", {
@@ -566,12 +557,13 @@ document.addEventListener("DOMContentLoaded", function () {
         // Erase existing highlights
         highlight([]);
         // Highlight everything
-        for (let diffPair of data.diffs[currentPageIndex])
+        DB.forEachDiff(DB.CUR, (diffPair) => {
           for (let diffs of diffPair)
             for (let diff of diffs)
               if (diff.checked)
                 for (let anim of document.getElementsByClassName(diff.id))
                   highlight([anim.parentElement], true, false, false);
+        });
       });
 
     document
@@ -718,13 +710,9 @@ function pushHash(target) {
   window.history.pushState(null, "", "#" + target);
 }
 
-function fillPageList(pages) {
+function fillPageList() {
   let listElem = document.getElementById("pagelist");
-  for (let i = 0; i < pages.length; i++) {
-    const p = pages[i];
-    if (!data.diffs[p.id]) {
-      data.diffs[p.id] = [];
-    }
+  DB.forEachPage((p, i, pages) => {
     let spanElem = document.createElement("a");
     spanElem.classList.add("mdl-navigation__link");
     spanElem.classList.add("navitem");
@@ -751,46 +739,12 @@ function fillPageList(pages) {
     spanElem.addEventListener("click", function () {
       // manual click on another page should hide search results...
       setSearchActive(false);
-      pushHash(data.pages[i].name);
+      pushHash(p.name);
       window.onpopstate();
     });
     listElem.appendChild(spanElem);
-  }
+  });
   filterPages("");
-}
-
-function decodeData(data) {
-  // Optimized base116 decoder assumes valid codepoints and full padding.
-  // Gzip doesn't care about trailing null bytes, so no need to strip them.
-  let code =
-    '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!"#$%&()*+,-.:;<=>?@[]^_`{|}~ ' +
-    "\x07\b\t\v\f\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x7F";
-  let dec = new Uint8Array(128);
-  for (let i = 0; i < code.length; i++) {
-    dec[code.charCodeAt(i)] = i;
-  }
-  let POW = [116, 116 ** 2, 116 ** 3, 116 ** 4, 116 ** 5, 116 ** 6];
-  let BYTE = [2 ** 8, 2 ** 16, 2 ** 24, 2 ** 32, 2 ** 40];
-  let buffer = new Uint8Array((6 * data.length) / 7);
-  let j = 0;
-  for (let i = 0; i < data.length; ) {
-    let num =
-      dec[data.charCodeAt(i++)] * POW[5] +
-      dec[data.charCodeAt(i++)] * POW[4] +
-      dec[data.charCodeAt(i++)] * POW[3] +
-      dec[data.charCodeAt(i++)] * POW[2] +
-      dec[data.charCodeAt(i++)] * POW[1] +
-      dec[data.charCodeAt(i++)] * POW[0] +
-      dec[data.charCodeAt(i++)];
-    // Can't use bit arithmetic since Javascript will truncate to 32-bit ints
-    buffer[j++] = num / BYTE[4];
-    buffer[j++] = (num / BYTE[3]) % 256;
-    buffer[j++] = (num / BYTE[2]) % 256;
-    buffer[j++] = (num / BYTE[1]) % 256;
-    buffer[j++] = (num / BYTE[0]) % 256;
-    buffer[j++] = num % 256;
-  }
-  return pako.inflate(buffer, { to: "string" });
 }
 
 function injectPage(pageIndex) {
@@ -826,24 +780,21 @@ function injectPage(pageIndex) {
   // Load the library
   let svgLibrary = document.getElementById("svgLibrary");
   if (!svgLibrary.getElementsByTagName("svg").length) {
-    svgLibrary.innerHTML = decodeData(pageData["library"]);
+    svgLibrary.innerHTML = DB.getLibrarySvg();
   }
 
-  let page = data.pages[pageIndex];
-  let svgID = page.id;
-  let instance = page.inst;
-  if (currentPageIndex !== pageIndex || currentPageIndex === null) {
-    currentPageIndex = pageIndex;
-    Viewport.loadPage(page, decodeData(pageData[svgID]), cyclePage);
-    Viewport.createGhostPages(data.pages, pageIndex);
+  let pgdata = DB.selectPage(pageIndex);
+  if (pgdata !== null) {
+    Viewport.loadPage(pgdata, DB.pageInstance(), DB.pageViewBox(), cyclePage);
+    Viewport.createGhostPages(DB, pageIndex);
   }
 
-  if (
-    getSetting("ZoomToContent") === "zoom" &&
-    page.contentbox[2] &&
-    page.contentbox[3]
-  ) {
-    panToElems([page], 0.01); // the tiniest bit of margin
+  if (getSetting("ZoomToContent") === "zoom") {
+    let fakeElem = {
+      contentbox: DB.pageContentBox(),
+      box: DB.pageBox(),
+    };
+    panToElems([fakeElem], 0.01); // the tiniest bit of margin
   }
 
   if (uiData.uiMode > 1) {
@@ -873,61 +824,50 @@ function applyAnimationColorWorkaround() {
 // called one time after page load
 // also will apply red style to pagelist items with conflicts
 function initializeCheckModel() {
-  for (let page of data.pages) {
-    let pageHasConflict = false;
-    for (let diffs of data.diffs[page.id]) {
-      // do the raw indexing
-      for (let i of [0, 1]) {
-        for (let diff of diffs[i]) {
-          diffMap[diff.id] = diff;
-          diff.parent = diffs;
-        }
-      }
-
-      // do the check initialization
-      if (diffs[0].length) {
-        if (diffs[0][0].c) {
-          pageHasConflict = true;
-          continue;
-        }
-        for (let diff of diffs[0]) {
-          diff.checked = true;
-        }
-        for (let diff of diffs[1]) {
-          diff.checked = false;
-        }
-      } else {
-        if (diffs[1][0].c) {
-          pageHasConflict = true;
-          continue;
-        }
-        for (let diff of diffs[1]) {
-          diff.checked = true;
-        }
+  DB.forEachDiff(DB.ALL, (diffPair, pageIndex) => {
+    // do the raw indexing
+    for (let i of [0, 1]) {
+      for (let diff of diffPair[i]) {
+        diffMap[diff.id] = diff;
+        diff.parent = diffPair;
       }
     }
 
-    if (pageHasConflict) {
+    // do the check initialization
+    if (diffPair[0].length && diffPair[0][0].c) {
       document
-        .getElementById(page.id + "_link")
+        .getElementById(`${pageIndex}_link`)
         .classList.add("conflictpagelink");
+    } else if (diffPair[0].length) {
+      for (let diff of diffPair[0]) {
+        diff.checked = true;
+      }
+      for (let diff of diffPair[1]) {
+        diff.checked = false;
+      }
+    } else if (diffPair[1][0].c) {
+      document
+        .getElementById(`${pageIndex}_link`)
+        .classList.add("conflictpagelink");
+    } else {
+      for (let diff of diffPair[1]) {
+        diff.checked = true;
+      }
     }
-  }
+  });
 }
 
 function initializeExclusions() {
-  for (let page of data.pages) {
-    for (let diffPair of data.diffs[page.id]) {
-      for (let i in diffPair) {
-        if (diffPair[i].length && diffPair[i][0].c) {
-          for (let diff of diffPair[i]) {
-            diff.excluded = diffPair[1 - i];
-            diffMap[diff.id] = diff;
-          }
+  DB.forEachDiff(DB.ALL, (diffPair) => {
+    for (let i in diffPair) {
+      if (diffPair[i].length && diffPair[i][0].c) {
+        for (let diff of diffPair[i]) {
+          diff.excluded = diffPair[1 - i];
+          diffMap[diff.id] = diff;
         }
       }
     }
-  }
+  });
 }
 
 function fillDiffTable() {
@@ -944,9 +884,7 @@ function fillDiffTable() {
 
   let diffIndex = 0;
   let tbody = "";
-  for (let diffs of data.diffs[currentPageIndex]) {
-    tbody += getDiffRow(diffs);
-  }
+  DB.forEachDiff(DB.CUR, (diffPair) => (tbody += getDiffRow(diffPair)));
 
   document.getElementById("changetablebody").innerHTML = tbody;
 
@@ -982,13 +920,13 @@ function highlightDiff(diffTR, pan) {
 }
 
 function setChecksFromModel() {
-  for (let diffPair of data.diffs[currentPageIndex]) {
+  DB.forEachDiff(DB.CUR, (diffPair) => {
     for (let diffs of diffPair) {
       for (let diff of diffs) {
         document.getElementById(diff.id).checked = diff.checked;
       }
     }
-  }
+  });
 
   setHeaderChecks();
 }
@@ -1001,7 +939,7 @@ function setHeaderChecks() {
   ];
 
   let rowCtr = 0;
-  for (let diffPair of data.diffs[currentPageIndex]) {
+  DB.forEachDiff(DB.CUR, (diffPair) => {
     diffPair.forEach((_, diffPairIndex) => {
       let innerRowCtr = rowCtr;
       for (let diff of diffPair[diffPairIndex]) {
@@ -1016,7 +954,7 @@ function setHeaderChecks() {
       }
     });
     rowCtr += Math.max(diffPair[0].length, diffPair[1].length);
-  }
+  });
 
   let headerChecks = [
     document.getElementById("oursall").parentNode,
@@ -1051,31 +989,31 @@ function setHeaderChecks() {
 function setMultipleDiffChecks() {
   // set uncollapsed multiple diffs to reflect their collapsed constituents
   // start by looping through all diff pairs containing multiple rows
-  for (let diffPair of data.diffs[currentPageIndex].filter(
-    (dp) => Math.max(dp[0].length, dp[1].length) > 1,
-  )) {
-    for (let i of [0, 1]) {
-      if (
-        diffPair[i].length == 1 ||
-        (diffPair[i].length > 1 &&
-          diffPair[i][diffPair[i].length - 1].collapsed)
-      ) {
-        let topCheck = document.getElementById(diffPair[i][0].id);
-        let numChecked = diffPair[i].filter((d) => d.checked).length;
-        if (numChecked == 0) {
+  DB.forEachDiff(DB.CUR, (diffPair) => {
+    if (diffPair[0].length > 1 || diffPair[1].length > 1) {
+      for (let i of [0, 1]) {
+        if (
+          diffPair[i].length == 1 ||
+          (diffPair[i].length > 1 &&
+            diffPair[i][diffPair[i].length - 1].collapsed)
+        ) {
+          let topCheck = document.getElementById(diffPair[i][0].id);
+          let numChecked = diffPair[i].filter((d) => d.checked).length;
+          if (numChecked == 0) {
+            topCheck.indeterminate = false;
+          } else if (numChecked < diffPair[i].length) {
+            topCheck.indeterminate = true;
+          } else {
+            topCheck.indeterminate = false;
+            topCheck.checked = true;
+          }
+        } else if (diffPair[i].length > 1) {
+          let topCheck = document.getElementById(diffPair[i][0].id);
           topCheck.indeterminate = false;
-        } else if (numChecked < diffPair[i].length) {
-          topCheck.indeterminate = true;
-        } else {
-          topCheck.indeterminate = false;
-          topCheck.checked = true;
         }
-      } else if (diffPair[i].length > 1) {
-        let topCheck = document.getElementById(diffPair[i][0].id);
-        topCheck.indeterminate = false;
       }
     }
-  }
+  });
 }
 
 function changeTableClicked(e) {
@@ -1095,22 +1033,22 @@ function changeTableClicked(e) {
 
 function getDiffById(id) {
   // might want to optimize with an id->diff index
-  for (let diffPair of data.diffs[currentPageIndex]) {
+  let ret = null;
+  DB.forEachDiff(DB.CUR, (diffPair) => {
     for (let diffs of diffPair) {
       for (let diff of diffs) {
         if (diff.id == id) {
-          return diff;
+          ret = diff;
         }
       }
     }
-  }
-  return null;
+  });
+  return ret;
 }
 
 function checkAll(diffPairIndex, operation) {
   let rowCtr = 0;
-  for (let i in data.diffs[currentPageIndex]) {
-    let diffPair = data.diffs[currentPageIndex][i];
+  DB.forEachDiff(DB.CUR, (diffPair) => {
     let innerRowCounter = rowCtr;
     for (let diff of diffPair[diffPairIndex]) {
       if (filteredDiffRows.has(parseInt(innerRowCounter))) {
@@ -1130,7 +1068,7 @@ function checkAll(diffPairIndex, operation) {
       }
     }
     rowCtr += Math.max(diffPair[0].length, diffPair[1].length);
-  }
+  });
   setChecksFromModel();
 }
 
@@ -1297,15 +1235,15 @@ function filterChanges(filter) {
   filteredDiffRows = new Set();
   let ufilter = filter ? filter.toUpperCase() : "";
   let rowCtr = 0;
-  for (let diff of data.diffs[currentPageIndex]) {
+  DB.forEachDiff(DB.CUR, (diffPair) => {
     let diffContains = false;
     for (let i = 0; i < 2 && !diffContains; i++) {
-      for (let j = 0; j < diff[i].length && !diffContains; j++) {
-        diffContains = diff[i][j].text.toUpperCase().indexOf(ufilter) != -1;
+      for (let j = 0; j < diffPair[i].length && !diffContains; j++) {
+        diffContains = diffPair[i][j].text.toUpperCase().indexOf(ufilter) != -1;
       }
     }
 
-    for (let i = 0; i < Math.max(diff[0].length, diff[1].length); i++) {
+    for (let i = 0; i < Math.max(diffPair[0].length, diffPair[1].length); i++) {
       document.getElementById("changetablebody").getElementsByTagName("tr")[
         rowCtr + i
       ].style.display = diffContains ? null : "none";
@@ -1313,8 +1251,8 @@ function filterChanges(filter) {
         filteredDiffRows.add(rowCtr);
       }
     }
-    rowCtr += Math.max(diff[0].length, diff[1].length);
-  }
+    rowCtr += Math.max(diffPair[0].length, diffPair[1].length);
+  });
 
   setHeaderChecks();
   document.getElementById("changetablediv").scrollTop = 0;
@@ -1322,101 +1260,18 @@ function filterChanges(filter) {
 
 function filterSearch(filter) {
   matchPage = 0;
-  let matchThreshold = 2;
-  let matchMatrix = [];
-  for (let i = 0; i < matchThreshold; i++) {
-    matchMatrix.push([]);
-  }
-
   if (!filter) {
     populateMatches([], 0);
     return;
   }
 
-  for (let comp in data.comps) {
-    // we want to group components in the search bar only if they share
-    // reference, mpn and pn
-    let uniqueParts = [];
-    for (let inst of data.comps[comp]) {
-      if (
-        !uniqueParts.filter((c) => {
-          return (
-            c.mpn == getProp(inst, "mpn", "") &&
-            c.pn == getProp(inst, "Value", "")
-          );
-        }).length
-      ) {
-        uniqueParts.push({
-          type: "component",
-          pages: data.comps[comp]
-            .filter(
-              (i) =>
-                getProp(i, "mpn", "") == getProp(inst, "mpn", "") &&
-                getProp(i, "Value", "") == getProp(inst, "Value", ""),
-            )
-            .map((i) => getProp(i, 0)),
-          mpn: getProp(inst, "mpn", ""),
-          pn: getProp(inst, "Value", ""),
-          indexed: inst,
-          display: comp,
-        });
-      }
-    }
-    for (let part of uniqueParts) {
-      let partMatchDistance = matchesComponent(filter, part);
-      if (partMatchDistance[0] < matchThreshold) {
-        part.substring = partMatchDistance[1];
-        matchMatrix[partMatchDistance[0]].push(part);
-      }
-    }
-  }
-  for (const [id, name] of Object.entries(data.nets.names)) {
-    let matchDistance = matchesTerm(filter, name);
-    if (matchDistance < matchThreshold) {
-      let matchinfo = {
-        pages: [],
-        display: name,
-        type: "net",
-      };
-      matchMatrix[matchDistance].push(matchinfo);
-      for (let pg in data.nets.map) {
-        if (id in data.nets.map[pg]) {
-          if (pg < 0) {
-            // handle bus
-          } else {
-            matchinfo.pages.push(pg);
-          }
-        }
-      }
-    }
-  }
-  for (let pin in data.pins) {
-    let matchDistance = matchesTerm(filter, pin);
-    if (matchDistance >= matchThreshold) {
-      continue;
-    }
-    for (let symMatch of data.pins[pin]) {
-      matchMatrix[matchDistance].push({
-        pages: [symMatch[0]],
-        pin: symMatch[1] + "[" + pin + "]",
-        display: pin,
-        type: "pin",
-      });
-    }
-  }
-  for (let text of Object.keys(data.text)) {
-    let matchDistance = matchesTerm(filter, text);
-    if (matchDistance < matchThreshold) {
-      matchMatrix[matchDistance].push({
-        pages: data.text[text],
-        text: text,
-        display: text,
-        type: "text",
-      });
-    }
-  }
+  searchMatches = [];
+  searchMatches.push(...DB.searchComps(filter));
+  searchMatches.push(...DB.searchNets(filter));
+  searchMatches.push(...DB.searchPins(filter));
+  searchMatches.push(...DB.searchText(filter));
+  searchMatches.sort((a, b) => a.distance - b.distance);
 
-  searchMatches = [].concat(...matchMatrix);
   populateMatches();
 }
 
@@ -1449,10 +1304,11 @@ function populateMatches() {
 
   // add this page's matches
   for (let match of searchMatchesOnPage) {
+    const subtitle = `<div style="font-size:0.8em"><span class="mdl-list__item-text-body" style="color:grey;height:auto">${match.prop}: ${match.value}</span></div>`;
     document.getElementById("matchlist").innerHTML += `<div class="resultentry">
         <div style="height:auto">
           <span><span style="font-weight:bold">${match.type}</span>: <code>${match.display}</code></span>
-          ${match.type == "component" ? '<div style="font-size:0.8em"><span class="mdl-list__item-text-body" style="color:grey;height:auto">' + match.substring + "</span></div>" : ""}
+          ${match.type == "component" ? subtitle : ""}
           <span style="color:grey;height:auto"></span>
           <div class="resultpages">${getPages(match.pages, match.display, "yellow", true)}</div>
         </div>
@@ -1478,14 +1334,12 @@ function cycleResultPage(delta) {
 }
 
 function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
-  if (
-    currentPageIndex + delta < 0 ||
-    currentPageIndex + delta >= data.pages.length
-  ) {
+  let nextPageIndex = DB.currentPageIndex + delta;
+  if (nextPageIndex < 0 || nextPageIndex >= DB.numPages()) {
     return;
   }
   let origPos = Viewport.savePos();
-  pushHash(data.pages[currentPageIndex + delta].name);
+  pushHash(DB.pageName(nextPageIndex));
   window.onpopstate();
   if (retainPan) {
     Viewport.restorePos(origPos, retainPan, leftoverPanY);
@@ -1509,9 +1363,9 @@ function getPages(pList, ref, color, zebra) {
     rawHTML +=
       `<div${zebra && pCounter % 2 ? ' style="background-color:rgba(0,0,0,0.4)"' : ""}>` +
       `<a class="itempagelink" style="color:${color}" ` +
-      `href="#${data.pages[p].name},${escape(ref)}" ` +
+      `href="#${DB.pageName(p)},${escape(ref)}" ` +
       `onclick="clickedPageLink(this, event); return false">` +
-      `${data.pages[p].name}${pCounts[p] > 1 ? " (" + pCounts[p] + ")" : ""}</a></div>`;
+      `${DB.pageName(p)}${pCounts[p] > 1 ? " (" + pCounts[p] + ")" : ""}</a></div>`;
     pCounter++;
   }
   return rawHTML;
@@ -1531,39 +1385,6 @@ function clickedPageLink(elem, e) {
     e.classList.remove("selectedsearch");
   }
   elem.classList.add("selectedsearch");
-}
-
-function matchesComponent(term, component) {
-  let bestMatch = [2];
-  for (let prop in component.indexed) {
-    if (!prop || prop[0] < " ") {
-      continue;
-    }
-    let val = component.indexed[prop];
-    let match = matchesTerm(term, val);
-    if (
-      match < bestMatch[0] ||
-      (match == bestMatch[0] && val.length < bestMatch[2])
-    ) {
-      bestMatch = [match, `${prop}: ${val}`, val.length];
-      if (match == 0) {
-        break;
-      }
-    }
-  }
-  return bestMatch;
-}
-
-function matchesTerm(x, y) {
-  let uY = y.toUpperCase();
-  let uX = x.toUpperCase();
-  if (uY.indexOf(uX) != -1) {
-    if (uY == uX) {
-      return 0;
-    }
-    return 1;
-  }
-  return 2;
 }
 
 /** elem comes from getElem() or null
@@ -1594,7 +1415,7 @@ function displayTooltip(elem, target, fix) {
   document.getElementById("tooltiplinks").innerHTML = getTooltipLinks(elem);
 
   //show properties
-  if (elem.type === "component" && getProp(elem.indexed, "Value")) {
+  if (elem.type === "component" && DB.compProp(elem.indexed, "Value")) {
     document.getElementById("propdiv").style.display = null;
     let html = Object.entries(elem.indexed)
       .map(([prop, data]) => {
@@ -1662,7 +1483,7 @@ function getTooltipContext(elem) {
     }
     rawText = "Part symbol";
     let props = getElem(elem).indexed;
-    let value = getProp(props, "value");
+    let value = DB.compProp(props, "value");
     if (value) {
       rawText += `: ${value}`;
     }
@@ -1672,31 +1493,11 @@ function getTooltipContext(elem) {
 
 function getTooltipLinks(elem) {
   if (elem.type === "net") {
-    let elemid = elem.name;
-    for (const [id, nm] of Object.entries(data.nets.names)) {
-      if (nm == elem.name) {
-        elemid = id;
-        break;
-      }
-    }
-    let pgs = [];
-    for (let pg in data.nets.map) {
-      if (elemid in data.nets.map[pg]) {
-        if (pg < 0) {
-          // handle bus
-        } else {
-          pgs.push(pg);
-        }
-      }
-    }
-    return getPages(pgs, data.nets.names[elemid], "blue", false);
+    let result = DB.lookupNet(elem.name);
+    return getPages(result.pages, result.value, "blue", false);
   } else if (elem.type === "component") {
-    return getPages(
-      data.comps[elem.name].map((e) => getProp(e, 0)),
-      elem.name,
-      "blue",
-      false,
-    );
+    let result = DB.lookupComp(elem.name);
+    return getPages(result.pages, result.value, "blue", false);
   } else {
     return [];
   }
@@ -1712,12 +1513,8 @@ function getElem(elem) {
   // exit the shadow dom if necessary
   // this is used to attach the right <use> to <symbol> elems
   elem = elem.getRootNode().host || elem;
-  // provide an explicit order for iterating through ELEM_TYPE_SELECTORS
-  // because we want to find [prop="HDL_POWER"] labels inside of [p] symbols
-  // and there is no good css selector (that I know) that can differentiate
-  // [p] results by their child content...
-  for (let typ of ["net", "component", "ghost"]) {
-    for (let s of ELEM_TYPE_SELECTORS[typ]) {
+  for (let [typ, selectors] of ELEM_TYPE_SELECTORS) {
+    for (let s of selectors) {
       let closest = elem.closest(s);
       if (closest) {
         let elemName = getElemName(closest, typ);
@@ -1739,28 +1536,16 @@ function getElem(elem) {
 }
 
 function getIndexedElem(closest, name, typ) {
+  let result;
   switch (typ) {
     case "component":
       let path = closest.getAttribute("p");
-      if (path && name) {
-        return data.comps[name].find((i) => getProp(i, 1) == path);
-      }
-      return null;
+      result = DB.lookupComp(path);
+      // FIXME: don't use result.data directly?
+      return result.distance !== DB.NO_MATCH ? result.data : null;
     case "net":
-      for (const [id, nm] of Object.entries(data.nets.names)) {
-        if (nm == name) {
-          name = id;
-          break;
-        }
-      }
-      let index = {};
-      for (const [pg, nets] of Object.entries(data.nets.map)) {
-        if (pg >= 0 && name in nets) {
-          index[pg] = nets[name];
-        }
-        // FIXME: containing buses
-      }
-      return index;
+      result = DB.lookupNet(name);
+      return result.distance !== DB.NO_MATCH ? result.data : null;
     default:
       return null;
   }
@@ -1769,17 +1554,11 @@ function getIndexedElem(closest, name, typ) {
 function getElemName(closest, typ) {
   switch (typ) {
     case "component":
-      return getLocation(currentPageIndex, closest.getAttribute("p"));
+      return DB.refdesByPath(closest.getAttribute("p"));
     case "net":
       const tid = closest.getAttribute("t");
-      for (const [netid, nodes] of Object.entries(
-        data.nets.map[currentPageIndex] || {},
-      )) {
-        if (nodes.indexOf(tid) !== -1) {
-          return data.nets.names[netid];
-        }
-      }
-      return undefined;
+      const result = DB.lookupNet(tid);
+      return result.distance !== DB.NO_MATCH ? result.value : null;
     case "ghost":
       return "GHOST";
     default:
@@ -1787,101 +1566,74 @@ function getElemName(closest, typ) {
   }
 }
 
-/** Returns location for a given path (assuming on currentPageIndex) */
-function getLocation(pageIndex, path) {
-  // create a page,path -> refdes index if not already created
-  if (!data.compsByPath) {
-    data.compsByPath = {};
-    for (let loc in data.comps) {
-      for (let inst of data.comps[loc]) {
-        let pg = getProp(inst, 0);
-        data.compsByPath[pg] || (data.compsByPath[pg] = {});
-        data.compsByPath[pg][getProp(inst, 1)] = loc;
-      }
-    }
-  }
-  if (data.compsByPath[pageIndex] && data.compsByPath[pageIndex][path]) {
-    return data.compsByPath[pageIndex][path];
-  } else {
-    return null;
-  }
-}
-
 /** Navigates to the referenced target when back/forward are hit.
  */
 window.onpopstate = function (evt) {
-  currentPageIndex = null;
+  DB.currentPageIndex = null;
   let target = decodeURI(window.location.hash.replace("#", "")).toUpperCase();
   let pageName = "";
   if (target.indexOf(",") != -1) {
+    // Page name with a specific target
     pageName = target.split(",")[0];
     target = target.split(",")[1];
   } else {
-    let comp = data.comps[target.split(".")[0].toUpperCase()] || "";
-    if (comp) {
-      pageName = getProp(comp[0], 0);
+    // Maybe just a refdes by itself?
+    let result = DB.lookupComp(target.split(".")[0].toUpperCase());
+    if (result.distance !== DB.NO_MATCH) {
+      pageName = result.pages[0];
     }
   }
 
-  let pageIndex = getPageIndex(target);
-  if (pageIndex == -1) {
-    pageIndex = getPageIndex(pageName);
+  let pageIndex = DB.pageIndexFromName(target);
+  if (pageIndex !== -1) {
+    target = null; // consumed
+  } else {
+    pageIndex = DB.pageIndexFromName(pageName);
   }
-  if (pageIndex != -1) {
+  if (pageIndex !== -1) {
     injectPage(pageIndex);
   }
 
   Viewport.Tooltip.hide(true);
 
-  if (!target && pageIndex == -1) {
-    window.location.hash = "#" + data.pages[0].name;
+  if (!target) {
+    if (pageIndex === -1) {
+      window.location.hash = "#" + DB.pageName(0);
+    }
     return;
   }
 
   // Match components
-  let instancesMatched = [];
-  if (data.comps[target]) {
-    let pathsFromRefdes = data.comps[target]
-      .filter((i) => getProp(i, 0) == pageIndex)
-      .map((i) => getProp(i, 1));
-    if (pathsFromRefdes.length) {
-      instancesMatched = svgPage.querySelectorAll(
-        pathsFromRefdes.map((p) => `[p="${p}"]`).join(", "),
-      );
-    }
-    if (instancesMatched.length) {
-      highlight(Array.from(instancesMatched), true, true, true);
+  const compIDs = DB.compIDs(target, pageIndex);
+  if (compIDs.length) {
+    const elems = svgPage.querySelectorAll(
+      compIDs.map((p) => `[p="${p}"]`).join(", "),
+    );
+    if (elems.length) {
+      highlight(Array.from(elems), true, true, true);
       return;
     }
   }
 
   // Match nets
   // FIXME: match local names too
-  let netsMatched = [];
-  let netid = undefined;
-  for (const [id, nm] of Object.entries(data.nets.names)) {
-    if (nm.toUpperCase() === target) {
-      netid = id;
-      break;
+  // FIXME: include bus membership (probably in netIDs)
+  const netIDs = DB.netIDs(target, pageIndex);
+  if (netIDs.length) {
+    const elems = svgPage.querySelectorAll(
+      netIDs.map((tid) => `[t='${tid}']`).join(", "),
+    );
+    if (elems.length) {
+      highlight(Array.from(elems), true, true, true);
+      return;
     }
   }
-  if (netid in (data.nets.map[pageIndex] || [])) {
-    netsMatched = Array.from(
-      svgPage.querySelectorAll(
-        data.nets.map[pageIndex][netid].map((tid) => `[t='${tid}']`).join(", "),
-      ),
-    );
-    //FIXME: handle buses
-  }
-  if (netsMatched.length) {
-    highlight(netsMatched, true, true, true);
-    return;
-  }
 
+  // FIXME: this is broken
   let pinsMatched = [];
-
   for (let txt of getSymbolTexts()) {
-    if (matchesTerm(txt[0].textContent, target) === 0) {
+    let result = DB.matchData(target, txt[0].textContent, "pin");
+    if (result) {
       pinsMatched.push(txt);
     }
   }
@@ -1902,8 +1654,7 @@ window.onpopstate = function (evt) {
     return;
   }
 
-  let genericMatched = [];
-
+  // FIXME: move elsewhere
   // newlines get messed up in svg. single newlines are deleted, and
   // empty lines are replaced with spaces
   // also, inline formatting (_{}, ^{}, ~{}) gets removed
@@ -1916,12 +1667,14 @@ window.onpopstate = function (evt) {
     .map((x) => x || " ")
     .join("");
 
+  let genericMatched = [];
   // filter net names. We want to search component props and notes...
   // exclude text matches from ghost pages
   for (let prop of Array.from(svgPage.getElementsByTagName("text")).filter(
     (p) => ["net", "ghost"].indexOf(getElem(p).type) == -1,
   )) {
-    if (matchesTerm(prop.textContent, target) === 0) {
+    let result = DB.matchData(target, prop.textContent, "text");
+    if (result) {
       // Highlight the prop
       genericMatched.push(prop);
     }
@@ -1932,8 +1685,9 @@ window.onpopstate = function (evt) {
   }
 
   // No matches of any kind were found. Default to first page.
-  if (currentPageIndex === null) {
-    window.location.hash = "#" + data.pages[0].name;
+  if (DB.currentPageIndex === null) {
+    DB.currentPageIndex = 0;
+    window.location.hash = "#" + DB.pageName();
   }
 };
 
@@ -1947,23 +1701,6 @@ function getSymbolTexts() {
     }
   }
   return symbolTexts;
-}
-
-function getProp(props, key, def) {
-  if (!props) {
-    return def;
-  }
-  if (typeof key === "number") {
-    key = String.fromCharCode(key);
-  }
-  if (key in props) {
-    return props[key];
-  }
-  key = Object.keys(props).find((k) => k.toLowerCase() === key.toLowerCase());
-  if (key) {
-    return props[key];
-  }
-  return def;
 }
 
 function highlight(elems, state, scroll, unhighlightOthers) {
@@ -2067,25 +1804,6 @@ function panToElems(targetElems, padding) {
   Viewport.panToBounds(elemBounds, padding, widthOffset);
 }
 
-function getPageIndex(pageName) {
-  // handle the case where this is called with an index
-  if (typeof pageName === "number") {
-    return pageName;
-  }
-  // handle the case where this is a page number
-  if (/^\d+$/.test(pageName)) {
-    let pn = parseInt(pageName);
-    let index = data.pages.findIndex((p) => p.pn == pn);
-    if (index !== -1) {
-      return index;
-    }
-  }
-  // Search for the pageName
-  return data.pages
-    .map((p) => p.name.toLowerCase())
-    .indexOf(pageName.toLowerCase());
-}
-
 function genpdf() {
   let win = window.open("", "printwin", "height=600, width=800");
   win.document.write(
@@ -2117,13 +1835,13 @@ function genpdf() {
   // Black-on-white theme
   setTheme(uiData.themeBW, win.document.body);
 
-  win.document.write(decodeData(pageData["library"]));
+  win.document.write(DB.getLibrarySvg());
   win.document.querySelectorAll("svg")[0].style.display = "none";
 
-  for (let p of [...data.pages].sort((a, b) => a.pn - b.pn)) {
-    win.document.write(decodeData(pageData[p.id]));
-    Viewport.selectInstance(win.document, p.inst);
-  }
+  DB.forEachPageByNum((_, pageIndex) => {
+    win.document.write(DB.getPageSvg(pageIndex));
+    Viewport.selectInstance(win.document, DB.pageInstance(pageIndex));
+  });
 
   win.document.write("</body></html>");
   win.document.close();
@@ -2143,7 +1861,7 @@ function cycleInstance(direction, elem, closest) {
     pageList = Object.keys(getElem(elem).indexed);
     is_group = true;
   } else if (closest.type === "component") {
-    pageList = data.comps[closest.name].map((i) => getProp(i, 0));
+    pageList = DB.lookupComp(closest.name).pages;
     is_group = true;
   } else {
     return;
@@ -2180,13 +1898,13 @@ function cycleInstance(direction, elem, closest) {
     target.id = closest.name;
   }
 
-  let target_href = data.pages[currentPageIndex].name + "," + target.id;
+  let target_href = DB.pageName() + "," + target.id;
 
   if ((is_group || target.isSameNode(elem)) && pageList.length > 1) {
     // Need to navigate to a different page
     let cycleIndex = 0;
     for (let i = 0; i < pageList.length; ++i) {
-      if (pageList[i] == currentPageIndex) {
+      if (pageList[i] == DB.currentPageIndex) {
         cycleIndex = i;
       }
     }
@@ -2213,7 +1931,7 @@ function cycleInstance(direction, elem, closest) {
       // Net targets do not have ids that can be referenced add one temporarily to follow link
       target.id = closest.name;
     }
-    target_href = data.pages[pageIndex].name + "," + target.id;
+    target_href = DB.pageName(pageIndex) + "," + target.id;
   }
   highlight(is_group ? matches : [target], true, true, true);
   pushHash(target_href);
@@ -2233,7 +1951,9 @@ function getMatches(elem) {
     // to say "find stuff like this element", so cycling may need to be
     // restructured somehow
     return Array.from(
-      svgPage.querySelectorAll(ELEM_TYPE_SELECTORS[elem.type].join(", ")),
+      svgPage.querySelectorAll(
+        ELEM_TYPE_SELECTORS.find((x) => x[0] == elem.type)[1].join(", "),
+      ),
     ).filter((e) => {
       return getElem(e).name == elem.name;
     });

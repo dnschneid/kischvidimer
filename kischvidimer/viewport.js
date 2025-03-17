@@ -27,7 +27,7 @@ let hammer = null;
 let panCounter = 0;
 let originalViewBox = null;
 
-document.addEventListener("DOMContentLoaded", function () {
+export function init() {
   svgPage = document.getElementById("svgPage");
 
   window.addEventListener("resize", function () {
@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   initHammer();
-});
+}
 
 function initHammer() {
   let initialScale = 1;
@@ -117,17 +117,17 @@ export function openurl(url) {
   }
 }
 
-export function loadPage(page, decoded, cyclePageFunc) {
+export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   // Load up the html data into a temporary div tag
   let svgData = document.createElement("div");
-  svgData.innerHTML = decoded;
+  svgData.innerHTML = pgdata;
   // Configure the svg
   let svg = svgData.firstElementChild;
   svg.style.width = "100%";
   svg.style.height = "100%";
   svg.id = "activesvg";
   // Make the active instance visible and delete the rest
-  selectInstance(svg, page.inst);
+  selectInstance(svg, instance);
   // Upgrade any links to use openurl
   for (let a of svg.getElementsByTagName("a")) {
     a.removeAttribute("target");
@@ -141,7 +141,7 @@ export function loadPage(page, decoded, cyclePageFunc) {
   svgData.append(...svg.children);
   // Replace the current page DOM with this single svg tag
   svgPage.replaceChildren(svg);
-  originalViewBox = page.box;
+  originalViewBox = viewBox;
 
   // Create the svgpanzoom with the shell SVG
   currentPanZoom = svgPanZoom(svg, {
@@ -213,9 +213,7 @@ export function selectInstance(container, inst) {
   });
 }
 
-export function createGhostPages(pages, pageIndex) {
-  let page = pages[pageIndex];
-  let instance = page.inst;
+export function createGhostPages(DB, pageIndex) {
   // append ghost pages to the svg
   let ghostSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 
@@ -226,18 +224,18 @@ export function createGhostPages(pages, pageIndex) {
   let pageOffset = 0;
   for (
     let i = Math.max(0, pageIndex - 2);
-    i < Math.min(pages.length, pageIndex + 3);
+    i < Math.min(DB.numPages(), pageIndex + 3);
     i++
   ) {
     let targetSvg = ghostSvg;
     if (i == pageIndex) {
       pageOffset = yOffset;
-      yOffset += page.box[3] + pageSeparation;
+      yOffset += DB.pageViewBox(pageIndex)[3] + pageSeparation;
       continue;
     }
     yOffset += addGhostPage(
       ghostSvg,
-      pages,
+      DB,
       i,
       yOffset,
       i > pageIndex,
@@ -257,19 +255,18 @@ export function createGhostPages(pages, pageIndex) {
 
 function addGhostPage(
   ghostSvg,
-  pages,
+  DB,
   pageIndex,
   yOffset,
   pageBelow,
   activeWidth,
 ) {
-  let page = pages[pageIndex];
   let ghostRect = document.createElementNS(
     "http://www.w3.org/2000/svg",
     "rect",
   );
   let arrowChar = pageBelow ? "↓" : "↑";
-  let viewBox = page.box;
+  let viewBox = DB.pageViewBox(pageIndex);
   let xOffset = -(viewBox[2] - activeWidth) / 2;
 
   ghostRect.setAttribute("x", xOffset);
@@ -289,13 +286,13 @@ function addGhostPage(
     "dominant-baseline",
     pageBelow ? "hanging" : "text-after-edge",
   );
-  ghostText.innerHTML = `${arrowChar} ${page.name} ${arrowChar}`;
+  ghostText.innerHTML = `${arrowChar} ${DB.pageName(pageIndex)} ${arrowChar}`;
 
   let ghostG = document.createElementNS("http://www.w3.org/2000/svg", "g");
   ghostG.setAttribute("class", pageBelow ? "ghostafter" : "ghostbefore");
   ghostG.append(ghostRect, ghostText);
   onPanlessClick(ghostG, () => {
-    window.history.pushState(null, "", "#" + pages[pageIndex].name);
+    window.history.pushState(null, "", "#" + DB.pageName(pageIndex));
     window.onpopstate();
   });
   ghostSvg.append(ghostG);
