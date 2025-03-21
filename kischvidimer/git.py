@@ -147,7 +147,7 @@ def get_version(repo=None):
   if ret.returncode == 0:
     ver = ret.stdout.strip()
     if ver.startswith("pipelines/") and "CI_COMMIT_REF_NAME" in os.environ:
-      return f"{os.environ['CI_COMMIT_REF_NAME']}-{ver.partition('-')[2]}"
+      ver = f"{os.environ['CI_COMMIT_REF_NAME']}-{ver.partition('-')[2]}"
     if ver.startswith("remotes/"):
       ver = ver[8:].partition("/")[2]
     ver = ver.replace("heads/", "")
