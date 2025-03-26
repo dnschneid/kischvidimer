@@ -633,11 +633,8 @@ class Sheet(Drawable, HasUUID):
     variables.define(context, "FILENAME", os.path.basename(self.file))
     variables.define(context, "FILEPATH", self.file)
     # Define SHEETPATH using the parent sheetpath and just-now-defined sheetname
-    variables.define(
-      context,
-      "SHEETPATH",
-      variables.expand(context, "${SHEETPATH}${SHEETNAME}/"),
-    )
+    # The resolver handles the recursion by going up in the hierarchy
+    variables.define(context, "SHEETPATH", "${SHEETPATH}${SHEETNAME}/")
 
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs, of course
