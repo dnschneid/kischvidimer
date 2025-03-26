@@ -33,6 +33,7 @@ from io import BytesIO
 from . import diff as diff_mod
 from . import git, themes
 from .kicad_common import Drawable, Variables
+from .netlister import Netlister
 from .svg import Svg
 
 
@@ -75,7 +76,7 @@ class Page:
     if proj:
       self.context += proj.context()
     else:
-      page.fillvars(variables, diffs, self.context, netlister=netlister)
+      page.fillvars(variables, diffs, self.context)
       # FIXME: fill in placeholder netlist
     self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
     self.name = ": ".join(
@@ -151,7 +152,7 @@ class DiffUI:
     self.ver = ver or ""
     self._proj = proj
     self._variables = variables
-    self._netlister = netlister
+    self._netlister = netlister or Netlister.n([])
     self._pages = []
     self._pagemap = {}  # id(sch) to _pages index
     self._toc = None

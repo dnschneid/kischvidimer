@@ -2104,7 +2104,7 @@ function getElemName(closest, typ) {
     case "net":
       const tid = closest.getAttribute("t");
       for (const [netid, nodes] of Object.entries(
-        data.nets.map[currentPageIndex],
+        data.nets.map[currentPageIndex] || {},
       )) {
         if (nodes.indexOf(tid) !== -1) {
           return data.nets.names[netid];
@@ -2225,7 +2225,7 @@ window.onpopstate = function (evt) {
       break;
     }
   }
-  if (netid in data.nets.map[pageIndex]) {
+  if (netid in (data.nets.map[pageIndex] || [])) {
     netsMatched = Array.from(
       svgPage.querySelectorAll(
         data.nets.map[pageIndex][netid].map((tid) => `[t='${tid}']`).join(", "),

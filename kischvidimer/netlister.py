@@ -414,11 +414,17 @@ class Netlister:
         return c.netlister
 
     class Dummy:
+      def context(self):
+        return ()
+
       def get_net(self, context, xy, is_bus=False):
         return NetBus.new(is_bus)
 
       def get_node_count(self, context, xy, is_bus=False):
         return -1
+
+      def generate_netmap(self, svg):
+        return Netlister().generate_netmap(svg)
 
     return Dummy()
 
