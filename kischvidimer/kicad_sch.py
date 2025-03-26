@@ -754,8 +754,21 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       return self["sheet_instances"][0]["path"][0]
     return None
 
+  def is_root(self, context=None):
+    # Returns True if this is the root page, based on context if available
+    if context:
+      elements = [""]
+      for c in context:
+        if c.type == "path":
+          elements = [c.uuid()]
+        elif isinstance(c, HasUUID):
+          elements.append(c.uuid(generate=True))
+      if "/".join(elements).count("/") > 1:
+        return False
+    return self.root_path is not None
+
   def fillvars(self, variables, diffs, context=None):
-    if not context or self.root_path:
+    if self.is_root(context):
       variables.define(context, "FILENAME", os.path.basename(self._fname))
       variables.define(context, "FILEPATH", self._fname)
       variables.define(context, "SHEETPATH", "/")
