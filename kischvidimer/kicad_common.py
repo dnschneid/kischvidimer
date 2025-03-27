@@ -665,6 +665,8 @@ class Field(Drawable):
       color = "sheetfields"
     else:
       color = "fields"
+    # FIXME: properties of global labels are rendered offset from their
+    #        explicit location, the same amount as the label text itself
     text = Variables.v(context).expand(context + (self,), text)
     if not url and text.startswith(("http://", "https://")):
       url = text.partition(" ")[0]
@@ -866,7 +868,14 @@ class Variables:
         vardict = self._contexts.get(context, {})
         resolved = vardict.get(variable, vardict.get(variable.upper()))
         if resolved is not None:
-          return self.expand(context, resolved, hist)
+          expanded = self.expand(context, resolved, hist)
+          # Ensure the final page list for INTERSHEET_REFS is unique and sorted
+          if variable == "INTERSHEET_REFS":
+            try:
+              return ",".join(sorted(set(expanded.split(",")), key=int))
+            except ValueError:
+              return ""
+          return expanded
       if not context:
         return orig_variable
       context = context.rpartition("/")[0]

@@ -146,6 +146,12 @@ class NetBus:
       )
     return nodes
 
+  def instances(self, exclude_context=None):
+    while self._mergedinto:
+      self = self._mergedinto
+    exclude_instance = exclude_context and Instance(exclude_context)
+    return {i.instance for i, _, _ in self._nodes if i != exclude_instance}
+
   def add_node(self, instance, node, alt_id=None):
     self._nodes.append((instance, node, alt_id))
 

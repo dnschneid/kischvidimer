@@ -201,13 +201,19 @@ class Label(Drawable, HasUUID):
         "CONNECTION_TYPE",
         "-".join(s.capitalize() for s in shape.split("-")),
       )
-    variables.define(context + (self,), "OP", "--")
-    """ FIXME:
-    ${NET_CLASS} -> net class
-    ${NET_NAME} -> connection name
-    ${SHORT_NET_NAME} -> local name
-    """
     super().fillvars(variables, diffs, context)
+    context += (self,)
+    variables.define(context, "OP", "--")
+    n = Netlister.n(context)
+    net = n.get_net(context, self.pts(diffs)[0], bool(self.bus(diffs, context)))
+    variables.define(context, "NET_NAME", net.name())
+    short_name = self.net(diffs, context, display=False)  # {SLASH} is shown
+    variables.define(context, "SHORT_NET_NAME", short_name)  # TODO: specificity
+    # FIXME: ${NET_CLASS} -> net class
+    if self.type == "global_label":
+      instances = net.instances(exclude_context=context)
+      refs = ",".join(f"${{{i}:#}}" for i in instances)
+      variables.define(context, "INTERSHEET_REFS", refs)
 
   @sexp.uses("shape")
   def shape(self, diffs):
