@@ -665,15 +665,17 @@ class Field(Drawable):
       color = "sheetfields"
     else:
       color = "fields"
-    # FIXME: properties of global labels are rendered offset from their
-    #        explicit location, the same amount as the label text itself
+    pos = self["at"][0].pos(diffs)
+    # Properties of labels are rendered with offsets defined by the label type
+    if hasattr(context[-1], "get_text_offset"):
+      pos = translated(pos, context[-1].get_text_offset(diffs, context))
     text = Variables.v(context).expand(context + (self,), text)
     if not url and text.startswith(("http://", "https://")):
       url = text.partition(" ")[0]
     args = {
       "text": text,
       "prop": prop,
-      "pos": self["at"][0].pos(diffs),
+      "pos": pos,
       "rotate": 0,
       "color": color,
       "url": url,

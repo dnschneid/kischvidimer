@@ -26,6 +26,7 @@ from .kicad_common import (
   Variables,
   draw_uc_at,
   instancedata,
+  rotated,
   unit_to_alpha,
 )
 from .netlister import Netlister
@@ -259,6 +260,33 @@ class Label(Drawable, HasUUID):
   def pts(self, diffs):
     return (self["at"][0].pos(diffs),)
 
+  def get_text_offset(self, diffs, context, rotate=True):
+    if self.type == "label":
+      return (0, 0)
+    # Need to get effective size to calculate text height
+    args = {"size": 1.27}  # default
+    args.update(self.svgargs(diffs, context))
+    th = float(args["size"]) * svg.Svg.FONT_HEIGHT
+    offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
+    yoffset = 0
+    # Reference: sch_label.cpp: *::CreateGraphicShape
+    if self.type == "global_label":
+      yoffset = th * -0.0715  # from sch_label.cpp
+      h = float(th * 1.5)  # from sch_label.cpp
+      shape = self.shape(diffs)
+      if shape == "input" or shape in ("bidirectional", "tri_state"):
+        offset += h / 2
+    elif self.type in ("hierarchical_label", "pin"):
+      h = float(args["size"])
+      offset += h
+      if self.type == "pin":
+        offset *= -1
+    offset = (offset, yoffset)
+    if rotate:
+      rot = self["at"][0].rot(diffs)
+      offset = rotated(offset, rot)
+    return offset
+
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
     svg.gstart(tag=svg.getuid(self))
@@ -287,26 +315,20 @@ class Label(Drawable, HasUUID):
       outline = None
       if self.type != "label":
         th = float(args["size"]) * svg.FONT_HEIGHT
-        offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
-        yoffset = 0
         # Reference: sch_label.cpp: *::CreateGraphicShape
         if self.type == "global_label":
-          yoffset = th * 0.0715  # from sch_label.cpp
           w = float(svg.calcwidth(dispnet, args["size"]))
           h = float(th * 1.5)  # from sch_label.cpp
           if shape == "input":
-            offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
           elif shape == "output":
             outline = [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
           elif shape in ("bidirectional", "tri_state"):
-            offset += h / 2
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
           elif shape == "passive":
             outline = [(0, h / 2), (w + h / 2, h / 2)]
         elif self.type in ("hierarchical_label", "pin"):
           h = float(args["size"])
-          offset += h
           if shape == "input":
             outline = [(0, 0), (h / 2, h / 2), (h, h / 2)]
           elif shape == "output":
@@ -316,12 +338,8 @@ class Label(Drawable, HasUUID):
           elif shape == "passive":
             outline = [(0, h / 2), (h, h / 2)]
           if self.type == "pin":
-            offset *= -1
             for i, p in enumerate(outline):
               outline[i] = (p[0] - h, p[1])
-        offset = (offset, yoffset)
-      else:
-        offset = (0, 0)
       # Outlines are symmetric across X
       if outline:
         for p in reversed(outline):
@@ -330,6 +348,7 @@ class Label(Drawable, HasUUID):
         # close the path
         if outline[-1] != outline[0]:
           outline.append(outline[0])
+      toff = self.get_text_offset(diffs, context, rotate=False)
       svg.gstart(pos=pos, rotate=rot)
       if outline:
         ocolor = args["color"]
@@ -341,8 +360,7 @@ class Label(Drawable, HasUUID):
           thick=args["size"] / 8,
         )
       args["rotate"] = -180 * (rot >= 180)
-      svg.text(dispnet, prop=svg.PROP_LABEL, pos=offset, **args)
-      # FIXME: draw unconnected square on ends
+      svg.text(dispnet, prop=svg.PROP_LABEL, pos=toff, **args)
       svg.gend()
     if (
       draw & Drawable.DRAW_FG_PG
