@@ -668,7 +668,9 @@ class Field(Drawable):
     pos = self["at"][0].pos(diffs)
     # Properties of labels are rendered with offsets defined by the label type
     if hasattr(context[-1], "get_text_offset"):
-      pos = translated(pos, context[-1].get_text_offset(diffs, context))
+      pos = translated(
+        pos, context[-1].get_text_offset(diffs, context, is_field=True)
+      )
     text = Variables.v(context).expand(context + (self,), text)
     if not url and text.startswith(("http://", "https://")):
       url = text.partition(" ")[0]

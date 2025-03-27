@@ -260,8 +260,11 @@ class Label(Drawable, HasUUID):
   def pts(self, diffs):
     return (self["at"][0].pos(diffs),)
 
-  def get_text_offset(self, diffs, context, rotate=True):
+  def get_text_offset(self, diffs, context, is_field):
     if self.type == "label":
+      return (0, 0)
+    # Only global labels appear to offset field locations
+    if is_field and self.type != "global_label":
       return (0, 0)
     # Need to get effective size to calculate text height
     args = {"size": 1.27}  # default
@@ -282,7 +285,7 @@ class Label(Drawable, HasUUID):
       if self.type == "pin":
         offset *= -1
     offset = (offset, yoffset)
-    if rotate:
+    if is_field:
       rot = self["at"][0].rot(diffs)
       offset = rotated(offset, rot)
     return offset
@@ -348,7 +351,7 @@ class Label(Drawable, HasUUID):
         # close the path
         if outline[-1] != outline[0]:
           outline.append(outline[0])
-      toff = self.get_text_offset(diffs, context, rotate=False)
+      toff = self.get_text_offset(diffs, context, is_field=False)
       svg.gstart(pos=pos, rotate=rot)
       if outline:
         ocolor = args["color"]
