@@ -124,7 +124,7 @@ class PinDef(Drawable):
       ("x", 270),
     ):
       flipy = -1
-    style = self.get_type_style(diffs, context)[1]
+    typ, style = self.get_type_style(diffs, context)
     dot = "inverted" in style
     end = translated(pos, rotated(length - 1.27 * dot, rot))
     xys = [pos, end]
@@ -138,8 +138,17 @@ class PinDef(Drawable):
         ],
         color="device",
       )
+    elif typ == "no_connect":
+      # draw X at pin (supersedes non_logic style)
+      xys = [
+        (float(pos[0]) - 0.381, float(pos[1]) - 0.381),
+        (float(pos[0]) + 0.381, float(pos[1]) + 0.381),
+        pos,
+        (float(pos[0]) + 0.381, float(pos[1]) - 0.381),
+        (float(pos[0]) - 0.381, float(pos[1]) + 0.381),
+      ] + xys
     elif style == "non_logic":
-      # draw X
+      # draw X at end of line (not pin)
       xys += [
         (end[0] - 0.635, end[1] - 0.635),
         (end[0] + 0.635, end[1] + 0.635),
