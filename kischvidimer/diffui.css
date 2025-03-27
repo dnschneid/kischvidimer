@@ -341,3 +341,8 @@ SPDX-License-Identifier: Apache-2.0
 #changetablebody > tr {
   cursor: pointer;
 }
+
+/* https://crbug.com/40356084 */
+svg a:visited {
+  fill: inherit;
+}
