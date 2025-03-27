@@ -143,6 +143,7 @@ class SExp:
         self._subs.setdefault(item.type, []).append(item)
       elif isinstance(item, Atom):
         self._atoms[item] = self._atoms.get(item, 0) + 1
+    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
 
   def __getitem__(self, index_or_atom):
     if isinstance(index_or_atom, int):
@@ -163,15 +164,11 @@ class SExp:
 
   @property
   def type(self):
-    if self.sexp and isinstance(self.sexp[0], Atom):
-      return self.sexp[0]
-    return None
+    return self.sexp[0] if self._has_type else None
 
   @property
   def data(self):
-    if self.sexp and isinstance(self.sexp[0], Atom):
-      return self.sexp[1:]
-    return self.sexp
+    return self.sexp[1:] if self._has_type else self.sexp
 
   def enum(self, *atoms, start_i=0):
     for i, entry in enumerate(self.sexp):
@@ -210,6 +207,7 @@ class SExp:
     elif isinstance(item, Atom):
       self._atoms[item] = self._atoms.get(item, 0) + 1
     self.sexp.insert(i, item)
+    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
 
   def remove(self, atoms=None, func=None):
     if atoms is None and func is None:
@@ -228,6 +226,7 @@ class SExp:
           if not self._atoms[self.sexp[i]]:
             del self._atoms[self.sexp[i]]
         del self.sexp[i]
+    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
 
 
 def parse(data):
