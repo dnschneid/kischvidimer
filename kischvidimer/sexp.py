@@ -145,10 +145,9 @@ class SExp:
         self._atoms[item] = self._atoms.get(item, 0) + 1
 
   def __getitem__(self, index_or_atom):
-    try:
+    if isinstance(index_or_atom, int):
       return self.data[int(index_or_atom)]
-    except ValueError:
-      return self._subs[Atom(index_or_atom)]
+    return self._subs[Atom(index_or_atom)]
 
   def __contains__(self, atm):
     return Atom(atm) in self._subs or Atom(atm) in self._atoms
