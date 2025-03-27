@@ -162,6 +162,11 @@ class SExp:
   def __repr__(self):
     return dump(self)
 
+  def hash(self):
+    return hash(
+      tuple((s.hash(),) if isinstance(s, SExp) else s for s in self.sexp)
+    )
+
   @property
   def type(self):
     return self.sexp[0] if self._has_type else None

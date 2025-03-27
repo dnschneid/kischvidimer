@@ -389,9 +389,6 @@ class SymbolDef(sexp.SExp, Comparable):
       raise Exception("extended symbol with no library in context")
     return self
 
-  def __hash__(self):
-    return hash(str(self))
-
 
 class SymbolInst(PlaceholderHandler):
   pass
@@ -440,7 +437,7 @@ class SymLib(sexp.SExp, Comparable):
     if cache and hasattr(sym, "_hashcache"):
       h = sym._hashcache
     else:
-      h = sym._hashcache = hash(str(sym))
+      h = sym._hashcache = sym.hash()
     self._hashcache[h] = sym
     return h
 
