@@ -18,6 +18,26 @@ const indexData = {}; // diffui stub
 const svgData = {}; // diffui stub
 let index = null;
 
+/** Many functions return one or more "results":
+result = {
+  distance: NO_MATCH | int, where 0 is an exact match.
+            in the case of NO_MATCH, the rest of the fields may be undefined
+  type: "component" | "pin" | "net" | "text"
+  pages: list of pages that contain the result
+  id: a reusable identifier for quick database access, depends on type
+  prop: the name of the property that matched
+  value: the value of the property that matched
+  display: friendly display text for the result
+  data: key/value store of data associated with the result
+  target: the DOM element that initiated the lookup. Added by ::lookupElem.
+          Could be an element inside of a <use>, for instance.
+          This may be different from the query element, e.g. the text element if
+          a tspan is queried.
+  container: the DOM element representing this lookup. Added by ::lookupElem.
+             This could be the <g> that includes the target
+}
+*/
+
 /// PAGE FUNCTIONS
 export let curPageIndex = null;
 export const CUR = -1; // parameter that can replace curPageIndex
@@ -127,6 +147,7 @@ export function lookupComp(refdesOrPath, pageIndex) {
   if (insts && insts.length && instIndex !== -1) {
     result.distance = 0;
     result.pages = insts.map((e) => compProp(e, KEY_PAGE));
+    result.pages.sort();
     result.id = refdes;
     result.prop = "Reference";
     result.value = refdes;
@@ -160,6 +181,7 @@ export function searchComps(query) {
       result.id = refdes;
       result.display = refdes;
       result.pages = instances.map((i) => compProp(i, KEY_PAGE));
+      result.pages.sort();
       results.push(result);
     }
   }
@@ -223,6 +245,7 @@ export function searchNets(query) {
           }
         }
       }
+      result.pages.sort();
       results.push(result);
     }
   }
@@ -276,7 +299,8 @@ export function lookupNet(nameOrID, pageIndex) {
   if (elemid) {
     result.prop = "net";
     result.id = elemid;
-    result.value = result.display = index.nets.names[elemid];
+    result.value = index.nets.names[elemid];
+    result.display = result.value;
     result.data = {};
     result.data[result.prop] = result.value;
     // Find all the pages the net belongs to. TODO: build a lookup table?
@@ -291,6 +315,7 @@ export function lookupNet(nameOrID, pageIndex) {
       }
     }
   }
+  result.pages.sort();
   return result;
 }
 
@@ -340,6 +365,7 @@ export function searchText(query) {
       result.type = "text";
       result.display = text;
       result.pages = pages;
+      result.pages.sort();
       results.push(result);
     }
   }

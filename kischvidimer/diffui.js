@@ -167,7 +167,9 @@ document.addEventListener("DOMContentLoaded", function () {
     let target = evt.target;
     // Process text doubleclicks
     // Clicking on tspan is the same as clicking on text
-    if (target.tagName === "tspan") target = target.parentElement;
+    if (target.tagName === "tspan") {
+      target = target.closest("text");
+    }
     if (target.tagName === "text") {
       copyToClipboard(target.textContent);
       if (!target.classList.contains("highlight")) {
@@ -184,6 +186,7 @@ document.addEventListener("DOMContentLoaded", function () {
       */
     }
     // Launch an associated, visible url first
+    // FIXME: can this be implemented using closest?
     for (let targp = target; targp; targp = targp.parentElement) {
       if (targp.hasAttribute("p")) {
         let a = svgPage.querySelector(`[p="${targp.getAttribute("p")}"] a`);
@@ -195,10 +198,9 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
     // Launch any prop url
-    let elem = getElem(target);
-    if (elem && elem.indexed) {
-      for (let prop in elem.indexed) {
-        let val = elem.indexed[prop];
+    let result = lookupElem(target);
+    if (result && result.data) {
+      for (const val of Object.values(result.data)) {
         if (/^https?:[/][/]/.test(val)) {
           Viewport.openurl(val.split(/\s/)[0]);
           return;
@@ -212,26 +214,18 @@ document.addEventListener("DOMContentLoaded", function () {
     if (Viewport.Tooltip.isfixed() || e.buttons) {
       return;
     }
-    let elem = getElem(e.target);
-    if (elem.type === "net" && elem.name !== "GND") {
-      displayTooltip(elem, e.target);
-    } else if (elem.type === "component" && elem.indexed) {
-      displayTooltip(elem, e.target);
+    let result = lookupElem(e.target);
+    if (
+      (result.type === "net" && result.value !== "GND") ||
+      (result.type === "component" && result.data)
+    ) {
+      displayTooltip(result, false);
     } else {
       Viewport.Tooltip.hide(true);
     }
   };
   svgPage.onmousemove = function (evt) {
-    if (!Viewport.Tooltip.isfixed()) {
-      let tooltip = document.getElementById("tooltip");
-      tooltip.style.left =
-        Math.min(evt.pageX + 20, window.innerWidth - tooltip.offsetWidth) +
-        "px";
-      tooltip.style.top =
-        (evt.pageY + tooltip.offsetHeight + 20 > window.innerHeight
-          ? evt.pageY - tooltip.offsetHeight - 20
-          : evt.pageY + 20) + "px";
-    }
+    Viewport.Tooltip.onSvgMouseMove(evt);
     // store the mouse event in case we need to emulate mousedown on ghost transition
     svgPage.mouseEvent = evt;
   };
@@ -251,11 +245,11 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       if (Viewport.Tooltip.isvisible()) {
         Viewport.Tooltip.show(true);
-        let elem = getElem(e.target);
-        if (elem.type === "net" && elem.name !== "GND") {
-          crossProbe("NET", elem.name);
-        } else if (elem.type === "component" && elem.indexed) {
-          crossProbe("SELECT", elem.name);
+        let result = lookupElem(e.target);
+        if (result.type === "net" && result.value !== "GND") {
+          crossProbe("NET", result.value);
+        } else if (result.type === "component" && result.data) {
+          crossProbe("SELECT", result.value);
         }
       } else {
         svgPage.onmousemove(e);
@@ -1334,7 +1328,7 @@ function cycleResultPage(delta) {
 }
 
 function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
-  let nextPageIndex = DB.currentPageIndex + delta;
+  let nextPageIndex = DB.curPageIndex + delta;
   if (nextPageIndex < 0 || nextPageIndex >= DB.numPages()) {
     return;
   }
@@ -1387,175 +1381,107 @@ function clickedPageLink(elem, e) {
   elem.classList.add("selectedsearch");
 }
 
-/** elem comes from getElem() or null
- *  target is the hovered element
- *  fix means target was clicked
+/** result comes from lookupElem() or null
+ *  fix means the target was clicked
  */
-function displayTooltip(elem, target, fix) {
-  let tooltip = document.getElementById("tooltip");
-  if (!elem.name) {
+function displayTooltip(result, fix) {
+  if (!result || !result.value) {
     Viewport.Tooltip.hide(true);
     return;
   }
 
-  document.getElementById("tooltiptype").textContent =
-    elem.type.substr(0, 1).toUpperCase() + elem.type.substr(1);
-  document.getElementById("tooltipname").textContent = elem.name;
+  let context = "";
+  if (result.target.tagName === "text" && result.target.getAttribute("prop")) {
+    // FIXME: handle diffs better
+    if (true || !result.target.children.length) {
+      context = `${result.target.getAttribute("prop")}: ${result.target.textContent}`;
+    } else {
+      context =
+        result.target.getAttribute("prop") +
+        ": " +
+        result.target.children[0].textContent +
+        " \u2192 " + // right arrow
+        result.target.children[1].textContent;
+      if (result.target.children.length >= 3) {
+        context += " || " + result.target.children[2].textContent;
+      }
+    }
+  } else if (result.type === "net") {
+    // FIXME: show local net name somehow
+    context = `Net: ${result.value}`;
+  } else if (result.type === "component") {
+    context = "Part symbol";
+    let value = DB.compProp(result.data, "value");
+    if (value) {
+      context += `: ${value}`;
+    }
+  }
 
   // cycle instance with closest
   document.getElementById("nextinstance").onclick = function () {
-    cycleInstance(true, target, elem);
+    cycleInstance(result, true);
   };
   document.getElementById("previnstance").onclick = function () {
-    cycleInstance(false, target, elem);
+    cycleInstance(result, false);
   };
 
-  document.getElementById("tooltipcontext").textContent =
-    getTooltipContext(target);
-  document.getElementById("tooltiplinks").innerHTML = getTooltipLinks(elem);
-
-  //show properties
-  if (elem.type === "component" && DB.compProp(elem.indexed, "Value")) {
-    document.getElementById("propdiv").style.display = null;
-    let html = Object.entries(elem.indexed)
-      .map(([prop, data]) => {
-        let propl = prop && prop.toLowerCase();
-        if (
-          !prop ||
-          prop[0] < " " ||
-          !data ||
-          propl == "value" ||
-          propl == "reference"
-        ) {
-          return "";
-        }
-        let txt = prop + ": ";
-        let is_link = /^https?:[/][/]/.test(data);
-        if (is_link) {
-          let href = data.replace(/["\\]/g, "");
-          txt += `<a href="${href}" onclick="Viewport.openurl(unescape('${escape(data)}')); return false;">`;
-          let split = data.split("/");
-          if (split.length > 4) {
-            data = split
-              .slice(0, 3)
-              .concat(["...", split[split.length - 1]])
-              .join("/");
-          }
-        }
-        txt += escapeHTML(data);
-        if (is_link) {
-          txt += "</a>";
-        }
-        return txt;
-      })
-      .filter((s) => s)
-      .join("<br>");
-    document.getElementById("propdiv").innerHTML = html;
-  } else {
-    document.getElementById("propdiv").style.display = "none";
-  }
-
+  Viewport.Tooltip.setResult(DB, result, context);
   Viewport.Tooltip.show(fix);
 }
 
-function getTooltipContext(elem) {
-  let rawText = "";
-  if (elem.tagName === "text" && elem.getAttribute("prop")) {
-    if (!elem.children.length) {
-      rawText = elem.getAttribute("prop") + ": " + elem.textContent;
-    } else {
-      rawText =
-        elem.getAttribute("prop") +
-        ": " +
-        elem.children[0].textContent +
-        " \u2192 " +
-        elem.children[1].textContent;
-      if (elem.children.length >= 3) {
-        rawText += " || " + elem.children[2].textContent;
-      }
-    }
-  } else {
-    // Handle nets
-    let netContainer = elem.closest("[t]");
-    if (netContainer) {
-      return `Net: ${getElem(netContainer).name}`;
-    }
-    rawText = "Part symbol";
-    let props = getElem(elem).indexed;
-    let value = DB.compProp(props, "value");
-    if (value) {
-      rawText += `: ${value}`;
-    }
-  }
-  return rawText;
-}
-
-function getTooltipLinks(elem) {
-  if (elem.type === "net") {
-    let result = DB.lookupNet(elem.name);
-    return getPages(result.pages, result.value, "blue", false);
-  } else if (elem.type === "component") {
-    let result = DB.lookupComp(elem.name);
-    return getPages(result.pages, result.value, "blue", false);
-  } else {
-    return [];
-  }
-}
-
-/* Takes in a random target/elem and returns the high-level text or use element
- * that represents the object, which might be the same thing.
+/* Takes in a random target/elem and returns the container element that
+ * represents the object, which might be the same thing, along with database
+ * information about it.
  */
-function getElem(elem) {
+function lookupElem(elem) {
   if (!elem) {
-    return [null, null];
+    return null;
   }
-  // exit the shadow dom if necessary
-  // this is used to attach the right <use> to <symbol> elems
-  elem = elem.getRootNode().host || elem;
+  // Clicking on a tspan is the same as clicking on the text.
+  if (elem.tagName === "tspan") {
+    elem = elem.closest("text");
+  }
+  let result = {
+    distance: 0,
+    type: "note",
+    pages: [DB.curPageIndex],
+    id: null,
+    prop: "type",
+    value: "NOTE",
+    display: "",
+    data: {},
+    target: elem,
+    container: elem,
+  };
+  // FIXME: there is no selector for notes; is that a problem?
   for (let [typ, selectors] of ELEM_TYPE_SELECTORS) {
     for (let s of selectors) {
-      let closest = elem.closest(s);
-      if (closest) {
-        let elem = {
-          closest: closest,
-          type: typ,
-          name: "NOTE",
-          indexed: null,
-        };
-        // FIXME: don't use result.data directly?
+      // exit the shadow dom if necessary
+      // this is used to attach the right <use> to <symbol> elems
+      let container = (elem.getRootNode().host || elem).closest(s);
+      if (container) {
         if (typ === "component") {
-          const path = closest.getAttribute("p");
-          const result = DB.lookupComp(path);
-          if (result.distance !== DB.NO_MATCH) {
-            elem.name = result.value;
-            elem.indexed = result.data;
-          }
+          const path = container.getAttribute("p");
+          result = DB.lookupComp(path);
         } else if (typ === "net") {
-          const tid = closest.getAttribute("t");
-          const result = DB.lookupNet(tid);
-          if (result.distance !== DB.NO_MATCH) {
-            elem.name = result.value;
-            elem.indexed = result.data;
-          }
+          const tid = container.getAttribute("t");
+          result = DB.lookupNet(tid);
         } else if (typ === "ghost") {
-          elem.name = "GHOST";
+          result.value = "GHOST";
         }
-        return elem;
+        result.target = elem;
+        result.container = container;
+        return result;
       }
     }
   }
-  return {
-    closest: elem,
-    type: "note",
-    name: "NOTE",
-    indexed: null,
-  };
+  return result;
 }
 
 /** Navigates to the referenced target when back/forward are hit.
  */
 window.onpopstate = function (evt) {
-  DB.currentPageIndex = null;
+  DB.curPageIndex = null;
   let target = decodeURI(window.location.hash.replace("#", "")).toUpperCase();
   let pageName = "";
   if (target.indexOf(",") != -1) {
@@ -1657,7 +1583,7 @@ window.onpopstate = function (evt) {
   // filter net names. We want to search component props and notes...
   // exclude text matches from ghost pages
   for (let prop of Array.from(svgPage.getElementsByTagName("text")).filter(
-    (p) => ["net", "ghost"].indexOf(getElem(p).type) == -1,
+    (p) => !["net", "ghost"].includes(lookupElem(p).type),
   )) {
     let result = DB.matchData(target, prop.textContent, "text");
     if (result) {
@@ -1671,8 +1597,8 @@ window.onpopstate = function (evt) {
   }
 
   // No matches of any kind were found. Default to first page.
-  if (DB.currentPageIndex === null) {
-    DB.currentPageIndex = 0;
+  if (DB.curPageIndex === null) {
+    DB.curPageIndex = 0;
     window.location.hash = "#" + DB.pageName();
   }
 };
@@ -1794,7 +1720,7 @@ function genpdf() {
   let win = window.open("", "printwin", "height=600, width=800");
   win.document.write(
     "<html><head><title>Preparing to print " +
-      escapeHTML(uiData.schTitle) +
+      Viewport.Tooltip.escapeHTML(uiData.schTitle) +
       " </title></head><body>",
   );
   win.document.write(
@@ -1835,28 +1761,44 @@ function genpdf() {
 
 // Find the next instance of elem and go to it
 // bool direction; True if cycling forwards, false if backwards.
-function cycleInstance(direction, elem, closest) {
-  let pageList = [];
-
-  let matches = getMatches(closest);
-  let current_elem_index = matches.indexOf(elem);
-  let target = elem;
-  let is_group = false;
-
-  if (closest.type === "net") {
-    pageList = Object.keys(getElem(elem).indexed);
-    is_group = true;
-  } else if (closest.type === "component") {
-    pageList = DB.lookupComp(closest.name).pages;
-    is_group = true;
-  } else {
+// FIXME: rewrite this to store the results from mouseover and index through it
+function cycleInstance(result, direction) {
+  if (!["net", "component"].includes(result.type)) {
     return;
   }
+
+  function getMatches(elem) {
+    // Return list of all duplicate instances of elem on current page
+    // FIXME: busentries are part of both a net and a bus, so rather than
+    // tracking by .name (which only has one), this needs to build up the
+    // list like in the history handler. Naturally that makes it difficult
+    // to say "find stuff like this element", so cycling may need to be
+    // restructured somehow
+    return Array.from(
+      svgPage.querySelectorAll(
+        ELEM_TYPE_SELECTORS.find((x) => x[0] === elem.type)[1].join(", "),
+      ),
+    ).filter((e) => {
+      return lookupElem(e).value == elem.value;
+    });
+  }
+
+  const pageList = result.pages;
+  let matches = getMatches(result);
+  let current_target_index = matches.indexOf(result.target);
+  if (current_target_index === -1) {
+    // Our match list doesn't work at this level of detail, so go higher.
+    result.target = result.container;
+    current_target_index = matches.indexOf(result.container);
+  }
+  let target = result.target;
+  // FIXME: eventually want to cycle between instances within a page
+  let is_group = true;
   if (direction) {
     //forward click
-    if (current_elem_index != matches.length - 1) {
+    if (current_target_index != matches.length - 1) {
       //there is a next instance on this page
-      target = matches[current_elem_index + 1];
+      target = matches[current_target_index + 1];
     } else if (pageList.length == 1) {
       // Only one page with this target and no next instance so cycle
       // back to first instance on page.
@@ -1864,11 +1806,11 @@ function cycleInstance(direction, elem, closest) {
     }
   } else {
     // Backwards click
-    if (current_elem_index == -1) {
-      target = elem;
-    } else if (current_elem_index != 0) {
+    if (current_target_index == -1) {
+      target = result.target;
+    } else if (current_target_index != 0) {
       // there is a previous instance on this page
-      target = matches[current_elem_index - 1];
+      target = matches[current_target_index - 1];
     } else if (pageList.length == 1) {
       // Only one page with this target and no prev instance so cycle
       // back to last instance on page.
@@ -1876,21 +1818,11 @@ function cycleInstance(direction, elem, closest) {
     }
   }
 
-  if (
-    elem.tagName === "text" &&
-    (!target.isSameNode(elem) || pageList.length == 1)
-  ) {
-    // Net targets do not have ids that can be referenced add one temporarily to follow link
-    target.id = closest.name;
-  }
-
-  let target_href = DB.pageName() + "," + target.id;
-
-  if ((is_group || target.isSameNode(elem)) && pageList.length > 1) {
+  if ((is_group || target.isSameNode(result.target)) && pageList.length > 1) {
     // Need to navigate to a different page
     let cycleIndex = 0;
     for (let i = 0; i < pageList.length; ++i) {
-      if (pageList[i] == DB.currentPageIndex) {
+      if (pageList[i] == DB.curPageIndex) {
         cycleIndex = i;
       }
     }
@@ -1905,7 +1837,8 @@ function cycleInstance(direction, elem, closest) {
     }
     let pageIndex = pageList[cycleIndex];
     injectPage(pageIndex);
-    matches = getMatches(closest);
+    // FIXME: is this comparing objects across pages?
+    matches = getMatches(result);
     // Going forward to next page should select first instance on page, similarly going backwards
     // to prev page should select last instance.
     if (direction) {
@@ -1913,38 +1846,23 @@ function cycleInstance(direction, elem, closest) {
     } else {
       target = matches[matches.length - 1];
     }
-    if (target.tagName === "text") {
-      // Net targets do not have ids that can be referenced add one temporarily to follow link
-      target.id = closest.name;
-    }
-    target_href = DB.pageName(pageIndex) + "," + target.id;
   }
+
+  if (target.tagName === "text") {
+    // Net targets do not have ids that can be referenced add one temporarily to follow link
+    target.id = result.value;
+  }
+  let target_href = DB.pageName() + "," + target.id;
+
   highlight(is_group ? matches : [target], true, true, true);
   pushHash(target_href);
   if (target.tagName === "text") {
     // Remove temporary id
     target.removeAttribute("id");
   }
-  displayTooltip(getElem(target), target, true);
-}
-
-function getMatches(elem) {
-  // Return list of all duplicate instances of elem on current page
-  if (elem.type === "net" || elem.type === "component") {
-    // FIXME: busentries are part of both a net and a bus, so rather than
-    // tracking by .name (which only has one), this needs to build up the
-    // list like in the history handler. Naturally that makes it difficult
-    // to say "find stuff like this element", so cycling may need to be
-    // restructured somehow
-    return Array.from(
-      svgPage.querySelectorAll(
-        ELEM_TYPE_SELECTORS.find((x) => x[0] == elem.type)[1].join(", "),
-      ),
-    ).filter((e) => {
-      return getElem(e).name == elem.name;
-    });
-  }
-  return [];
+  result.container = target;
+  result.target = target;
+  displayTooltip(result, true);
 }
 
 function searchIsActive() {
@@ -2005,13 +1923,4 @@ function toggleDiffSidebar(state) {
 
 function diffSidebarState() {
   return document.getElementById("animationtoolbox").style.display != "none";
-}
-
-function escapeHTML(unsafe) {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }

@@ -14,40 +14,135 @@
 // SPDX-License-Identifier: Apache-2.0
 
 let fixed = false;
+let tt = null;
+
+export function init() {
+  tt = document.getElementById("tooltip");
+}
 
 export function isfixed() {
   return fixed;
 }
 
 export function isvisible() {
-  let tooltip = document.getElementById("tooltip");
-  return tooltip.style.display !== "none";
+  return tt.style.display !== "none";
 }
 
 export function hide(always) {
   if (always || fixed) {
     fixed = false;
-    let tooltip = document.getElementById("tooltip");
-    tooltip.style.display = "none";
-    tooltip.style.opacity = "0.8";
+    tt.style.display = "none";
+    tt.style.opacity = "0.8";
   }
 }
 
 export function fix() {
-  let tooltip = document.getElementById("tooltip");
-  if (tooltip.style.display !== "none") {
-    tooltip.style.opacity = 1;
+  if (tt.style.display !== "none") {
+    tt.style.opacity = 1;
     fixed = true;
   }
 }
 
 export function show(fix) {
-  let tooltip = document.getElementById("tooltip");
-  tooltip.style.display = "inline";
+  tt.style.display = "inline";
   if (fix) {
-    tooltip.style.opacity = 1;
+    tt.style.opacity = 1;
   } else {
-    tooltip.style.opacity = 0.8;
+    tt.style.opacity = 0.8;
   }
   fixed = fix;
+}
+
+export function setResult(DB, result, context) {
+  document.getElementById("tooltiptype").textContent =
+    result.type.substr(0, 1).toUpperCase() + result.type.substr(1);
+  document.getElementById("tooltipname").textContent = result.name;
+  document.getElementById("tooltipcontext").textContent = context;
+
+  setProperties(Object.keys(result.data).length > 1 ? result.data : null);
+  setPageList(DB, result.pages, result.value);
+}
+
+function setProperties(properties) {
+  const propdiv = document.getElementById("propdiv");
+  propdiv.style.display = properties ? null : "none";
+  if (!properties) {
+    return;
+  }
+  let html = Object.entries(properties)
+    .map(([prop, data]) => {
+      let propl = prop && prop.toLowerCase();
+      if (
+        !prop ||
+        prop[0] < " " ||
+        !data ||
+        propl == "value" ||
+        propl == "reference"
+      ) {
+        return "";
+      }
+      let txt = prop + ": ";
+      let is_link = /^https?:[/][/]/.test(data);
+      if (is_link) {
+        let href = data.replace(/["\\]/g, "");
+        txt += `<a href="${href}" onclick="Viewport.openurl(unescape('${escape(data)}')); return false;">`;
+        let split = data.split("/");
+        if (split.length > 4) {
+          data = split
+            .slice(0, 3)
+            .concat(["...", split[split.length - 1]])
+            .join("/");
+        }
+      }
+      txt += escapeHTML(data);
+      if (is_link) {
+        txt += "</a>";
+      }
+      return txt;
+    })
+    .filter((s) => s)
+    .join("<br>");
+  propdiv.innerHTML = html;
+}
+
+function setPageList(DB, pages, id) {
+  let pagelistHTML = "";
+  if (pages) {
+    let pCounts = {};
+    for (let p of pages) {
+      pCounts[p] = (pCounts[p] || 0) + 1;
+    }
+    for (let page in pCounts) {
+      let p = parseInt(page);
+      pagelistHTML +=
+        '<div><a class="itempagelink" style="color:blue" ' +
+        `href="#${DB.pageName(p)},${escape(id)}" ` +
+        'onclick="clickedPageLink(this, event); return false">' +
+        `${DB.pageName(p)}${pCounts[p] > 1 ? " (" + pCounts[p] + ")" : ""}` +
+        "</a></div>";
+    }
+  }
+  document.getElementById("tooltiplinks").innerHTML = pagelistHTML;
+}
+
+export function onSvgMouseMove(evt) {
+  if (isfixed()) {
+    return;
+  }
+  tt.style.left =
+    Math.min(evt.pageX + 20, window.innerWidth - tt.offsetWidth) + "px";
+  tt.style.top =
+    (evt.pageY + tt.offsetHeight + 20 > window.innerHeight
+      ? evt.pageY - tt.offsetHeight - 20
+      : evt.pageY + 20) + "px";
+}
+
+// FIXME: move this to a utility module or something
+export function escapeHTML(unsafe) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }

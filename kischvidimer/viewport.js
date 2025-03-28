@@ -22,16 +22,18 @@ const pageSeparation = 150; // svg coords
 const panPageHysteresis = 100; // client coords
 
 let svgPage = null;
-let currentPanZoom = null;
+let pz = null;
 let hammer = null;
 let panCounter = 0;
 let originalViewBox = null;
 
 export function init() {
+  Tooltip.init();
+
   svgPage = document.getElementById("svgPage");
 
   window.addEventListener("resize", function () {
-    currentPanZoom.resize();
+    pz.resize();
   });
 
   svgPage.addEventListener("touchstart", (evt) => {
@@ -45,7 +47,7 @@ export function init() {
           e.targetTouches[0].clientX - panned[0],
           e.targetTouches[0].clientY - panned[1],
         ];
-        currentPanZoom.panBy({ x: delta[0], y: delta[1] });
+        pz.panBy({ x: delta[0], y: delta[1] });
         panned = [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
       }
     };
@@ -74,10 +76,10 @@ function initHammer() {
   hammer.on("pinchstart pinchmove", function (ev) {
     // On pinch start remember initial zoom
     if (ev.type === "pinchstart") {
-      initialScale = currentPanZoom.getZoom();
+      initialScale = pz.getZoom();
     }
     // ev.scale accumulates, so treat it as relative to the initial scale
-    currentPanZoom.zoomAtPoint(initialScale * ev.scale, {
+    pz.zoomAtPoint(initialScale * ev.scale, {
       x: ev.center.x,
       y: ev.center.y,
     });
@@ -144,7 +146,7 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   originalViewBox = viewBox;
 
   // Create the svgpanzoom with the shell SVG
-  currentPanZoom = svgPanZoom(svg, {
+  pz = svgPanZoom(svg, {
     zoomScaleSensitivity: 0.2,
     dblClickZoomEnabled: false,
     onZoom: function () {
@@ -156,7 +158,7 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
       panCounter++;
       Tooltip.hide();
 
-      let y = currentPanZoom.getPan().y;
+      let y = pz.getPan().y;
       let panYExtents = getPanYPageExtents();
 
       // handle page transitions for pan-past-boundary
@@ -313,9 +315,9 @@ function onPanlessClick(elem, callback) {
 
 export function savePos() {
   let state = {};
-  state.pan = currentPanZoom.getPan();
-  state.zoom = currentPanZoom.getZoom();
-  state.realZoom = currentPanZoom.getSizes().realZoom;
+  state.pan = pz.getPan();
+  state.zoom = pz.getZoom();
+  state.realZoom = pz.getSizes().realZoom;
   state.viewBox = originalViewBox;
   return state;
 }
@@ -326,8 +328,8 @@ export function restorePos(state, panDir, panY) {
   let pageScaling = originalViewBox[2] / state.viewBox[2];
   // xOffset is caused by centering pages of different size
   let xOffset = (state.viewBox[2] - originalViewBox[2]) / 2;
-  currentPanZoom.zoom(state.zoom * pageScaling);
-  currentPanZoom.pan({
+  pz.zoom(state.zoom * pageScaling);
+  pz.pan({
     x:
       state.pan.x +
       (xOffset + state.viewBox[0] - originalViewBox[0]) * state.realZoom,
@@ -351,7 +353,7 @@ function getPanYPageExtents() {
   //   a = pan Y value that centers the top edge of the schematic page
   //   b = pan Y value that centers the bottom edge of the schematic page
   let pageHeight = originalViewBox[3];
-  let realZoom = currentPanZoom.getSizes().realZoom;
+  let realZoom = pz.getSizes().realZoom;
   let centerOffset = svgPage.offsetHeight / 2;
   let viewBoxFactor = realZoom * (originalViewBox[1] + pageHeight);
   return [
@@ -364,7 +366,7 @@ export function contentBoxToPageCoords(e) {
   // back-calculate the page coordinates of the content box.
   // the box expands to fit the window so just use the center and zoom
   let center = getCenter(svgPage.getBoundingClientRect());
-  let realZoom = currentPanZoom.getSizes().realZoom;
+  let realZoom = pz.getSizes().realZoom;
   return {
     left: center.x + (e.contentbox[0] - e.box[0] - e.box[2] / 2) * realZoom,
     top: center.y + (e.contentbox[1] - e.box[1] - e.box[3] / 2) * realZoom,
@@ -381,21 +383,20 @@ export function panToBounds(bounds, padding, widthOffset) {
   panToCenter(getCenter(bounds));
 
   // zoom to a level that at least captures the bounds (0.8 sets 10% padding for zoom)
-  currentPanZoom.zoom(
+  pz.zoom(
     Math.min(
       5,
       ...[
-        (padding * (currentPanZoom.getSizes().width + widthOffset)) /
+        (padding * (pz.getSizes().width + widthOffset)) /
           (bounds.right - bounds.left),
-        (padding * currentPanZoom.getSizes().height) /
-          (bounds.bottom - bounds.top),
+        (padding * pz.getSizes().height) / (bounds.bottom - bounds.top),
       ],
     ),
   );
 
   // pan left to center the target if a sidebar is open
   if (widthOffset) {
-    currentPanZoom.panBy({
+    pz.panBy({
       x: widthOffset / 2,
       y: 0,
     });
@@ -404,7 +405,7 @@ export function panToBounds(bounds, padding, widthOffset) {
 
 function panToCenter(targetCenter) {
   let svgCenter = getCenter(svgPage.getBoundingClientRect());
-  currentPanZoom.panBy({
+  pz.panBy({
     x: svgCenter.x - targetCenter.x,
     y: svgCenter.y - targetCenter.y,
   });
@@ -418,29 +419,29 @@ function getCenter(bbox) {
 }
 
 export function zoomIn() {
-  currentPanZoom.zoomIn();
+  pz.zoomIn();
 }
 
 export function zoomFit() {
-  currentPanZoom.resize();
-  currentPanZoom.fit();
-  currentPanZoom.center();
-  currentPanZoom.zoom(1);
+  pz.resize();
+  pz.fit();
+  pz.center();
+  pz.zoom(1);
 }
 
 export function zoomOut() {
-  currentPanZoom.zoomOut();
+  pz.zoomOut();
 }
 
 export function onkeydown(e) {
   if (e.key == "ArrowUp") {
-    currentPanZoom.panBy({ x: 0, y: 100 });
+    pz.panBy({ x: 0, y: 100 });
   } else if (e.key == "ArrowDown") {
-    currentPanZoom.panBy({ x: 0, y: -100 });
+    pz.panBy({ x: 0, y: -100 });
   } else if (e.key == "ArrowLeft") {
-    currentPanZoom.panBy({ x: 100, y: 0 });
+    pz.panBy({ x: 100, y: 0 });
   } else if (e.key == "ArrowRight") {
-    currentPanZoom.panBy({ x: -100, y: 0 });
+    pz.panBy({ x: -100, y: 0 });
   } else if (e.key == "=" || e.key == "+") {
     zoomIn();
   } else if (e.key == "-" || e.key == "_") {
