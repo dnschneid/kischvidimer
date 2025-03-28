@@ -1517,13 +1517,31 @@ function getElem(elem) {
     for (let s of selectors) {
       let closest = elem.closest(s);
       if (closest) {
-        let elemName = getElemName(closest, typ);
-        return {
+        let elem = {
           closest: closest,
           type: typ,
-          name: elemName,
-          indexed: getIndexedElem(closest, elemName, typ),
+          name: "NOTE",
+          indexed: null,
         };
+        // FIXME: don't use result.data directly?
+        if (typ === "component") {
+          const path = closest.getAttribute("p");
+          const result = DB.lookupComp(path);
+          if (result.distance !== DB.NO_MATCH) {
+            elem.name = result.value;
+            elem.indexed = result.data;
+          }
+        } else if (typ === "net") {
+          const tid = closest.getAttribute("t");
+          const result = DB.lookupNet(tid);
+          if (result.distance !== DB.NO_MATCH) {
+            elem.name = result.value;
+            elem.indexed = result.data;
+          }
+        } else if (typ === "ghost") {
+          elem.name = "GHOST";
+        }
+        return elem;
       }
     }
   }
@@ -1533,37 +1551,6 @@ function getElem(elem) {
     name: "NOTE",
     indexed: null,
   };
-}
-
-function getIndexedElem(closest, name, typ) {
-  let result;
-  switch (typ) {
-    case "component":
-      let path = closest.getAttribute("p");
-      result = DB.lookupComp(path);
-      // FIXME: don't use result.data directly?
-      return result.distance !== DB.NO_MATCH ? result.data : null;
-    case "net":
-      result = DB.lookupNet(name);
-      return result.distance !== DB.NO_MATCH ? result.data : null;
-    default:
-      return null;
-  }
-}
-
-function getElemName(closest, typ) {
-  switch (typ) {
-    case "component":
-      return DB.refdesByPath(closest.getAttribute("p"));
-    case "net":
-      const tid = closest.getAttribute("t");
-      const result = DB.lookupNet(tid);
-      return result.distance !== DB.NO_MATCH ? result.value : null;
-    case "ghost":
-      return "GHOST";
-    default:
-      return "NOTE";
-  }
 }
 
 /** Navigates to the referenced target when back/forward are hit.
