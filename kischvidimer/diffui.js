@@ -1476,10 +1476,9 @@ function getTooltipContext(elem) {
     }
   } else {
     // Handle nets
-    for (let e = elem; e; e = e.parentElement) {
-      if (e.hasAttribute("t")) {
-        return `Net: ${getElem(e).name}`;
-      }
+    let netContainer = elem.closest("[t]");
+    if (netContainer) {
+      return `Net: ${getElem(netContainer).name}`;
     }
     rawText = "Part symbol";
     let props = getElem(elem).indexed;
