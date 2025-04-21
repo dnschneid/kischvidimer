@@ -129,7 +129,7 @@ class Junction(Drawable):
     except KeyError:
       pass
     if "color" in self and any(self["color"][0].data):
-      color = self["color"][0].data
+      color = tuple(self["color"][0].data)
     svg.circle(
       pos,
       radius=diameter / 2,
