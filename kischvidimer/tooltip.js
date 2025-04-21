@@ -56,7 +56,7 @@ export function show(fix) {
 export function setResult(DB, result, context) {
   document.getElementById("tooltiptype").textContent =
     result.type.substr(0, 1).toUpperCase() + result.type.substr(1);
-  document.getElementById("tooltipname").textContent = result.name;
+  document.getElementById("tooltipname").textContent = result.display;
   document.getElementById("tooltipcontext").textContent = context;
 
   setProperties(Object.keys(result.data).length > 1 ? result.data : null);
@@ -69,16 +69,17 @@ function setProperties(properties) {
   if (!properties) {
     return;
   }
+  // Bubble Value to the top and do a case-insensitive sort on the rest
   let html = Object.entries(properties)
+    .sort(
+      (a, b) =>
+        a[0] &&
+        (-1 * (a[0].toLowerCase() == "value") ||
+          a[0].localeCompare(b[0], undefined, { sensitivity: "base" })),
+    )
     .map(([prop, data]) => {
       let propl = prop && prop.toLowerCase();
-      if (
-        !prop ||
-        prop[0] < " " ||
-        !data ||
-        propl == "value" ||
-        propl == "reference"
-      ) {
+      if (!prop || prop[0] < " " || !data || propl == "reference") {
         return "";
       }
       let txt = prop + ": ";
