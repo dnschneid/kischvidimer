@@ -36,15 +36,9 @@ export function init() {
     pz.resize();
   });
 
-  document
-    .getElementById("zoomcontrolout")
-    .addEventListener("click", zoomOut);
-  document
-    .getElementById("zoomcontrolfit")
-    .addEventListener("click", zoomFit);
-  document
-    .getElementById("zoomcontrolin")
-    .addEventListener("click", zoomIn);
+  document.getElementById("zoomcontrolout").addEventListener("click", zoomOut);
+  document.getElementById("zoomcontrolfit").addEventListener("click", zoomFit);
+  document.getElementById("zoomcontrolin").addEventListener("click", zoomIn);
 
   svgPage.addEventListener("touchstart", (evt) => {
     // with page changing, we expect a touch target to be removed from the DOM

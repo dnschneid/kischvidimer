@@ -126,7 +126,7 @@ function setPageList(DB, pages, id) {
       pagelistHTML +=
         '<div><a class="itempagelink" style="color:blue" ' +
         `href="#${DB.pageName(p)},${escape(id)}" ` +
-        'onclick="clickedPageLink(this, event); return false">' +
+        'onclick="Search.clickedPageLink(this, event); return false">' +
         `${DB.pageName(p)}${pCounts[p] > 1 ? " (" + pCounts[p] + ")" : ""}` +
         "</a></div>";
     }

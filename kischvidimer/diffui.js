@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { componentHandler } from "js-libraries/material";
+import * as Search from "search";
 import * as Viewport from "viewport";
 import * as DB from "database";
 
@@ -26,11 +27,6 @@ let xprobe = null;
 
 let filteredDiffRows = new Set();
 let diffMap = {};
-
-let matchPage = 0;
-let matchesPerPage = 10;
-let searchMatches = [];
-let searchMatchesOnPage = [];
 
 // Ordering creates precedence when matching to mouse actions
 let ELEM_TYPE_SELECTORS = [
@@ -56,6 +52,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   DB.init();
   Viewport.init();
+  Search.init(DB, toggleDiffSidebar);
 
   // handle case with no pages
   if (!DB.numPages()) {
@@ -111,56 +108,6 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("pagefilter").addEventListener("input", function () {
     filterPages(this.value);
   });
-  document
-    .getElementById("resultpagenumber")
-    .addEventListener("keyup", function () {
-      let enteredPage = validateResultPageNumber();
-      if (enteredPage) {
-        matchPage = enteredPage - 1;
-        populateMatches();
-      }
-    });
-  document
-    .getElementById("previousresults")
-    .addEventListener("click", function () {
-      cycleResultPage(-1);
-    });
-  document.getElementById("nextresults").addEventListener("click", function () {
-    cycleResultPage(1);
-  });
-  document
-    .getElementById("search-expandable")
-    .addEventListener("input", function () {
-      filterSearch(this.value);
-      // make unpopulated results not hoverable
-      let searchList = document.getElementsByClassName("resultentry");
-      for (let item of searchList) {
-        if (!item.textContent || !item.textContent.trim()) {
-          item.style.pointerEvents = "none";
-        } else {
-          item.style.pointerEvents = "auto";
-        }
-      }
-    });
-
-  document
-    .getElementById("search-expandable")
-    .addEventListener("keydown", function (e) {
-      setSearchActive(true, false);
-    });
-
-  document
-    .getElementById("search-expandable")
-    .addEventListener("focus", function () {
-      setSearchActive(true);
-    });
-
-  document
-    .getElementById("expandsearchbutton")
-    .addEventListener("click", function (e) {
-      e.preventDefault();
-      setSearchActive(!searchIsActive());
-    });
 
   // add double click listeners
   window.ondblclick = function (evt) {
@@ -272,51 +219,13 @@ document.addEventListener("DOMContentLoaded", function () {
         cyclePage(1);
       }
     }
-    if (e.key == "Enter" && searchIsActive()) {
-      // prevent focused input (not search input) enter from triggering search cycle
-      if (
-        document.activeElement !=
-          document.getElementById("search-expandable") &&
-        document.activeElement.tagName == "INPUT"
-      ) {
-        return;
-      }
-
-      let searchResults = getResultLinks();
-      if (!searchResults.length) {
-        return;
-      }
-      let nextLinkToFocus = null;
-      let selectedLinks = searchResults.filter((r) =>
-        r.classList.contains("selectedsearch"),
-      );
-      let nextIndex =
-        searchResults.indexOf(selectedLinks[0]) + (e.shiftKey ? -1 : 1);
-      if (nextIndex == searchResults.length) {
-        // wrap to next page
-        cycleResultPage(1);
-        searchResults = getResultLinks();
-        nextIndex = 0;
-      } else if (nextIndex == -1) {
-        // wrap to previous page
-        cycleResultPage(-1);
-        searchResults = getResultLinks();
-        nextIndex = searchResults.length - 1;
-      }
-      nextLinkToFocus =
-        searchResults[nextIndex > -1 ? nextIndex : searchResults.length - 1];
-      clickedPageLink(nextLinkToFocus, { detail: 1 });
-      // scroll the selected result into view
-      nextLinkToFocus.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "nearest",
-      });
+    if (e.key == "Enter" && Search.isFocused()) {
+      Search.onEnterKey(e);
     } else if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
       e.preventDefault();
-      setSearchActive(true, true);
+      Search.setActive(true, true);
     } else if (e.key == "Escape") {
-      setSearchActive(false);
+      Search.setActive(false);
       toggleDialog(null, false);
     } else if (e.ctrlKey && e.keyCode == 80) {
       genpdf();
@@ -715,7 +624,7 @@ function fillPageList() {
     spanElem.id = `${i}_link`;
     spanElem.addEventListener("click", function () {
       // manual click on another page should hide search results...
-      setSearchActive(false);
+      Search.setActive(false);
       pushHash(p.name);
       window.onpopstate();
     });
@@ -1234,81 +1143,6 @@ function filterChanges(filter) {
   document.getElementById("changetablediv").scrollTop = 0;
 }
 
-function filterSearch(filter) {
-  matchPage = 0;
-  if (!filter) {
-    populateMatches([], 0);
-    return;
-  }
-
-  searchMatches = [];
-  searchMatches.push(...DB.searchComps(filter));
-  searchMatches.push(...DB.searchNets(filter));
-  searchMatches.push(...DB.searchPins(filter));
-  searchMatches.push(...DB.searchText(filter));
-  searchMatches.sort((a, b) => a.distance - b.distance);
-
-  populateMatches();
-}
-
-function validateResultPageNumber() {
-  let pnInput = document.getElementById("resultpagenumber");
-  let enteredPage = parseInt(pnInput.value);
-  if (
-    enteredPage > 0 &&
-    enteredPage <= Math.ceil(searchMatches.length / matchesPerPage)
-  ) {
-    pnInput.style.borderBottomColor = "grey";
-    return enteredPage;
-  } else {
-    pnInput.style.borderBottomColor = "red";
-    return 0;
-  }
-}
-
-function populateMatches() {
-  //clear any old matches
-  document.getElementById("matchlist").innerHTML = "";
-  document.getElementById("resultpagenumber").value = matchPage + 1;
-  document.getElementById("resultpagenumber").disabled = !searchMatches.length;
-  validateResultPageNumber();
-
-  searchMatchesOnPage = searchMatches.slice(
-    matchesPerPage * matchPage,
-    matchesPerPage * (matchPage + 1),
-  );
-
-  // add this page's matches
-  for (let match of searchMatchesOnPage) {
-    const subtitle = `<div style="font-size:0.8em"><span class="mdl-list__item-text-body" style="color:grey;height:auto">${match.prop}: ${match.value}</span></div>`;
-    document.getElementById("matchlist").innerHTML += `<div class="resultentry">
-        <div style="height:auto">
-          <span><span style="font-weight:bold">${match.type}</span>: <code>${match.display}</code></span>
-          ${match.type == "component" ? subtitle : ""}
-          <span style="color:grey;height:auto"></span>
-          <div class="resultpages">${getPages(match.pages, match.display, "yellow", true)}</div>
-        </div>
-      </div>`;
-  }
-
-  let matchCtr = matchesPerPage * matchPage + searchMatchesOnPage.length;
-
-  document.getElementById("morematchescount").innerHTML = matchCtr
-    ? `<b>${matchPage * matchesPerPage + 1}-${matchCtr}</b> of <b>${searchMatches.length}</b> results`
-    : "no matches found";
-
-  document.getElementById("nextresults").disabled =
-    matchCtr >= searchMatches.length;
-  document.getElementById("previousresults").disabled =
-    matchCtr <= matchesPerPage;
-}
-
-function cycleResultPage(delta) {
-  let numPages = Math.ceil(searchMatches.length / matchesPerPage);
-  matchPage = (matchPage + numPages + delta) % numPages;
-  populateMatches();
-}
-
 function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
   let nextPageIndex = DB.curPageIndex + delta;
   if (nextPageIndex < 0 || nextPageIndex >= DB.numPages()) {
@@ -1325,42 +1159,6 @@ function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
     mouseEvent.initEvent("mousedown", true, true);
     document.getElementById("activesvg").dispatchEvent(mouseEvent);
   }
-}
-
-function getPages(pList, ref, color, zebra) {
-  let rawHTML = "";
-  let pCounts = {};
-  for (let p of pList) {
-    pCounts[p] = (pCounts[p] || 0) + 1;
-  }
-  let pCounter = 1;
-  for (let page in pCounts) {
-    let p = parseInt(page);
-    rawHTML +=
-      `<div${zebra && pCounter % 2 ? ' style="background-color:rgba(0,0,0,0.4)"' : ""}>` +
-      `<a class="itempagelink" style="color:${color}" ` +
-      `href="#${DB.pageName(p)},${escape(ref)}" ` +
-      `onclick="clickedPageLink(this, event); return false">` +
-      `${DB.pageName(p)}${pCounts[p] > 1 ? " (" + pCounts[p] + ")" : ""}</a></div>`;
-    pCounter++;
-  }
-  return rawHTML;
-}
-
-function clickedPageLink(elem, e) {
-  // prevent enter key "clicks" from doubling this fn
-  if (!e.detail) {
-    e.preventDefault();
-    return;
-  }
-  pushHash(elem.getAttribute("href").replace("#", ""));
-  window.onpopstate();
-  for (let e of document
-    .getElementById("searchpane")
-    .getElementsByClassName("selectedsearch")) {
-    e.classList.remove("selectedsearch");
-  }
-  elem.classList.add("selectedsearch");
 }
 
 /** result comes from lookupElem() or null
@@ -1595,7 +1393,7 @@ function panToElems(elems, padding) {
 
   // calculate svg viewport width offset based on open sidebars
   let widthOffset = 0;
-  if (searchIsActive()) {
+  if (Search.isActive()) {
     widthOffset = -document.getElementById("searchpane").offsetWidth;
   } else if (diffSidebarState()) {
     widthOffset = -document.getElementById("animationtoolbox").offsetWidth;
@@ -1754,35 +1552,6 @@ function cycleInstance(result, direction) {
   displayTooltip(result, true);
 }
 
-function searchIsActive() {
-  return document.getElementById("searchpane").style.display != "none";
-}
-
-function setSearchActive(state, select) {
-  if (state) {
-    document.getElementById("searchpane").style.display = "inline";
-    document.getElementById("expandsearchbutton").style.backgroundColor =
-      "lightgrey";
-    document.getElementById("search-expandable").focus();
-    toggleDiffSidebar(false);
-    if (select) {
-      document.getElementById("search-expandable").select();
-    }
-  } else {
-    document.getElementById("searchpane").style.display = "none";
-    document.getElementById("expandsearchbutton").style.backgroundColor = null;
-    document.getElementById("search-expandable").blur();
-  }
-}
-
-function getResultLinks() {
-  return Array.prototype.slice.call(
-    document
-      .getElementById("searchpane")
-      .getElementsByClassName("itempagelink"),
-  );
-}
-
 function toggleDialog(dialog, state) {
   // allow toggle-off without knowing which dialog
   if (state) {
@@ -1806,7 +1575,7 @@ function toggleDiffSidebar(state) {
     ? "lightgrey"
     : null;
   if (state) {
-    setSearchActive(false);
+    Search.setActive(false);
   }
 }
 
