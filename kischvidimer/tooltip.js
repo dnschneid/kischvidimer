@@ -15,6 +15,8 @@
 
 let fixed = false;
 let tt = null;
+let curResult = null;
+let curUrl = null;
 
 export function init() {
   tt = document.getElementById("tooltip");
@@ -53,7 +55,13 @@ export function show(fix) {
   fixed = fix;
 }
 
+export function url() {
+  return curUrl;
+}
+
 export function setResult(DB, result, context) {
+  curResult = result;
+  curUrl = `${window.location.href.split("#")[0]}#${DB.pageName()},${result.value}`;
   document.getElementById("tooltiptype").textContent =
     result.type.substr(0, 1).toUpperCase() + result.type.substr(1);
   document.getElementById("tooltipname").textContent = result.display;

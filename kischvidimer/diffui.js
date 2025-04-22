@@ -333,25 +333,8 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   document.getElementById("tooltiplink").addEventListener("click", function () {
-    copyToClipboard(
-      window.location.href.split("#")[0] +
-        "#" +
-        DB.pageName() +
-        "," +
-        document.getElementById("tooltipname").textContent,
-      "link",
-    );
+    copyToClipboard(Viewport.Tooltip.url(), "link");
   });
-
-  document
-    .getElementById("zoomcontrolout")
-    .addEventListener("click", Viewport.zoomOut);
-  document
-    .getElementById("zoomcontrolfit")
-    .addEventListener("click", Viewport.zoomFit);
-  document
-    .getElementById("zoomcontrolin")
-    .addEventListener("click", Viewport.zoomIn);
 
   //init settings
   document
@@ -548,16 +531,16 @@ document.addEventListener("DOMContentLoaded", function () {
     document
       .getElementById("highlight-changes-button")
       .addEventListener("click", function () {
-        // Erase existing highlights
-        highlight([]);
         // Highlight everything
+        let elems = [];
         DB.forEachDiff(DB.CUR, (diffPair) => {
           for (let diffs of diffPair)
             for (let diff of diffs)
               if (diff.checked)
                 for (let anim of document.getElementsByClassName(diff.id))
-                  highlight([anim.parentElement], true, false, false);
+                  elems.push(anim.parentElement);
         });
+        Viewport.highlightElems(elems);
       });
 
     document
@@ -741,6 +724,24 @@ function fillPageList() {
   filterPages("");
 }
 
+function filterPages(filter) {
+  let darken = false;
+  for (let elem of document.querySelectorAll(".mdl-navigation__link")) {
+    if (elem.textContent.toUpperCase().indexOf(filter.toUpperCase()) != -1) {
+      elem.style.display = "inline";
+      if (darken) {
+        elem.classList.add("navitemeven");
+        darken = false;
+      } else {
+        elem.classList.remove("navitemeven");
+        darken = true;
+      }
+    } else {
+      elem.style.display = "none";
+    }
+  }
+}
+
 function injectPage(pageIndex) {
   // first thing, we need to highlight in the left bar the page that has been loaded
   let allLinks = document.getElementById("pagelist").getElementsByTagName("a");
@@ -903,14 +904,13 @@ function fillDiffTable() {
 
 function highlightDiff(diffTR, pan) {
   let diffClass = diffTR.querySelector(".diffcheck").id;
-  highlight(
-    Array.from(svgPage.getElementsByClassName(diffClass)).map(
-      (e) => e.parentNode,
-    ),
-    1,
-    pan,
-    true,
+  const elems = Array.from(svgPage.getElementsByClassName(diffClass)).map(
+    (e) => e.parentNode,
   );
+  Viewport.highlightElems(elems);
+  if (pan) {
+    panToElems(elems);
+  }
 }
 
 function setChecksFromModel() {
@@ -1205,24 +1205,6 @@ function collapseMultiple(span, tr, diffId) {
     c.classList.remove("multiplecheckshown");
     c.classList.add("multiplecheck");
   });
-}
-
-function filterPages(filter) {
-  let darken = false;
-  for (let elem of document.querySelectorAll(".mdl-navigation__link")) {
-    if (elem.textContent.toUpperCase().indexOf(filter.toUpperCase()) != -1) {
-      elem.style.display = "inline";
-      if (darken) {
-        elem.classList.add("navitemeven");
-        darken = false;
-      } else {
-        elem.classList.remove("navitemeven");
-        darken = true;
-      }
-    } else {
-      elem.style.display = "none";
-    }
-  }
 }
 
 function filterChanges(filter) {
@@ -1522,7 +1504,8 @@ window.onpopstate = function (evt) {
       compIDs.map((p) => `[p="${p}"]`).join(", "),
     );
     if (elems.length) {
-      highlight(Array.from(elems), true, true, true);
+      Viewport.highlightElems(Array.from(elems));
+      panToElems(Array.from(elems));
       return;
     }
   }
@@ -1536,7 +1519,8 @@ window.onpopstate = function (evt) {
       netIDs.map((tid) => `[t='${tid}']`).join(", "),
     );
     if (elems.length) {
-      highlight(Array.from(elems), true, true, true);
+      Viewport.highlightElems(Array.from(elems));
+      panToElems(Array.from(elems));
       return;
     }
   }
@@ -1551,18 +1535,8 @@ window.onpopstate = function (evt) {
   }
   if (pinsMatched.length) {
     // highlight pins, but pan to their symbols
-    highlight(
-      pinsMatched.map((p) => p[0]),
-      true,
-      false,
-      true,
-    );
-    highlight(
-      pinsMatched.map((p) => p[1]),
-      false,
-      true,
-      false,
-    );
+    Viewport.highlightElems(pinsMatched.map((p) => p[0]));
+    panToElems(pinsMatched.map((p) => p[1]));
     return;
   }
 
@@ -1592,7 +1566,8 @@ window.onpopstate = function (evt) {
     }
   }
   if (genericMatched.length) {
-    highlight(genericMatched, true, true, true);
+    Viewport.highlightElems(genericMatched);
+    panToElems(genericMatched);
     return;
   }
 
@@ -1615,95 +1590,8 @@ function getSymbolTexts() {
   return symbolTexts;
 }
 
-function highlight(elems, state, scroll, unhighlightOthers) {
-  if (unhighlightOthers) {
-    Array.from(document.getElementsByClassName("highlight")).forEach(
-      (highlighted) => {
-        highlighted.classList.remove("highlight");
-      },
-    );
-  }
-
-  for (let elem of elems) {
-    // If we already have a highlighter hack group, switch to it
-    if (elem.parentElement.hasAttribute("highlighter")) {
-      elem = elem.parentElement;
-    }
-    // actually change the highlight class
-    if (state) {
-      // Lines tend to have zero width or height and may result in a zero-area
-      // highlight effect, making the element disappear. Detect this and add an
-      // invisible 1x1 rect to ensure the effect does not get culled.
-      let bbox = elem.getBBox();
-      if (!bbox.width || !bbox.height) {
-        // Can't add the rect to anythong other than a group
-        if (elem.tagName !== "g") {
-          let highlighter = document.createElementNS(
-            "http://www.w3.org/2000/svg",
-            "g",
-          );
-          highlighter.setAttributeNS(null, "highlighter", "");
-          elem.parentNode.insertBefore(highlighter, elem);
-          highlighter.appendChild(elem);
-          elem = highlighter;
-        }
-        let rect = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "rect",
-        );
-        rect.setAttributeNS(null, "x", bbox.x);
-        rect.setAttributeNS(null, "y", bbox.y);
-        rect.setAttributeNS(null, "width", 1);
-        rect.setAttributeNS(null, "height", 1);
-        rect.setAttributeNS(null, "stroke", "none");
-        rect.setAttributeNS(null, "fill", "none");
-        elem.appendChild(rect);
-      }
-      elem.classList.add("highlight");
-    } else {
-      elem.classList.remove("highlight");
-    }
-  }
-
-  if (scroll) {
-    panToElems(elems);
-  }
-}
-
-function getBounds(elems) {
-  let clientRects = elems.map((e) => {
-    if (e.contentbox) {
-      return Viewport.contentBoxToPageCoords(e);
-    } else {
-      return e.getBoundingClientRect();
-    }
-  });
-  let bounds = {
-    left: Math.min(...clientRects.map((r) => r.left)),
-    right: Math.max(...clientRects.map((r) => r.right)),
-    top: Math.min(...clientRects.map((r) => r.top)),
-    bottom: Math.max(...clientRects.map((r) => r.bottom)),
-  };
-
-  if (bounds.right - bounds.left > 0 && bounds.bottom - bounds.top > 0) {
-    return bounds;
-  } else {
-    let parentElems = elems.map((e) => e.parentNode).filter((e) => e);
-    if (!parentElems.length) {
-      return null;
-    }
-    return getBounds(parentElems);
-  }
-}
-
-function panToElems(targetElems, padding) {
-  let elemBounds = getBounds(targetElems);
+function panToElems(elems, padding) {
   padding = padding === undefined ? 0.8 : 1 - padding;
-
-  if (!elemBounds) {
-    Viewport.zoomFit();
-    return;
-  }
 
   // calculate svg viewport width offset based on open sidebars
   let widthOffset = 0;
@@ -1713,7 +1601,7 @@ function panToElems(targetElems, padding) {
     widthOffset = -document.getElementById("animationtoolbox").offsetWidth;
   }
 
-  Viewport.panToBounds(elemBounds, padding, widthOffset);
+  Viewport.panToElems(elems, padding, widthOffset);
 }
 
 function genpdf() {
@@ -1854,7 +1742,8 @@ function cycleInstance(result, direction) {
   }
   let target_href = DB.pageName() + "," + target.id;
 
-  highlight(is_group ? matches : [target], true, true, true);
+  Viewport.highlightElems(is_group ? matches : [target]);
+  panToElems(is_group ? matches : [target]);
   pushHash(target_href);
   if (target.tagName === "text") {
     // Remove temporary id

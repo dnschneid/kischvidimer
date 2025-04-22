@@ -36,6 +36,16 @@ export function init() {
     pz.resize();
   });
 
+  document
+    .getElementById("zoomcontrolout")
+    .addEventListener("click", zoomOut);
+  document
+    .getElementById("zoomcontrolfit")
+    .addEventListener("click", zoomFit);
+  document
+    .getElementById("zoomcontrolin")
+    .addEventListener("click", zoomIn);
+
   svgPage.addEventListener("touchstart", (evt) => {
     // with page changing, we expect a touch target to be removed from the DOM
     // https://developer.mozilla.org/en-US/docs/Web/API/Touch/target
@@ -301,6 +311,50 @@ function addGhostPage(
   return viewBox[3] + pageSeparation;
 }
 
+function clearHighlight() {
+  Array.from(document.getElementsByClassName("highlight")).forEach(
+    (highlighted) => {
+      highlighted.classList.remove("highlight");
+    },
+  );
+}
+
+export function highlightElems(elems) {
+  clearHighlight();
+  for (let elem of elems) {
+    // If we already have a highlighter hack group, switch to it
+    if (elem.parentElement.hasAttribute("highlighter")) {
+      elem = elem.parentElement;
+    }
+    // Lines tend to have zero width or height and may result in a zero-area
+    // highlight effect, making the element disappear. Detect this and add an
+    // invisible 1x1 rect to ensure the effect does not get culled.
+    let bbox = elem.getBBox();
+    if (!bbox.width || !bbox.height) {
+      // Can't add the rect to anythong other than a group
+      if (elem.tagName !== "g") {
+        let highlighter = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "g",
+        );
+        highlighter.setAttributeNS(null, "highlighter", "");
+        elem.parentNode.insertBefore(highlighter, elem);
+        highlighter.appendChild(elem);
+        elem = highlighter;
+      }
+      let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttributeNS(null, "x", bbox.x);
+      rect.setAttributeNS(null, "y", bbox.y);
+      rect.setAttributeNS(null, "width", 1);
+      rect.setAttributeNS(null, "height", 1);
+      rect.setAttributeNS(null, "stroke", "none");
+      rect.setAttributeNS(null, "fill", "none");
+      elem.appendChild(rect);
+    }
+    elem.classList.add("highlight");
+  }
+}
+
 function onPanlessClick(elem, callback) {
   // something like onclick, but suppressed if there is any panning
   elem.addEventListener("mousedown", () => {
@@ -362,7 +416,7 @@ function getPanYPageExtents() {
   ];
 }
 
-export function contentBoxToPageCoords(e) {
+function contentBoxToPageCoords(e) {
   // back-calculate the page coordinates of the content box.
   // the box expands to fit the window so just use the center and zoom
   let center = getCenter(svgPage.getBoundingClientRect());
@@ -379,7 +433,39 @@ export function contentBoxToPageCoords(e) {
   };
 }
 
-export function panToBounds(bounds, padding, widthOffset) {
+function getBounds(elems) {
+  let clientRects = elems.map((e) => {
+    if (e.contentbox) {
+      return contentBoxToPageCoords(e);
+    } else {
+      return e.getBoundingClientRect();
+    }
+  });
+  let bounds = {
+    left: Math.min(...clientRects.map((r) => r.left)),
+    right: Math.max(...clientRects.map((r) => r.right)),
+    top: Math.min(...clientRects.map((r) => r.top)),
+    bottom: Math.max(...clientRects.map((r) => r.bottom)),
+  };
+
+  if (bounds.right - bounds.left > 0 && bounds.bottom - bounds.top > 0) {
+    return bounds;
+  } else {
+    let parentElems = elems.map((e) => e.parentNode).filter((e) => e);
+    if (!parentElems.length) {
+      return null;
+    }
+    return getBounds(parentElems);
+  }
+}
+
+export function panToElems(elems, padding, widthOffset) {
+  let bounds = getBounds(elems);
+  if (!bounds) {
+    zoomFit();
+    return;
+  }
+
   panToCenter(getCenter(bounds));
 
   // zoom to a level that at least captures the bounds (0.8 sets 10% padding for zoom)
