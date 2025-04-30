@@ -18,12 +18,12 @@ let results = [];
 let resultPage = 0;
 let resultsOnPage = [];
 let DB = null;
-let toggleDiffSidebar = null;
+let diffHideSidebar = null;
 
-export function init(db, toggleDiffSidebarFunc) {
+export function init(db, diffHideSidebarFunc) {
   // FIXME: reduce this jankiness
   DB = db;
-  toggleDiffSidebar = toggleDiffSidebarFunc;
+  diffHideSidebar = diffHideSidebarFunc;
   document
     .getElementById("resultpagenumber")
     .addEventListener("keyup", function () {
@@ -102,7 +102,7 @@ export function setActive(active, selected) {
     document.getElementById("expandsearchbutton").style.backgroundColor =
       "lightgrey";
     document.getElementById("search-expandable").focus();
-    toggleDiffSidebar(false);
+    diffHideSidebar();
     if (selected) {
       document.getElementById("search-expandable").select();
     }
