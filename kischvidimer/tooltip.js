@@ -13,6 +13,8 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as Util from "util";
+
 let fixed = false;
 let tt = null;
 let curResult = null;
@@ -94,7 +96,7 @@ function setProperties(properties) {
       let is_link = /^https?:[/][/]/.test(data);
       if (is_link) {
         let href = data.replace(/["\\]/g, "");
-        txt += `<a href="${href}" onclick="Viewport.openurl(unescape('${escape(data)}')); return false;">`;
+        txt += `<a href="${href}" onclick="Util.openurl(unescape('${escape(data)}')); return false;">`;
         let split = data.split("/");
         if (split.length > 4) {
           data = split
@@ -103,7 +105,7 @@ function setProperties(properties) {
             .join("/");
         }
       }
-      txt += escapeHTML(data);
+      txt += Util.escapeHTML(data);
       if (is_link) {
         txt += "</a>";
       }
@@ -144,14 +146,4 @@ export function onSvgMouseMove(evt) {
     (evt.pageY + tt.offsetHeight + 20 > window.innerHeight
       ? evt.pageY - tt.offsetHeight - 20
       : evt.pageY + 20) + "px";
-}
-
-// FIXME: move this to a utility module or something
-export function escapeHTML(unsafe) {
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }

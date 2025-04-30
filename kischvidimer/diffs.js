@@ -13,31 +13,27 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as Util from "util";
+import * as DB from "database";
+
 let filteredDiffRows = new Set();
 let diffMap = {};
-let DB = null;
 let mode = null;
 let searchSetActive = null;
-let upgradeDom = null;
 let highlightElems = null;
 let svgPage = null;
 let panToElems = null;
 
 export function init(
   uiData,
-  DB_,
   searchSetActiveFunc,
-  upgradeDomFunc,
   highlightElemsFunc,
-  toggleDialog,
   svgPage_,
   panToElemsFunc,
 ) {
   mode = uiData.uiMode;
   // FIXME: remove this jankiness
-  DB = DB_;
   searchSetActive = searchSetActiveFunc;
-  upgradeDom = upgradeDomFunc;
   highlightElems = highlightElemsFunc;
   svgPage = svgPage_;
   panToElems = panToElemsFunc;
@@ -156,13 +152,13 @@ export function init(
       }
 
       let dialog = document.getElementById("applydiffsdialog");
-      toggleDialog(dialog, true);
+      Util.toggleDialog(dialog, true);
     });
   document
     .getElementById("closeapplydiffs")
     .addEventListener("click", function () {
       let dialog = document.getElementById("applydiffsdialog");
-      toggleDialog(dialog, false);
+      Util.toggleDialog(dialog, false);
     });
   document.getElementById("applydiffs").addEventListener("click", function () {
     let unselectedDiffList = [];
@@ -364,7 +360,7 @@ function fillDiffTable() {
       highlightDiff(e.target.closest("tr"), true);
     });
   });
-  upgradeDom();
+  Util.upgradeDom();
 }
 
 function highlightDiff(diffTR, pan) {
@@ -442,7 +438,7 @@ function setHeaderChecks() {
   }
 
   setMultipleDiffChecks();
-  upgradeDom();
+  Util.upgradeDom();
 }
 
 function setMultipleDiffChecks() {

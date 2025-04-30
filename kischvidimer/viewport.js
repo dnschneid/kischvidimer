@@ -15,6 +15,7 @@
 
 import { Hammer } from "js-libraries/hammer";
 import { svgPanZoom } from "js-libraries/svg-pan-zoom";
+import * as Util from "util";
 import * as Tooltip from "tooltip";
 export { Tooltip };
 
@@ -94,35 +95,6 @@ function initHammer() {
   });
 }
 
-/** Launches a URL in a new window.
- * If we're in an isolated browser, request the python server to launch the URL
- * in a proper browser. Otherwise, just open a new window.
- */
-export function openurl(url) {
-  if (!url || url.startsWith("#")) {
-    window.history.pushState(null, "", url);
-    window.onpopstate();
-  } else if (
-    document.location.hostname !== "localhost" ||
-    document.location.pathname !== "/"
-  ) {
-    window.open(url, "_blank");
-  } else {
-    fetch("./openurl", {
-      method: "POST",
-      body: JSON.stringify({ url: url }),
-    })
-      .then((res) => {
-        if (res.status >= 300) {
-          window.open(url, "_blank");
-        }
-      })
-      .catch((error) => {
-        window.open(url, "_blank");
-      });
-  }
-}
-
 export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   // Load up the html data into a temporary div tag
   let svgData = document.createElement("div");
@@ -138,7 +110,7 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   for (let a of svg.getElementsByTagName("a")) {
     a.removeAttribute("target");
     a.onclick = function () {
-      openurl(a.href.animVal);
+      Util.openurl(a.href.animVal);
       return false;
     };
   }
@@ -297,10 +269,7 @@ function addGhostPage(
   let ghostG = document.createElementNS("http://www.w3.org/2000/svg", "g");
   ghostG.setAttribute("class", pageBelow ? "ghostafter" : "ghostbefore");
   ghostG.append(ghostRect, ghostText);
-  onPanlessClick(ghostG, () => {
-    window.history.pushState(null, "", "#" + DB.pageName(pageIndex));
-    window.onpopstate();
-  });
+  onPanlessClick(ghostG, () => Util.navigateTo(DB.pageName(pageIndex)));
   ghostSvg.append(ghostG);
   return viewBox[3] + pageSeparation;
 }

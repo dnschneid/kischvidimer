@@ -13,6 +13,8 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as Util from "util";
+
 const resultsPerPage = 10;
 let results = [];
 let resultPage = 0;
@@ -136,8 +138,7 @@ export function clickedPageLink(elem, e) {
     e.preventDefault();
     return;
   }
-  window.history.pushState(null, "", elem.getAttribute("href"));
-  window.onpopstate();
+  Util.navigateTo(elem.getAttribute("href").substr(1)); // drop #
   for (let e of document
     .getElementById("searchpane")
     .getElementsByClassName("selectedsearch")) {

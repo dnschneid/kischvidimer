@@ -13,11 +13,12 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-import { componentHandler } from "js-libraries/material";
 import * as Diffs from "diffs";
 import * as Search from "search";
 import * as Viewport from "viewport";
 import * as DB from "database";
+import * as Settings from "settings";
+import * as Util from "util";
 
 const uiData = {}; // diffui stub
 
@@ -33,76 +34,42 @@ let ELEM_TYPE_SELECTORS = [
   ["ghost", [".ghost"]],
 ];
 
-function getSetting(name, defaultValue) {
-  let stored = window.localStorage.getItem(name);
-  if (!stored || stored === "null") {
-    return defaultValue;
-  }
-  return stored;
-}
-
-function setSetting(name, value) {
-  window.localStorage.setItem(name, value);
-}
-
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", () => {
   svgPage = document.getElementById("svgPage");
 
   DB.init();
   Viewport.init();
   Search.init(DB, Diffs.hideSidebar);
+  Settings.init(uiData, setTheme);
 
   // handle case with no pages
   if (!DB.numPages()) {
     svgPage.innerText =
       uiData.uiMode < 2 ? "No pages to display." : "No changes to display.";
-    toggleDialog(document.getElementById("loadingdialog"), false);
+    Util.toggleDialog(document.getElementById("loadingdialog"), false);
     return;
   }
 
-  // Initialize theme
-  let tprev = "lwfbgphrv"; // order of the theme colors to use to render the label
-  document.querySelector(".themeselect").innerHTML = Object.entries(
-    uiData.themes,
-  )
-    .map(
-      ([name, data]) => `
-        <label style="margin-bottom:10px" class="mdl-radio mdl-js-radio mdl-js-ripple-effect"
-            for="toption-${name}">
-            <input type="radio" id="toption-${name}" class="mdl-radio__button" name="options" value="${name}">
-            <span class="mdl-radio__label" style="background-color:${data.d}">
-            ${name
-              .split("")
-              .map(
-                (c, i) =>
-                  `<span style="color:${data[tprev.substr(i % tprev.length, 1)]}">${c}</span>`,
-              )
-              .join("")}
-            </span></label>`,
-    )
-    .join("");
-  setTheme(getSetting("SchematicTheme", uiData.themeDefault));
-
+  // initialize UI
+  setTheme(Settings.get("SchematicTheme", uiData.themeDefault));
   document.getElementById("zoomcontrols").style.display =
-    getSetting("ShowZoomControls") == "shown" ? "inline" : "none";
-  componentHandler.upgradeDom();
+    Settings.get("ShowZoomControls") == "shown" ? "inline" : "none";
+  Util.upgradeDom();
+
   fillPageList();
 
   Diffs.init(
     uiData,
-    DB,
     Search.setActive,
-    componentHandler.upgradeDom,
     Viewport.highlightElems,
-    toggleDialog,
     svgPage,
     panToElems,
   );
 
   window.onpopstate();
 
-  toggleDialog(document.getElementById("loadingdialog"), false);
-  document.getElementById("pagefilter").addEventListener("input", function () {
+  Util.toggleDialog(document.getElementById("loadingdialog"), false);
+  document.getElementById("pagefilter").addEventListener("input", () => {
     filterPages(this.value);
   });
 
@@ -115,17 +82,15 @@ document.addEventListener("DOMContentLoaded", function () {
       target = target.closest("text");
     }
     if (target.tagName === "text") {
-      copyToClipboard(target.textContent);
+      Util.copyToClipboard(target.textContent);
       if (!target.classList.contains("highlight")) {
-        setTimeout(function () {
-          target.classList.remove("highlight");
-        }, 500);
+        setTimeout(() => target.classList.remove("highlight"), 500);
       }
       target.classList.add("highlight");
       /* FIXME: this is probably for handling diffs
       for (let i = 0; i < target.childNodes.length; ++i) {
         if (target.childNodes[i].nodeType === 3 && !/^\s+$/.test(target.childNodes[i].textContent)) {
-          copyToClipboard(target.childNodes[i].textContent);
+          Util.copyToClipboard(target.childNodes[i].textContent);
       */
       return;
     }
@@ -146,7 +111,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (result && result.data) {
       for (const val of Object.values(result.data)) {
         if (/^https?:[/][/]/.test(val)) {
-          Viewport.openurl(val.split(/\s/)[0]);
+          Util.openurl(val.split(/\s/)[0]);
           return;
         }
       }
@@ -223,7 +188,7 @@ document.addEventListener("DOMContentLoaded", function () {
       Search.setActive(true, true);
     } else if (e.key == "Escape") {
       Search.setActive(false);
-      toggleDialog(null, false);
+      Util.toggleDialog(null, false);
     } else if (e.ctrlKey && e.keyCode == 80) {
       genpdf();
     }
@@ -234,97 +199,26 @@ document.addEventListener("DOMContentLoaded", function () {
       if (e.target !== wrapper) {
         return;
       }
-      toggleDialog(null, false);
+      Util.toggleDialog(null, false);
     });
   });
 
-  document.getElementById("tooltiplink").addEventListener("click", function () {
-    copyToClipboard(Viewport.Tooltip.url(), "link");
+  document.getElementById("tooltiplink").addEventListener("click", () => {
+    Util.copyToClipboard(Viewport.Tooltip.url(), "link");
   });
 
-  //init settings
-  document
-    .getElementById("settingsbutton")
-    .addEventListener("click", function () {
-      document.getElementById("uiversion").innerText = `UI: ${uiData.vers}`;
-
-      // show zoom control selection
-      if (getSetting("ShowZoomControls") == "shown") {
-        document
-          .getElementById("zoomcontrolcheckboxlabel")
-          .MaterialCheckbox.check();
-      } else {
-        document
-          .getElementById("zoomcontrolcheckboxlabel")
-          .MaterialCheckbox.uncheck();
-      }
-
-      // zoom to content
-      if (getSetting("ZoomToContent") == "zoom") {
-        document
-          .getElementById("zoomcontentcheckboxlabel")
-          .MaterialCheckbox.check();
-      } else {
-        document
-          .getElementById("zoomcontentcheckboxlabel")
-          .MaterialCheckbox.uncheck();
-      }
-
-      let toption = document.getElementById(
-        "toption-" + getSetting("SchematicTheme", uiData.themeDefault),
-      );
-      if (toption) {
-        toption.parentNode.MaterialRadio.check();
-      }
-      let dialog = document.getElementById("settingsdialog");
-      toggleDialog(dialog, true);
-    });
+  // Toolbar
   if (uiData.fbUrl && /https?:[/][/]/.test(uiData.fbUrl)) {
     document.getElementById("feedbackbutton").parentNode.style.display =
       "inline";
-    document
-      .getElementById("feedbackbutton")
-      .addEventListener("click", function () {
-        Viewport.openurl(uiData.fbUrl);
-      });
+    document.getElementById("feedbackbutton").addEventListener("click", () => {
+      Util.openurl(uiData.fbUrl);
+    });
   }
-  document.getElementById("printbutton").addEventListener("click", function () {
+  document.getElementById("printbutton").addEventListener("click", () => {
     genpdf();
   });
-  document.getElementById("uiversion").addEventListener("click", function () {
-    copyToClipboard(uiData.vers, "kischvidimer version");
-  });
-  document
-    .getElementById("closesettings")
-    .addEventListener("click", function () {
-      let dialog = document.getElementById("settingsdialog");
-      toggleDialog(dialog, false);
-    });
-  document
-    .getElementById("applysettings")
-    .addEventListener("click", function () {
-      setSetting(
-        "ShowZoomControls",
-        document.getElementById("zoomcontrolcheckbox").checked
-          ? "shown"
-          : "hidden",
-      );
-      if (document.getElementById("zoomcontrolcheckbox").checked) {
-        document.getElementById("zoomcontrols").style.display = "inline";
-      } else {
-        document.getElementById("zoomcontrols").style.display = "none";
-      }
-      setSetting(
-        "ZoomToContent",
-        document.getElementById("zoomcontentcheckbox").checked ? "zoom" : "",
-      );
-
-      let dialog = document.getElementById("settingsdialog");
-      let selectedTheme = document.querySelector("[id^=toption]:checked");
-      setTheme(selectedTheme.getAttribute("value"));
-      toggleDialog(dialog, false);
-    });
-  document.getElementById("xprobe").addEventListener("click", function (e) {
+  document.getElementById("xprobe").addEventListener("click", (e) => {
     e.target.disabled = true;
     e.target.innerText = "Cross-probe started";
     crossProbe();
@@ -360,8 +254,7 @@ function crossProbe(cmd, target) {
         "targets" in resp &&
         ["PART", "NET"].includes(resp.cmd)
       ) {
-        pushHash(resp.targets);
-        window.onpopstate();
+        Util.navigateTo(resp.targets);
       }
     };
   } else {
@@ -378,7 +271,7 @@ function setTheme(name, target) {
     name = "Default";
   }
   if (!target) {
-    setSetting("SchematicTheme", name);
+    Settings.set("SchematicTheme", name);
   }
   for (const v in uiData.themes[name]) {
     (target || document.body).style.setProperty(
@@ -387,29 +280,6 @@ function setTheme(name, target) {
     );
   }
   Diffs.applyAnimationColorWorkaround(uiData, name);
-}
-
-function copyToClipboard(text, indicator) {
-  // https://stackoverflow.com/questions/33855641/copy-output-of-a-javascript-variable-to-the-clipboard
-  let dummy = document.createElement("textarea");
-  document.body.appendChild(dummy);
-  dummy.value = text;
-  dummy.select();
-  document.execCommand("copy");
-  document.body.removeChild(dummy);
-  showCopyToast(text, indicator);
-}
-
-function showCopyToast(text, indicator) {
-  document.getElementById("copy-toast").MaterialSnackbar.showSnackbar({
-    message: "Copied " + (indicator || '"' + text + '"') + " to clipboard.",
-  });
-}
-
-/** Updates the back/forward history with a new target (if not redundant).
- */
-function pushHash(target) {
-  window.history.pushState(null, "", "#" + target);
 }
 
 function fillPageList() {
@@ -438,11 +308,10 @@ function fillPageList() {
     name = name[name.length - 1] || "root";
     spanElem.innerHTML = `<code>${prefix}${p.pn}&nbsp;</code>${name}`;
     spanElem.id = `${i}_link`;
-    spanElem.addEventListener("click", function () {
+    spanElem.addEventListener("click", () => {
       // manual click on another page should hide search results...
       Search.setActive(false);
-      pushHash(p.name);
-      window.onpopstate();
+      Util.navigateTo(p.name);
     });
     listElem.appendChild(spanElem);
   });
@@ -509,7 +378,7 @@ function injectPage(pageIndex) {
     Viewport.createGhostPages(DB, pageIndex);
   }
 
-  if (getSetting("ZoomToContent") === "zoom") {
+  if (Settings.get("ZoomToContent") === "zoom") {
     let fakeElem = {
       contentbox: DB.pageContentBox(),
       box: DB.pageViewBox(),
@@ -520,7 +389,7 @@ function injectPage(pageIndex) {
   Diffs.pageChanged(
     svgPage,
     uiData,
-    getSetting("SchematicTheme", uiData.themeDefault),
+    Settings.get("SchematicTheme", uiData.themeDefault),
   );
 }
 
@@ -530,8 +399,7 @@ function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
     return;
   }
   let origPos = Viewport.savePos();
-  pushHash(DB.pageName(nextPageIndex));
-  window.onpopstate();
+  Util.navigateTo(DB.pageName(nextPageIndex));
   if (retainPan) {
     Viewport.restorePos(origPos, retainPan, leftoverPanY);
   }
@@ -787,7 +655,7 @@ function genpdf() {
   let win = window.open("", "printwin", "height=600, width=800");
   win.document.write(
     "<html><head><title>Preparing to print " +
-      Viewport.Tooltip.escapeHTML(uiData.schTitle) +
+      Util.escapeHTML(uiData.schTitle) +
       " </title></head><body>",
   );
   win.document.write(
@@ -923,7 +791,7 @@ function cycleInstance(result, direction) {
 
   Viewport.highlightElems(is_group ? matches : [target]);
   panToElems(is_group ? matches : [target]);
-  pushHash(target_href);
+  Util.navigateTo(target_href, true);
   if (target.tagName === "text") {
     // Remove temporary id
     target.removeAttribute("id");
@@ -931,19 +799,4 @@ function cycleInstance(result, direction) {
   result.container = target;
   result.target = target;
   displayTooltip(result, true);
-}
-
-function toggleDialog(dialog, state) {
-  // allow toggle-off without knowing which dialog
-  if (state) {
-    dialog.parentNode.style.display = "flex";
-  } else {
-    document.querySelectorAll(".dialogwrapper").forEach((wrapper) => {
-      wrapper.style.display = "none";
-    });
-  }
-  document.getElementById("background").style.transition = "filter 0.25s";
-  document.getElementById("background").style.filter = state
-    ? "blur(4px)"
-    : null;
 }
