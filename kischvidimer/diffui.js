@@ -696,7 +696,7 @@ function injectPage(pageIndex) {
   if (getSetting("ZoomToContent") === "zoom") {
     let fakeElem = {
       contentbox: DB.pageContentBox(),
-      box: DB.pageBox(),
+      box: DB.pageViewBox(),
     };
     panToElems([fakeElem], 0.01); // the tiniest bit of margin
   }
