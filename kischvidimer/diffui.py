@@ -27,6 +27,7 @@ import tempfile
 import threading
 import time
 import zlib
+from graphlib import TopologicalSorter
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from io import BytesIO
 
@@ -465,23 +466,34 @@ class DiffUI:
     return re.sub(r"<img\s[^>]*>", repl, h)
 
   @staticmethod
-  def loadjs(path, insert_js):
+  def loadjs(path, insert_js, history=None):
     # Loads in a javascript file and replaces imports/exports with inline code
     # Returns a list of javascript blocks to add
     js_blocks = []  # library files
     with open(path, encoding="utf-8") as f:
       js = f.read()
-    # Ensure the header stays on top
-    header, headersep, js = js.partition("\n\n")
-    imports = {}  # file -> (global variable name, is_imported)
+    # Ensure the header stays on top and isn't repeated
+    header, _, js = js.partition("\n\n")
+    # Delete stub lines
+    js = re.sub(r"(?m)^.*// diffui stub.*$\n", "", js)
+
+    # Track import dependencies
+    imports = {} if history is None else history
+    thismod = os.path.splitext(os.path.basename(path))[0]
+    imports[thismod] = {
+      "var": f"__ksvdm_mod_{thismod}",  # None if it shouldn't be wrapped
+      "code": None,  # "processed file contents"
+      "deps": set(),  # modname dependencies
+    }
+
     exports = set()
     exportvars = set()
-    impcount = -1
 
     def libimp(m):
+      # Library-style import, like material design
       if m[1] in imports:
         return ""
-      imports[m[1]] = (None, True)
+      imports[m[1]] = {"var": None, "code": "", "deps": set()}
       lib = []
       libpath = os.path.join(os.path.dirname(path), f"{m[1]}.min.js")
       with open(libpath, encoding="utf-8") as f:
@@ -492,11 +504,16 @@ class DiffUI:
       return ""
 
     def subimp(m):
+      # Module import
       modnm = os.path.splitext(os.path.basename(m[2]))[0]
-      globnm, _ = imports.setdefault(modnm, (f"__ksvdm_mod_{modnm}", False))
-      return f"const {m[1]} = {globnm}"
+      if modnm not in imports:
+        subpath = os.path.join(os.path.dirname(path), f"{modnm}.js")
+        js_blocks.extend(DiffUI.loadjs(subpath, "", imports))
+      imports[thismod]["deps"].add(modnm)
+      return f"const {m[1]} = {imports[modnm]['var']}"
 
     def subexp(m):
+      # export statement
       if m[2]:
         if m[1].startswith("function "):
           exports.add(m[2])
@@ -507,40 +524,38 @@ class DiffUI:
       exports.update(e.strip() for e in m[3].split(",") if e.strip())
       return ""
 
-    # Swap in inserted js
-    js = re.sub(r"(?m)^.*// diffui stub.*$", insert_js, js, count=1)
+    # Detect library imports
+    js = re.sub(r'(?m)^import {[^}]*} from "([^"]+)".*$\n', libimp, js)
+    # Detect module imports
+    js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
+    # Replace export with self-assignment
+    js = re.sub(r"\bexport ([^{\s]+ (\w+)|{([^}]+)};?)", subexp, js)
+    js = js.strip()
+    if exportvars:
+      js = re.sub(r"\b" + r"\b|\b".join(exportvars) + r"\b", r"__.\g<0>", js)
+    if exports:
+      js += "\n" + "".join(f"this.{e}={e};" for e in sorted(exports))
+    # Convert it to a module definition
+    if history is not None and imports[thismod]["var"]:
+      js = (
+        f"const {imports[thismod]['var']}=new function(){{const __=this;\n"
+        f"{js}}};"
+      )
+    # Save the code
+    imports[thismod]["code"] = js
 
-    while impcount:
-      # Delete remaining stub lines
-      js = re.sub(r"(?m)^.*// diffui stub.*$\n", "", js)
-      # Detect library imports
-      js = re.sub(r'(?m)^import {[^}]*} from "([^"]+)".*$\n', libimp, js)
-      # Detect module imports
-      js, impcount = re.subn(r'\bimport \* as (\S+) from "([^"]+)"', subimp, js)
-      # Prepend new imports, modifying export lines. Not truly DAG-capable
-      for modnm, (globnm, imported) in imports.items():
-        if imported:
-          continue
-        subpath = os.path.join(os.path.dirname(path), f"{modnm}.js")
-        with open(subpath, encoding="utf-8") as f:
-          subjs = f.read()
-        # Replace export with self-assignment
-        exports.clear()
-        subjs = re.sub(r"\bexport ([^{\s]+ (\w+)|{([^}]+)};?)", subexp, subjs)
-        subjs = subjs.strip()
-        if exportvars:
-          subjs = re.sub(
-            r"\b" + r"\b|\b".join(exportvars) + r"\b", r"__.\g<0>", subjs
-          )
-        exportstr = "".join(f"this.{e}={e};" for e in sorted(exports))
-        js = (
-          f"const {globnm}=new function(){{const __=this;\n"
-          f"{subjs};\n{exportstr}}};\n{js}"
-        )
-        imports[modnm] = (globnm, True)
+    # If we are not the root block, just emit libraries
+    if history is not None:
+      return js_blocks
 
-    js_blocks.append("".join((header, headersep, js)))
-    return js_blocks
+    # Return the code tree, topologically sorted
+    ts = TopologicalSorter({k: v["deps"] for k, v in imports.items()})
+    return js_blocks + [
+      "\n".join(
+        [header, insert_js]
+        + [imports[m]["code"] for m in ts.static_order() if imports[m]["code"]]
+      )
+    ]
 
   def genhtml(self, is_app=False):
     self._update_index()
