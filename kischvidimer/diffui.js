@@ -20,8 +20,6 @@ import * as DB from "database";
 import * as Settings from "settings";
 import * as Util from "util";
 
-const uiData = {}; // diffui stub
-
 let svgPage = null;
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
@@ -40,18 +38,18 @@ document.addEventListener("DOMContentLoaded", () => {
   DB.init();
   Viewport.init();
   Search.init(DB, Diffs.hideSidebar);
-  Settings.init(uiData, setTheme);
+  Settings.init(DB.ui, setTheme);
 
   // handle case with no pages
   if (!DB.numPages()) {
     svgPage.innerText =
-      uiData.uiMode < 2 ? "No pages to display." : "No changes to display.";
+      DB.ui.uiMode < 2 ? "No pages to display." : "No changes to display.";
     Util.toggleDialog(document.getElementById("loadingdialog"), false);
     return;
   }
 
   // initialize UI
-  setTheme(Settings.get("SchematicTheme", uiData.themeDefault));
+  setTheme(Settings.get("SchematicTheme", DB.ui.themeDefault));
   document.getElementById("zoomcontrols").style.display =
     Settings.get("ShowZoomControls") == "shown" ? "inline" : "none";
   Util.upgradeDom();
@@ -59,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
   fillPageList();
 
   Diffs.init(
-    uiData,
+    DB.ui,
     Search.setActive,
     Viewport.highlightElems,
     svgPage,
@@ -208,11 +206,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Toolbar
-  if (uiData.fbUrl && /https?:[/][/]/.test(uiData.fbUrl)) {
+  if (DB.ui.fbUrl && /https?:[/][/]/.test(DB.ui.fbUrl)) {
     document.getElementById("feedbackbutton").parentNode.style.display =
       "inline";
     document.getElementById("feedbackbutton").addEventListener("click", () => {
-      Util.openurl(uiData.fbUrl);
+      Util.openurl(DB.ui.fbUrl);
     });
   }
   document.getElementById("printbutton").addEventListener("click", () => {
@@ -224,8 +222,8 @@ document.addEventListener("DOMContentLoaded", () => {
     crossProbe();
   });
 
-  document.getElementById("schematic-title").textContent = uiData.schTitle;
-  document.getElementById("schematic-version").textContent = uiData.schVers;
+  document.getElementById("schematic-title").textContent = DB.ui.schTitle;
+  document.getElementById("schematic-version").textContent = DB.ui.schVers;
 });
 
 function crossProbe(cmd, target) {
@@ -267,19 +265,19 @@ function crossProbe(cmd, target) {
 }
 
 function setTheme(name, target) {
-  if (!(name in uiData.themes)) {
+  if (!(name in DB.ui.themes)) {
     name = "Default";
   }
   if (!target) {
     Settings.set("SchematicTheme", name);
   }
-  for (const v in uiData.themes[name]) {
+  for (const v in DB.ui.themes[name]) {
     (target || document.body).style.setProperty(
       "--" + v,
-      uiData.themes[name][v],
+      DB.ui.themes[name][v],
     );
   }
-  Diffs.applyAnimationColorWorkaround(uiData, name);
+  Diffs.applyAnimationColorWorkaround(DB.ui, name);
 }
 
 function fillPageList() {
@@ -388,8 +386,8 @@ function injectPage(pageIndex) {
 
   Diffs.pageChanged(
     svgPage,
-    uiData,
-    Settings.get("SchematicTheme", uiData.themeDefault),
+    DB.ui,
+    Settings.get("SchematicTheme", DB.ui.themeDefault),
   );
 }
 
@@ -655,7 +653,7 @@ function genpdf() {
   let win = window.open("", "printwin", "height=600, width=800");
   win.document.write(
     "<html><head><title>Preparing to print " +
-      Util.escapeHTML(uiData.schTitle) +
+      Util.escapeHTML(DB.ui.schTitle) +
       " </title></head><body>",
   );
   win.document.write(
@@ -673,14 +671,14 @@ function genpdf() {
     win.close();
   };
   win.onbeforeprint = function () {
-    win.document.title = uiData.schTitle;
+    win.document.title = DB.ui.schTitle;
   };
 
   // Copy in fonts
   document.fonts.forEach((f) => win.document.fonts.add(f));
 
   // Black-on-white theme
-  setTheme(uiData.themeBW, win.document.body);
+  setTheme(DB.ui.themeBW, win.document.body);
 
   win.document.write(DB.getLibrarySvg());
   win.document.querySelectorAll("svg")[0].style.display = "none";

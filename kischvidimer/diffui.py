@@ -630,7 +630,8 @@ class DiffUI:
       ),
       "themes": themes.todict(),
     }
-    uidata_js = f"const uiData = {json.dumps(uidata, sort_keys=True)}"
+    zuidata = self._compress(json.dumps(uidata, sort_keys=True))
+    uidata_js = f"const uiData = '{zuidata}';"
     js_blocks = DiffUI.loadjs(os.path.join(srcdir, "diffui.js"), uidata_js)
     for js_block in js_blocks:
       html += ("<script>", js_block, "</script>")
@@ -645,9 +646,9 @@ class DiffUI:
     rights are reserved to that author unless expressly stated otherwise in the
     rendered schematic.\n*/""")
     zindex = self._compress(json.dumps(self.schematic_index, sort_keys=True))
-    html.append(f"var indexData = '{zindex}';")
+    html.append(f"const indexData = '{zindex}';")
     if self._pages:
-      html.append("var svgData = {")
+      html.append("const svgData = {")
       lib = Svg(header=False, auto_animate=False)
       lib.symbols = self._symbols
       html.append(f"library: '{self._compress(repr(lib))}',")

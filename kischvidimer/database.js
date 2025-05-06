@@ -14,8 +14,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { pako } from "js-libraries/pako_inflate";
+const uiData = {}; // diffui stub
 const indexData = {}; // diffui stub
 const svgData = {}; // diffui stub
+export let ui = null;
 let index = null;
 
 /** Many functions return one or more "results":
@@ -401,6 +403,7 @@ export function forEachDiff(pageIndex, callback) {
 /// UTILITY FUNCTIONS
 export function init() {
   // Load schematic data
+  ui = JSON.parse(decodeData(uiData));
   index = JSON.parse(decodeData(indexData));
   initComps();
   initDiffs();
