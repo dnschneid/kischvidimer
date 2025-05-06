@@ -87,6 +87,19 @@ class KicadPro(Comparable):
     if p:
       p.set_text(f"Processing {self.project}").incr_max(1).write().incr()
 
+  def get_license(self):
+    """Returns the contents of the license file referenced by the licenseFile
+    project variable."""
+    if "licenseFile" not in self.variables:
+      return ""
+    licpath = os.path.join(
+      os.path.dirname(self._fname or ""), self.variables["licenseFile"]
+    )
+    if not os.path.isfile(licpath):
+      print(f"Unable to load license from {licpath}", file=sys.stderr)
+      return ""
+    return open(licpath).read()
+
   def get_pages(self, projfile, rev, p):
     """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).
     Instances in turn are a tuple of (path ref, sheet ref)

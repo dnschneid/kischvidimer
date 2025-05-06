@@ -85,6 +85,7 @@ class Schematic:
   def __init__(self, proj):
     """Creates an empty project with no files."""
     self.diff = False
+    self._license = None
     self._proj = proj
     self._revs = []
 
@@ -156,6 +157,7 @@ class Schematic:
       worksheet=worksheets[0],
       variables=variables,
       netlister=netlister,
+      license_text=self._license,
       mode=len(self._revs),
     )
     for page in pages:
@@ -219,6 +221,9 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
       sch.diff = True
     elif f in ("--output", "-o"):
       output = f.partition("=")[2] if "=" in f else next(args)
+    elif f in ("--license", "-l"):
+      license_file = f.partition("=")[2] if "=" in f else next(args)
+      sch._license = open(license_file).read()
     elif f == "--conflicts-ok":
       # FIXME: conflict marker handling
       conflicts_ok = (kicad_sch.kicad_sch.FileError,)

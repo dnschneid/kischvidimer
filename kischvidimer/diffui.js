@@ -213,6 +213,19 @@ document.addEventListener("DOMContentLoaded", () => {
       Util.openurl(DB.ui.fbUrl);
     });
   }
+  if (DB.ui.license) {
+    document.getElementById("licensecontent").innerHTML =
+      `<p>${Util.escapeHTML(DB.ui.license).replaceAll("\n\n", "</p><p>")}</p>`;
+    document.getElementById("licensebutton").parentNode.style.display =
+      "inline";
+    document.getElementById("closelicense").addEventListener("click", () => {
+      Util.toggleDialog(null, false);
+    });
+    document.getElementById("licensebutton").addEventListener("click", () => {
+      let dialog = document.getElementById("licensedialog");
+      Util.toggleDialog(dialog, true);
+    });
+  }
   document.getElementById("printbutton").addEventListener("click", () => {
     genpdf();
   });

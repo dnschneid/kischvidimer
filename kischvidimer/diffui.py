@@ -145,12 +145,14 @@ class DiffUI:
     worksheet=None,
     variables=None,
     netlister=None,
+    license_text=None,
     mode=MODE_MERGE,
     verbosity=0,
   ):
     gc.disable()
     self.title = title
     self.ver = ver or ""
+    self._license = license_text
     self._proj = proj
     self._variables = variables
     self._netlister = netlister or Netlister.n([])
@@ -622,6 +624,7 @@ class DiffUI:
         if self._variables
         else ""
       ),
+      "license": self._license or self._proj and self._proj.get_license(),
       "themeDefault": themes.themes()[0][0],
       "themeBW": next(
         t[0]

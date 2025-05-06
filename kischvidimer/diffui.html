@@ -102,6 +102,17 @@ SPDX-License-Identifier: Apache-2.0
   </div>
 </div>
 <div class="dialogwrapper">
+  <div class="mdl-dialog" id="licensedialog" style="min-width: 80%">
+    <div class="mdl-dialog__title">
+      <h4>License</h4>
+    </div>
+    <div class="mdl-dialog__content" id="licensecontent"></div>
+    <div class="mdl-dialog__actions">
+      <button type="button" class="mdl-button" id="closelicense">Close</button>
+    </div>
+  </div>
+</div>
+<div class="dialogwrapper">
   <div class="mdl-dialog" id="applydiffsdialog" style="width: 300px">
     <div class="mdl-dialog__title">
       <h4>Apply diff selections</h4>
@@ -187,6 +198,16 @@ SPDX-License-Identifier: Apache-2.0
             id="feedbackbutton"
           >
             <img src="icons/feedback.svg" width="24" height="32" />
+          </button>
+        </div>
+
+        <div style="margin-right: 20px; display: none">
+          <button
+            class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored"
+            title="show license"
+            id="licensebutton"
+          >
+            <img src="icons/copyright.svg" width="24" height="32" />
           </button>
         </div>
 
