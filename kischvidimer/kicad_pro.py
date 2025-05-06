@@ -24,9 +24,12 @@ from .diff import Comparable
 class KicadPro(Comparable):
   """Kicad project file"""
 
-  def __init__(self, f, fname=None):
+  def __init__(self, f, fname=None, data_filter_func=None):
     self._fname = fname
-    self.json = json.loads(f.read())
+    data = f.read()
+    if data_filter_func is not None:
+      data = data_filter_func(data if isinstance(data, str) else data.decode())
+    self.json = json.loads(data)
 
   @property
   def project(self):
@@ -289,7 +292,8 @@ def config_env_vars():
 
 
 def kicad_pro(f, fname=None):
-  return KicadPro(f, fname)
+  data_filter_func = getattr(kicad_pro, "data_filter_func", None)
+  return KicadPro(f, fname, data_filter_func=data_filter_func)
 
 
 def main(argv):

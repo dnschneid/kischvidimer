@@ -856,10 +856,13 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
   #  return nets
 
 
+# Set kicad_sch.data_filter_func to be able to change sch files as they load
 def kicad_sch(f, fname=None):
   data = f.read()
   if isinstance(data, bytes):
     data = data.decode()
+  if hasattr(kicad_sch, "data_filter_func"):
+    data = kicad_sch.data_filter_func(data)
   data = sexp.parse(data)
   if isinstance(data[0], KicadSch):
     data[0].initsch(fname)

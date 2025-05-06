@@ -224,6 +224,10 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
     elif f in ("--license", "-l"):
       license_file = f.partition("=")[2] if "=" in f else next(args)
       sch._license = open(license_file).read()
+    elif f in ("--scrub", "-s"):
+      s_re = re.compile(f.partition("=")[2] if "=" in f else next(args))
+      kicad_pro.kicad_pro.data_filter_func = lambda d, r=s_re: r.sub("", d)
+      kicad_sch.kicad_sch.data_filter_func = lambda d, r=s_re: r.sub("", d)
     elif f == "--conflicts-ok":
       # FIXME: conflict marker handling
       conflicts_ok = (kicad_sch.kicad_sch.FileError,)
