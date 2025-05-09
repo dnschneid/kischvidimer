@@ -127,6 +127,14 @@ function initComps() {
 
 export function lookupComp(refdesOrPath, pageIndex) {
   // Returns a result of the refdes. refdes are all uppercase
+  let result = {
+    type: "component",
+    distance: NO_MATCH,
+    pages: [],
+  };
+  if (!refdesOrPath) {
+    return result;
+  }
   let refdes = refdesOrPath.toUpperCase();
   let insts = index.comps[refdes];
   let instIndex = 0;
@@ -141,11 +149,6 @@ export function lookupComp(refdesOrPath, pageIndex) {
       );
     }
   }
-  let result = {
-    type: "component",
-    distance: NO_MATCH,
-    pages: [],
-  };
   if (insts && insts.length && instIndex !== -1) {
     result.distance = 0;
     result.pages = insts.map((e) => compProp(e, KEY_PAGE));
@@ -258,9 +261,12 @@ export function lookupNet(nameOrID, pageIndex) {
   // Returns a result of the net.
   let result = {
     type: "net",
-    pages: [],
     distance: NO_MATCH,
+    pages: [],
   };
+  if (!nameOrID) {
+    return result;
+  }
   let elemid = null;
   // FIXME: namespace collision between global nets and IDs
   if (nameOrID in index.nets.names) {
