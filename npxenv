@@ -25,4 +25,4 @@ fi
 
 hash npx 2>/dev/null || nodeenv -q -p --node="${NODE_VERSION}"
 
-exec npx -y -s "${@}"
+exec npx --prefer-offline=true -y -s "${@}"
