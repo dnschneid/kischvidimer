@@ -389,14 +389,6 @@ function injectPage(pageIndex) {
     Viewport.createGhostPages(DB, pageIndex);
   }
 
-  if (Settings.get("ZoomToContent") === "zoom") {
-    let fakeElem = {
-      contentbox: DB.pageContentBox(),
-      box: DB.pageViewBox(),
-    };
-    panToElems([fakeElem], 0.01); // the tiniest bit of margin
-  }
-
   Diffs.pageChanged(
     svgPage,
     DB.ui,
@@ -548,10 +540,9 @@ window.onpopstate = function (evt) {
 
   Viewport.Tooltip.hide(true);
 
-  if (!target) {
-    if (pageIndex === -1) {
-      window.location.hash = "#" + DB.pageName(0);
-    }
+  // No matches of any kind were found. Default to first page.
+  if ((!target && pageIndex === -1) || DB.curPageIndex === null) {
+    window.location.hash = "#" + DB.pageName(0);
     return;
   }
 
@@ -583,56 +574,61 @@ window.onpopstate = function (evt) {
     }
   }
 
-  // FIXME: this is broken
-  let pinsMatched = [];
-  for (let txt of getSymbolTexts()) {
-    let result = DB.matchData(target, txt[0].textContent, "pin");
-    if (result) {
-      pinsMatched.push(txt);
+  if (target) {
+    // FIXME: this is broken
+    let pinsMatched = [];
+    for (let txt of getSymbolTexts()) {
+      let result = DB.matchData(target, txt[0].textContent, "pin");
+      if (result) {
+        pinsMatched.push(txt);
+      }
+    }
+    if (pinsMatched.length) {
+      // highlight pins, but pan to their symbols
+      Viewport.highlightElems(pinsMatched.map((p) => p[0]));
+      panToElems(pinsMatched.map((p) => p[1]));
+      return;
+    }
+
+    // FIXME: move elsewhere
+    // newlines get messed up in svg. single newlines are deleted, and
+    // empty lines are replaced with spaces
+    // also, inline formatting (_{}, ^{}, ~{}) gets removed
+    // also, everything that svg.encode() does needs to be replicated
+    const re = /[_^~]\{((?:[^{}]|\{[^}]*\})*)\}/;
+    target = unescape(target)
+      .replace(re, (_, x) => x.replace(re, "$1"))
+      .replace(/\{slash\}/g, "/")
+      .split("\n")
+      .map((x) => x || " ")
+      .join("");
+
+    let genericMatched = [];
+    // filter net names. We want to search component props and notes...
+    // exclude text matches from ghost pages
+    for (let prop of Array.from(svgPage.getElementsByTagName("text")).filter(
+      (p) => !["net", "ghost"].includes(lookupElem(p).type),
+    )) {
+      let result = DB.matchData(target, prop.textContent, "text");
+      if (result) {
+        // Highlight the prop
+        genericMatched.push(prop);
+      }
+    }
+    if (genericMatched.length) {
+      Viewport.highlightElems(genericMatched);
+      panToElems(genericMatched);
+      return;
     }
   }
-  if (pinsMatched.length) {
-    // highlight pins, but pan to their symbols
-    Viewport.highlightElems(pinsMatched.map((p) => p[0]));
-    panToElems(pinsMatched.map((p) => p[1]));
-    return;
-  }
 
-  // FIXME: move elsewhere
-  // newlines get messed up in svg. single newlines are deleted, and
-  // empty lines are replaced with spaces
-  // also, inline formatting (_{}, ^{}, ~{}) gets removed
-  // also, everything that svg.encode() does needs to be replicated
-  const re = /[_^~]\{((?:[^{}]|\{[^}]*\})*)\}/;
-  target = unescape(target)
-    .replace(re, (_, x) => x.replace(re, "$1"))
-    .replace(/\{slash\}/g, "/")
-    .split("\n")
-    .map((x) => x || " ")
-    .join("");
-
-  let genericMatched = [];
-  // filter net names. We want to search component props and notes...
-  // exclude text matches from ghost pages
-  for (let prop of Array.from(svgPage.getElementsByTagName("text")).filter(
-    (p) => !["net", "ghost"].includes(lookupElem(p).type),
-  )) {
-    let result = DB.matchData(target, prop.textContent, "text");
-    if (result) {
-      // Highlight the prop
-      genericMatched.push(prop);
-    }
-  }
-  if (genericMatched.length) {
-    Viewport.highlightElems(genericMatched);
-    panToElems(genericMatched);
-    return;
-  }
-
-  // No matches of any kind were found. Default to first page.
-  if (DB.curPageIndex === null) {
-    DB.curPageIndex = 0;
-    window.location.hash = "#" + DB.pageName();
+  // Zoom to content if requested and nothing matched
+  if (Settings.get("ZoomToContent") === "zoom") {
+    let fakeElem = {
+      contentbox: DB.pageContentBox(),
+      box: DB.pageViewBox(),
+    };
+    panToElems([fakeElem], 0.01); // the tiniest bit of margin
   }
 };
 
