@@ -13,12 +13,13 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-import * as Diffs from "diffs";
-import * as Search from "search";
-import * as Viewport from "viewport";
 import * as DB from "database";
+import * as Diffs from "diffs";
+import * as PageList from "pagelist";
+import * as Search from "search";
 import * as Settings from "settings";
 import * as Util from "util";
+import * as Viewport from "viewport";
 
 let svgPage = null;
 
@@ -39,6 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
   Viewport.init();
   Search.init(DB, Diffs.hideSidebar);
   Settings.init(DB.ui, setTheme);
+  PageList.init(Search.setActive);
 
   // handle case with no pages
   if (!DB.numPages()) {
@@ -54,8 +56,6 @@ document.addEventListener("DOMContentLoaded", () => {
     Settings.get("ShowZoomControls") == "shown" ? "inline" : "none";
   Util.upgradeDom();
 
-  fillPageList();
-
   Diffs.init(
     DB.ui,
     Search.setActive,
@@ -67,9 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
   window.onpopstate();
 
   Util.toggleDialog(document.getElementById("loadingdialog"), false);
-  document.getElementById("pagefilter").addEventListener("input", () => {
-    filterPages(document.getElementById("pagefilter").value);
-  });
 
   // add double click listeners
   window.ondblclick = function (evt) {
@@ -182,10 +179,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key == "Enter") {
       if (Search.isFocused()) {
         Search.onEnterKey(e);
-      } else if (
-        document.activeElement == document.getElementById("pagefilter")
-      ) {
-        onPageFilterEnterKey(e);
+      } else if (PageList.isFocused()) {
+        PageList.onEnterKey(e);
       }
     } else if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
       e.preventDefault();
@@ -299,128 +294,11 @@ function setTheme(name, target) {
   Diffs.applyAnimationColorWorkaround(DB.ui, name);
 }
 
-function fillPageList() {
-  let listElem = document.getElementById("pagelist");
-  DB.forEachPage((p, i, pages) => {
-    let spanElem = document.createElement("a");
-    spanElem.classList.add("mdl-navigation__link");
-    spanElem.classList.add("navitem");
-    let prefix = "";
-    for (let d = 1; d <= p.depth; d++) {
-      let continues = false;
-      for (let j = i + 1; j < pages.length; j++) {
-        if (pages[j].depth <= d) {
-          continues = pages[j].depth == d;
-          break;
-        }
-      }
-      if (d == p.depth) {
-        prefix += continues ? "├" : "└";
-      } else {
-        prefix += continues ? "│" : "&nbsp";
-      }
-      prefix += "&nbsp";
-    }
-    let name = p.name.split("/");
-    name = name[name.length - 1] || "root";
-    spanElem.innerHTML = `<code>${prefix}${p.pn}&nbsp;</code>${name}`;
-    spanElem.id = `${i}_link`;
-    spanElem.addEventListener("click", () => {
-      // manual click on another page should hide search results...
-      Search.setActive(false);
-      Util.navigateTo(p.name);
-    });
-    listElem.appendChild(spanElem);
-  });
-  filterPages("");
-}
-
-function filterPages(filter) {
-  let pgstate = [];
-  DB.forEachPage((p, i, pages) => {
-    pgstate.push(false);
-    if (filter && DB.matchDistance(filter, p.name) == DB.NO_MATCH) {
-      return;
-    }
-    pgstate[i] = true;
-    // Flag unselected parents to be grayed
-    for (let d = p.depth - 1; i >= 0 && d >= 0; d--) {
-      for (i--; i >= 0 && pages[i].depth !== d; i--);
-      if (i >= 0) {
-        if (pgstate[i]) {
-          break;
-        }
-        pgstate[i] = 2;
-      }
-    }
-  });
-  Array.from(document.querySelectorAll(".navitem")).forEach((elem, i) => {
-    if (pgstate[i]) {
-      elem.style.display = "inline";
-      if (i % 2) {
-        elem.classList.add("navitemeven");
-      } else {
-        elem.classList.remove("navitemeven");
-      }
-      if (pgstate[i] == 2) {
-        elem.classList.add("navitemdim");
-      } else {
-        elem.classList.remove("navitemdim");
-      }
-    } else {
-      elem.style.display = "none";
-    }
-  });
-  return pgstate;
-}
-
-function onPageFilterEnterKey(e) {
-  let pgstate = filterPages(e.target.value);
-  // force in the current page to make iteration easier
-  pgstate[DB.curPageIndex] = true;
-  let pages = [];
-  pgstate.forEach((state, i) => state === true && pages.push(i));
-  if (!pages.length) {
-    return;
-  }
-  let nextIndex = pages.indexOf(DB.curPageIndex) + (e.shiftKey ? -1 : 1);
-  if (nextIndex == pages.length) {
-    nextIndex = 0;
-  } else if (nextIndex == -1) {
-    nextIndex = pages.length - 1;
-  }
-  Util.navigateTo(DB.pageName(pages[nextIndex]));
-}
-
 function injectPage(pageIndex) {
-  // first thing, we need to highlight in the left bar the page that has been loaded
-  let allLinks = document.getElementById("pagelist").getElementsByTagName("a");
+  PageList.select(pageIndex);
 
   // empty the change filter on page change
   document.getElementById("changefilter").value = "";
-
-  for (let l = 0; l < allLinks.length; l++) {
-    if (allLinks[l].id == `${pageIndex}_link`) {
-      allLinks[l].classList.add("currentnavitem");
-      allLinks[l].style.fontWeight = "bold";
-      if (allLinks[l].classList.contains("conflictpagelink")) {
-        allLinks[l].style.backgroundColor = "rgba(255,0,0,0.55)";
-      } else {
-        allLinks[l].style.backgroundColor = "black";
-      }
-      if (typeof allLinks[l].scrollIntoViewIfNeeded === "function") {
-        allLinks[l].scrollIntoViewIfNeeded();
-      }
-    } else {
-      allLinks[l].classList.remove("currentnavitem");
-      allLinks[l].style.fontWeight = null;
-      if (allLinks[l].classList.contains("conflictpagelink")) {
-        allLinks[l].style.backgroundColor = "rgba(255,0,0,0.15)";
-      } else {
-        allLinks[l].style.backgroundColor = null;
-      }
-    }
-  }
 
   // Load the library
   let svgLibrary = document.getElementById("svgLibrary");
