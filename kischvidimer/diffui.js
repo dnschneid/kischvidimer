@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   Util.toggleDialog(document.getElementById("loadingdialog"), false);
   document.getElementById("pagefilter").addEventListener("input", () => {
-    filterPages(this.value);
+    filterPages(document.getElementById("pagefilter").value);
   });
 
   // add double click listeners
@@ -179,8 +179,14 @@ document.addEventListener("DOMContentLoaded", () => {
         cyclePage(1);
       }
     }
-    if (e.key == "Enter" && Search.isFocused()) {
-      Search.onEnterKey(e);
+    if (e.key == "Enter") {
+      if (Search.isFocused()) {
+        Search.onEnterKey(e);
+      } else if (
+        document.activeElement == document.getElementById("pagefilter")
+      ) {
+        onPageFilterEnterKey(e);
+      }
     } else if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
       e.preventDefault();
       Search.setActive(true, true);
@@ -330,21 +336,60 @@ function fillPageList() {
 }
 
 function filterPages(filter) {
-  let darken = false;
-  for (let elem of document.querySelectorAll(".mdl-navigation__link")) {
-    if (elem.textContent.toUpperCase().indexOf(filter.toUpperCase()) != -1) {
+  let pgstate = [];
+  DB.forEachPage((p, i, pages) => {
+    pgstate.push(false);
+    if (filter && DB.matchDistance(filter, p.name) == DB.NO_MATCH) {
+      return;
+    }
+    pgstate[i] = true;
+    // Flag unselected parents to be grayed
+    for (let d = p.depth - 1; i >= 0 && d >= 0; d--) {
+      for (i--; i >= 0 && pages[i].depth !== d; i--);
+      if (i >= 0) {
+        if (pgstate[i]) {
+          break;
+        }
+        pgstate[i] = 2;
+      }
+    }
+  });
+  Array.from(document.querySelectorAll(".navitem")).forEach((elem, i) => {
+    if (pgstate[i]) {
       elem.style.display = "inline";
-      if (darken) {
+      if (i % 2) {
         elem.classList.add("navitemeven");
-        darken = false;
       } else {
         elem.classList.remove("navitemeven");
-        darken = true;
+      }
+      if (pgstate[i] == 2) {
+        elem.classList.add("navitemdim");
+      } else {
+        elem.classList.remove("navitemdim");
       }
     } else {
       elem.style.display = "none";
     }
+  });
+  return pgstate;
+}
+
+function onPageFilterEnterKey(e) {
+  let pgstate = filterPages(e.target.value);
+  // force in the current page to make iteration easier
+  pgstate[DB.curPageIndex] = true;
+  let pages = [];
+  pgstate.forEach((state, i) => state === true && pages.push(i));
+  if (!pages.length) {
+    return;
   }
+  let nextIndex = pages.indexOf(DB.curPageIndex) + (e.shiftKey ? -1 : 1);
+  if (nextIndex == pages.length) {
+    nextIndex = 0;
+  } else if (nextIndex == -1) {
+    nextIndex = pages.length - 1;
+  }
+  Util.navigateTo(DB.pageName(pages[nextIndex]));
 }
 
 function injectPage(pageIndex) {
