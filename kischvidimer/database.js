@@ -110,6 +110,7 @@ export function pageNum(i) {
 /// COMPONENT FUNCTIONS
 export const KEY_PAGE = "\x00"; // component pageIndex
 export const KEY_PATH = "\x01"; // component path (uuid)
+export const KEY_LIB_ID = "\x02"; // component library ID
 
 function initComps() {
   // Create a component lookup database

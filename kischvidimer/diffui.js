@@ -442,11 +442,7 @@ function displayTooltip(result, fix) {
     // FIXME: show local net name somehow
     context = `Net: ${result.value}`;
   } else if (result.type === "component") {
-    context = "Part symbol";
-    let value = DB.compProp(result.data, "value");
-    if (value) {
-      context += `: ${value}`;
-    }
+    context = DB.compProp(result.data, DB.KEY_LIB_ID) || "Part symbol";
   }
 
   // cycle instance with closest

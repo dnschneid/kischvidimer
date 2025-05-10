@@ -591,9 +591,13 @@ class SymbolInst(Drawable, HasUUID):
     return self.get("convert", default=[1])[0]
 
   def as_comp(self, context):
-    # returns (refdes, {dict of properties, with chr(1) containing local uuid})
+    # returns (refdes, {dict of properties})
+    # Special properties:
+    #   chr(1): local uuid
+    #   chr(2): lib_id
     props = {
       chr(1): self.uuid(generate=True),
+      chr(2): self.lib_id([], context),
       "Reference": self.refdes([], context),
     }
     if "property" not in self:
