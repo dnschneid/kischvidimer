@@ -36,6 +36,23 @@ SPDX-License-Identifier: Apache-2.0
   color: rgba(255, 255, 255, 0.5) !important;
 }
 
+.currentnavitem {
+  font-weight: bold !important;
+  background-color: black;
+}
+
+.conflictnavitem:.currentnavitem {
+  background-color: rgba(255, 0, 0, 0.55);
+}
+
+.conflictnavitem:not(.currentnavitem) {
+  background-color: rgba(255, 0, 0, 0.15);
+}
+
+.conflictnavitem:hover {
+  background-color: rgba(255, 0, 0, 0.35) !important;
+}
+
 .resultentry {
   color: white !important;
   margin: 10px 10px 10px 10px;
@@ -156,14 +173,6 @@ SPDX-License-Identifier: Apache-2.0
 
 .collapsedtr {
   visibility: collapse;
-}
-
-.conflictpagelink {
-  background-color: rgba(255, 0, 0, 0.15);
-}
-
-.conflictpagelink:hover {
-  background-color: rgba(255, 0, 0, 0.35) !important;
 }
 
 .stickyhead {

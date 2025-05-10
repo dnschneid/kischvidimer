@@ -284,7 +284,7 @@ function initializeCheckModel() {
     if (diffPair[0].length && diffPair[0][0].c) {
       document
         .getElementById(`${pageIndex}_link`)
-        .classList.add("conflictpagelink");
+        .classList.add("conflictnavitem");
     } else if (diffPair[0].length) {
       for (let diff of diffPair[0]) {
         diff.checked = true;
@@ -295,7 +295,7 @@ function initializeCheckModel() {
     } else if (diffPair[1][0].c) {
       document
         .getElementById(`${pageIndex}_link`)
-        .classList.add("conflictpagelink");
+        .classList.add("conflictnavitem");
     } else {
       for (let diff of diffPair[1]) {
         diff.checked = true;

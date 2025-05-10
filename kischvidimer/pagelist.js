@@ -82,16 +82,17 @@ function states(filter) {
 }
 
 function update(pgstates) {
-  // FIXME: use index_link rather than assuming the order matches
-  Array.from(document.querySelectorAll(".navitem")).forEach((elem, i) => {
-    if (!pgstates || pgstates[i]) {
+  for (let i = 0; i < DB.numPages(); i++) {
+    let elem = document.getElementById(`${i}_link`);
+    let state = !pgstates || pgstates[i];
+    if (state) {
       elem.style.display = "inline";
       if (i % 2) {
         elem.classList.add("navitemeven");
       } else {
         elem.classList.remove("navitemeven");
       }
-      if (pgstates && pgstates[i] == 2) {
+      if (state == 2) {
         elem.classList.add("navitemdim");
       } else {
         elem.classList.remove("navitemdim");
@@ -99,7 +100,7 @@ function update(pgstates) {
     } else {
       elem.style.display = "none";
     }
-  });
+  }
 }
 
 export function onEnterKey(e) {
@@ -121,27 +122,15 @@ export function onEnterKey(e) {
 }
 
 export function select(pageIndex) {
-  // first thing, we need to highlight in the left bar the page that has been loaded
-  Array.from(document.querySelectorAll(".navitem")).forEach((elem, i) => {
-    if (elem.id == `${pageIndex}_link`) {
+  for (let i = 0; i < DB.numPages(); i++) {
+    let elem = document.getElementById(`${i}_link`);
+    if (i === pageIndex) {
       elem.classList.add("currentnavitem");
-      elem.style.fontWeight = "bold";
-      if (elem.classList.contains("conflictpagelink")) {
-        elem.style.backgroundColor = "rgba(255,0,0,0.55)";
-      } else {
-        elem.style.backgroundColor = "black";
-      }
       if (typeof elem.scrollIntoViewIfNeeded === "function") {
         elem.scrollIntoViewIfNeeded();
       }
     } else {
       elem.classList.remove("currentnavitem");
-      elem.style.fontWeight = null;
-      if (elem.classList.contains("conflictpagelink")) {
-        elem.style.backgroundColor = "rgba(255,0,0,0.15)";
-      } else {
-        elem.style.backgroundColor = null;
-      }
     }
-  });
+  }
 }
