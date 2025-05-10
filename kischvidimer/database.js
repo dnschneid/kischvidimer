@@ -428,13 +428,13 @@ export function getPageSvg(pageIndex) {
 }
 
 export const NO_MATCH = Number.MAX_SAFE_INTEGER;
-export function matchDistance(x, y) {
-  const uY = y.toUpperCase();
-  const uX = x.toUpperCase();
-  if (uY == uX) {
+export function matchDistance(needle, haystack) {
+  const uHaystack = haystack.toUpperCase();
+  const uNeedle = needle.toUpperCase();
+  if (uHaystack == uNeedle) {
     return 0;
   }
-  if (uY.indexOf(uX) != -1) {
+  if (uHaystack.indexOf(uNeedle) != -1) {
     return 1;
   }
   return NO_MATCH;
