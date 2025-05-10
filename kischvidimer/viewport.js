@@ -15,8 +15,9 @@
 
 import { Hammer } from "js-libraries/hammer";
 import { svgPanZoom } from "js-libraries/svg-pan-zoom";
-import * as Util from "util";
+import * as DB from "database";
 import * as Tooltip from "tooltip";
+import * as Util from "util";
 export { Tooltip };
 
 const pageSeparation = 150; // svg coords
@@ -32,6 +33,13 @@ export function init() {
   Tooltip.init();
 
   svgPage = document.getElementById("svgPage");
+
+  // handle case with no pages
+  if (!DB.numPages()) {
+    svgPage.innerText =
+      DB.ui.uiMode < 2 ? "No pages to display." : "No changes to display.";
+    return;
+  }
 
   window.addEventListener("resize", function () {
     pz.resize();
@@ -65,6 +73,23 @@ export function init() {
     evt.target.addEventListener("touchend", onTouchEnd);
   });
 
+  svgPage.onmousemove = function (evt) {
+    Tooltip.onSvgMouseMove(evt);
+    // store the mouse event in case we need to emulate mousedown on ghost transition
+    svgPage.mouseEvent = evt;
+  };
+  svgPage.onmouseout = function () {
+    if (!Tooltip.isfixed()) {
+      Tooltip.hide(true);
+    }
+  };
+  svgPage.onmousedown = function () {
+    Tooltip.hide();
+  };
+  svgPage.oncontextmenu = function (e) {
+    e.preventDefault();
+  };
+
   initHammer();
 }
 
@@ -95,7 +120,11 @@ function initHammer() {
   });
 }
 
-export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
+export function loadPage(pageIndex) {
+  let pgdata = DB.selectPage(pageIndex);
+  if (pgdata === null) {
+    return;
+  }
   // Load up the html data into a temporary div tag
   let svgData = document.createElement("div");
   svgData.innerHTML = pgdata;
@@ -105,7 +134,7 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   svg.style.height = "100%";
   svg.id = "activesvg";
   // Make the active instance visible and delete the rest
-  selectInstance(svg, instance);
+  selectInstance(svg, DB.pageInstance());
   // Upgrade any links to use openurl
   for (let a of svg.getElementsByTagName("a")) {
     a.removeAttribute("target");
@@ -119,7 +148,7 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
   svgData.append(...svg.children);
   // Replace the current page DOM with this single svg tag
   svgPage.replaceChildren(svg);
-  originalViewBox = viewBox;
+  originalViewBox = DB.pageViewBox();
 
   // Create the svgpanzoom with the shell SVG
   pz = svgPanZoom(svg, {
@@ -139,14 +168,14 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
 
       // handle page transitions for pan-past-boundary
       if (y < panYExtents[0] - panPageHysteresis) {
-        cyclePageFunc(
+        cyclePage(
           1,
           1,
           svgPage.mouseEvent,
           panYExtents[0] - panPageHysteresis - y,
         );
       } else if (y > panYExtents[1] + panPageHysteresis) {
-        cyclePageFunc(
+        cyclePage(
           -1,
           -1,
           svgPage.mouseEvent,
@@ -176,6 +205,8 @@ export function loadPage(pgdata, instance, viewBox, cyclePageFunc) {
 
   // Now that svgpanzoom is set up, add the content back in
   svg.firstElementChild.append(...svgData.children);
+
+  createGhostPages(pageIndex);
 }
 
 export function selectInstance(container, inst) {
@@ -191,7 +222,7 @@ export function selectInstance(container, inst) {
   });
 }
 
-export function createGhostPages(DB, pageIndex) {
+export function createGhostPages(pageIndex) {
   // append ghost pages to the svg
   let ghostSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 
@@ -330,7 +361,24 @@ function onPanlessClick(elem, callback) {
   });
 }
 
-export function savePos() {
+export function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
+  let nextPageIndex = DB.curPageIndex + delta;
+  if (nextPageIndex < 0 || nextPageIndex >= DB.numPages()) {
+    return;
+  }
+  let origPos = savePos();
+  Util.navigateTo(DB.pageName(nextPageIndex));
+  if (retainPan) {
+    restorePos(origPos, retainPan, leftoverPanY);
+  }
+  // emulate a mousedown to preserve the same pan across pages
+  if (mouseEvent) {
+    mouseEvent.initEvent("mousedown", true, true);
+    document.getElementById("activesvg").dispatchEvent(mouseEvent);
+  }
+}
+
+function savePos() {
   let state = {};
   state.pan = pz.getPan();
   state.zoom = pz.getZoom();
@@ -339,7 +387,7 @@ export function savePos() {
   return state;
 }
 
-export function restorePos(state, panDir, panY) {
+function restorePos(state, panDir, panY) {
   // FIXME: this code doesn't work correctly with tall pages
   // handle pan-caused page switch by immediately panning to the equivalent x,y,zoom that they came from
   let pageScaling = originalViewBox[2] / state.viewBox[2];

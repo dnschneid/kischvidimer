@@ -44,8 +44,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // handle case with no pages
   if (!DB.numPages()) {
-    svgPage.innerText =
-      DB.ui.uiMode < 2 ? "No pages to display." : "No changes to display.";
     Util.toggleDialog(document.getElementById("loadingdialog"), false);
     return;
   }
@@ -104,7 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // Handle tooltips
+  // Display tooltips
   svgPage.onmouseover = function (e) {
     if (Viewport.Tooltip.isfixed() || e.buttons) {
       return;
@@ -118,19 +116,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       Viewport.Tooltip.hide(true);
     }
-  };
-  svgPage.onmousemove = function (evt) {
-    Viewport.Tooltip.onSvgMouseMove(evt);
-    // store the mouse event in case we need to emulate mousedown on ghost transition
-    svgPage.mouseEvent = evt;
-  };
-  svgPage.onmouseout = function () {
-    if (!Viewport.Tooltip.isfixed()) {
-      Viewport.Tooltip.hide(true);
-    }
-  };
-  svgPage.onmousedown = function () {
-    Viewport.Tooltip.hide();
   };
   svgPage.onmouseup = function (e) {
     if (e.button === 3) {
@@ -152,9 +137,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   };
-  svgPage.oncontextmenu = function (e) {
-    e.preventDefault();
-  };
 
   document.onkeydown = function (e) {
     // prevents the fake mousedown from triggering on page switch
@@ -162,9 +144,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (e.target.tagName != "INPUT" && Viewport.onkeydown(e) !== false) {
       if (e.key == "PageUp") {
-        cyclePage(-1);
+        Viewport.cyclePage(-1);
       } else if (e.key == "PageDown") {
-        cyclePage(1);
+        Viewport.cyclePage(1);
       }
     }
     if (e.key == "Enter") {
@@ -297,33 +279,12 @@ function injectPage(pageIndex) {
     svgLibrary.innerHTML = DB.getLibrarySvg();
   }
 
-  let pgdata = DB.selectPage(pageIndex);
-  if (pgdata !== null) {
-    Viewport.loadPage(pgdata, DB.pageInstance(), DB.pageViewBox(), cyclePage);
-    Viewport.createGhostPages(DB, pageIndex);
-  }
+  Viewport.loadPage(pageIndex);
 
   Diffs.pageChanged(
     svgPage,
     Settings.get("SchematicTheme", DB.ui.themeDefault),
   );
-}
-
-function cyclePage(delta, retainPan, mouseEvent, leftoverPanY) {
-  let nextPageIndex = DB.curPageIndex + delta;
-  if (nextPageIndex < 0 || nextPageIndex >= DB.numPages()) {
-    return;
-  }
-  let origPos = Viewport.savePos();
-  Util.navigateTo(DB.pageName(nextPageIndex));
-  if (retainPan) {
-    Viewport.restorePos(origPos, retainPan, leftoverPanY);
-  }
-  // emulate a mousedown to preserve the same pan across pages
-  if (mouseEvent) {
-    mouseEvent.initEvent("mousedown", true, true);
-    document.getElementById("activesvg").dispatchEvent(mouseEvent);
-  }
 }
 
 /** result comes from lookupElem() or null
