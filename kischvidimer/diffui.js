@@ -38,8 +38,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   DB.init();
   Viewport.init();
-  Search.init(DB, Diffs.hideSidebar);
-  Settings.init(DB.ui, setTheme);
+  Search.init(Diffs.hideSidebar);
+  Settings.init(setTheme);
   PageList.init(Search.setActive);
 
   // handle case with no pages
@@ -56,13 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
     Settings.get("ShowZoomControls") == "shown" ? "inline" : "none";
   Util.upgradeDom();
 
-  Diffs.init(
-    DB.ui,
-    Search.setActive,
-    Viewport.highlightElems,
-    svgPage,
-    panToElems,
-  );
+  Diffs.init(Search.setActive, Viewport.highlightElems, svgPage, panToElems);
 
   window.onpopstate();
 
@@ -291,7 +285,7 @@ function setTheme(name, target) {
       DB.ui.themes[name][v],
     );
   }
-  Diffs.applyAnimationColorWorkaround(DB.ui, name);
+  Diffs.applyAnimationColorWorkaround(name);
 }
 
 function injectPage(pageIndex) {
@@ -314,7 +308,6 @@ function injectPage(pageIndex) {
 
   Diffs.pageChanged(
     svgPage,
-    DB.ui,
     Settings.get("SchematicTheme", DB.ui.themeDefault),
   );
 }

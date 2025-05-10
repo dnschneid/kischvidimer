@@ -13,8 +13,8 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
-import * as Util from "util";
 import * as DB from "database";
+import * as Util from "util";
 
 let filteredDiffRows = new Set();
 let diffMap = {};
@@ -25,13 +25,12 @@ let svgPage = null;
 let panToElems = null;
 
 export function init(
-  uiData,
   searchSetActiveFunc,
   highlightElemsFunc,
   svgPage_,
   panToElemsFunc,
 ) {
-  mode = uiData.uiMode;
+  mode = DB.ui.uiMode;
   // FIXME: remove this jankiness
   searchSetActive = searchSetActiveFunc;
   highlightElems = highlightElemsFunc;
@@ -43,7 +42,7 @@ export function init(
     initializeCheckModel();
 
     document.getElementById("diffbutton").getElementsByTagName("img")[0].src =
-      uiData.diffIcon;
+      DB.ui.diffIcon;
     document.getElementById("diffbutton").style.display = "";
   }
 
@@ -252,7 +251,7 @@ function setAnimation(page) {
   });
 }
 
-export function applyAnimationColorWorkaround(uiData, theme) {
+export function applyAnimationColorWorkaround(theme) {
   // workaround the fact that we cannot animate css variables.
   document.querySelectorAll("animate[fromvar]").forEach((animElem) => {
     let fromVar = animElem
@@ -262,8 +261,8 @@ export function applyAnimationColorWorkaround(uiData, theme) {
       .getAttribute("tovar")
       .match(/(?<=var\(--)[a-zA-Z]+(?=\))/);
     if (fromVar && toVar) {
-      animElem.setAttribute("from", uiData.themes[theme][fromVar]);
-      animElem.setAttribute("to", uiData.themes[theme][toVar]);
+      animElem.setAttribute("from", DB.ui.themes[theme][fromVar]);
+      animElem.setAttribute("to", DB.ui.themes[theme][toVar]);
     }
   });
 }
@@ -317,12 +316,12 @@ function initializeExclusions() {
   });
 }
 
-export function pageChanged(svgPage, uiData, theme) {
+export function pageChanged(svgPage, theme) {
   // FIXME: page param shouldn't be needed
   if (mode > 1) {
     fillDiffTable();
   }
-  applyAnimationColorWorkaround(uiData, theme);
+  applyAnimationColorWorkaround(theme);
   setAnimation(svgPage);
 }
 

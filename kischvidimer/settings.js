@@ -13,12 +13,13 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as DB from "database";
 import * as Util from "util";
 
-export function init(uiData, setTheme) {
+export function init(setTheme) {
   const tprev = "lwfbgphrv"; // order of the theme colors to use to render the label
   document.querySelector(".themeselect").innerHTML = Object.entries(
-    uiData.themes,
+    DB.ui.themes,
   )
     .map(
       ([name, data]) => `
@@ -39,7 +40,7 @@ export function init(uiData, setTheme) {
     .join("");
 
   document.getElementById("settingsbutton").addEventListener("click", () => {
-    document.getElementById("uiversion").innerText = `UI: ${uiData.vers}`;
+    document.getElementById("uiversion").innerText = `UI: ${DB.ui.vers}`;
 
     // show zoom control selection
     if (get("ShowZoomControls") == "shown") {
@@ -64,7 +65,7 @@ export function init(uiData, setTheme) {
     }
 
     let toption = document.getElementById(
-      "toption-" + get("SchematicTheme", uiData.themeDefault),
+      "toption-" + get("SchematicTheme", DB.ui.themeDefault),
     );
     if (toption) {
       toption.parentNode.MaterialRadio.check();
@@ -74,7 +75,7 @@ export function init(uiData, setTheme) {
   });
 
   document.getElementById("uiversion").addEventListener("click", () => {
-    Util.copyToClipboard(uiData.vers, "kischvidimer version");
+    Util.copyToClipboard(DB.ui.vers, "kischvidimer version");
   });
 
   document.getElementById("closesettings").addEventListener("click", () => {

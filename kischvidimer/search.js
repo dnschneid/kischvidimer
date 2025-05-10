@@ -13,42 +13,37 @@
 //   limitations under the License.
 // SPDX-License-Identifier: Apache-2.0
 
+import * as DB from "database";
 import * as Util from "util";
 
 const resultsPerPage = 10;
 let results = [];
 let resultPage = 0;
 let resultsOnPage = [];
-let DB = null;
 let diffHideSidebar = null;
 
-export function init(db, diffHideSidebarFunc) {
+export function init(diffHideSidebarFunc) {
   // FIXME: reduce this jankiness
-  DB = db;
   diffHideSidebar = diffHideSidebarFunc;
-  document
-    .getElementById("resultpagenumber")
-    .addEventListener("keyup", function () {
-      let enteredPage = validateResultPageNumber();
-      if (enteredPage) {
-        resultPage = enteredPage - 1;
-        populateMatches();
-      }
-    });
+  document.getElementById("resultpagenumber").addEventListener("keyup", () => {
+    let enteredPage = validateResultPageNumber();
+    if (enteredPage) {
+      resultPage = enteredPage - 1;
+      populateMatches();
+    }
+  });
   document
     .getElementById("previousresults")
-    .addEventListener("click", function () {
-      cycleResultPage(-1);
-    });
+    .addEventListener("click", () => cycleResultPage(-1));
   document.getElementById("nextresults").addEventListener("click", function () {
     cycleResultPage(1);
   });
   document
     .getElementById("search-expandable")
-    .addEventListener("input", function () {
-      const filter = this.value;
-
+    .addEventListener("input", (e) => {
+      const filter = e.target.value;
       resultPage = 0;
+
       if (!filter) {
         populateMatches([], 0);
         return;
@@ -64,8 +59,7 @@ export function init(db, diffHideSidebarFunc) {
       populateMatches();
 
       // make unpopulated results not hoverable
-      let searchList = document.getElementsByClassName("resultentry");
-      for (let item of searchList) {
+      for (let item of document.getElementsByClassName("resultentry")) {
         if (!item.textContent || !item.textContent.trim()) {
           item.style.pointerEvents = "none";
         } else {
@@ -76,19 +70,15 @@ export function init(db, diffHideSidebarFunc) {
 
   document
     .getElementById("search-expandable")
-    .addEventListener("keydown", function (e) {
-      setActive(true, false);
-    });
+    .addEventListener("keydown", () => setActive(true, false));
 
   document
     .getElementById("search-expandable")
-    .addEventListener("focus", function () {
-      setActive(true);
-    });
+    .addEventListener("focus", () => setActive(true));
 
   document
     .getElementById("expandsearchbutton")
-    .addEventListener("click", function (e) {
+    .addEventListener("click", (e) => {
       e.preventDefault();
       setActive(!isActive());
     });
