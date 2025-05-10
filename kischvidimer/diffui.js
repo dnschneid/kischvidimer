@@ -84,15 +84,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     // Launch an associated, visible url first
-    // FIXME: can this be implemented using closest?
-    for (let targp = target; targp; targp = targp.parentElement) {
-      if (targp.hasAttribute("p")) {
-        let a = svgPage.querySelector(`[p="${targp.getAttribute("p")}"] a`);
-        if (a) {
-          a.onclick();
-          return;
-        }
-        break;
+    let targp = target.closest("[p]");
+    if (targp) {
+      let a = svgPage.querySelector(`[p="${targp.getAttribute("p")}"] a`);
+      if (a) {
+        a.onclick();
+        return;
       }
     }
     // Launch any prop url
