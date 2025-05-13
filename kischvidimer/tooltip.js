@@ -17,11 +17,16 @@ import * as Util from "util";
 
 let fixed = false;
 let tt = null;
-let curResult = null;
 let curUrl = null;
+export let curResult = null;
+export let curPageElems = null; // list of groups of elements for curResult
 
 export function init() {
   tt = document.getElementById("tooltip");
+
+  document.getElementById("tooltiplink").addEventListener("click", () => {
+    Util.copyToClipboard(curUrl, "link");
+  });
 }
 
 export function isfixed() {
@@ -57,11 +62,10 @@ export function show(fix) {
   fixed = fix;
 }
 
-export function url() {
-  return curUrl;
-}
-
 export function setResult(DB, result, context) {
+  if (result !== curResult) {
+    curPageElems = null;
+  }
   curResult = result;
   curUrl = `${window.location.href.split("#")[0]}#${DB.pageName()},${result.value}`;
   document.getElementById("tooltiptype").textContent =

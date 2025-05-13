@@ -175,10 +175,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  document.getElementById("tooltiplink").addEventListener("click", () => {
-    Util.copyToClipboard(Viewport.Tooltip.url(), "link");
-  });
-
   // Toolbar
   if (DB.ui.fbUrl && /https?:[/][/]/.test(DB.ui.fbUrl)) {
     document.getElementById("feedbackbutton").parentNode.style.display =
@@ -207,6 +203,14 @@ document.addEventListener("DOMContentLoaded", () => {
     e.target.disabled = true;
     e.target.innerText = "Cross-probe started";
     crossProbe();
+  });
+
+  // Tooltip instance cycling
+  document.getElementById("nextinstance").addEventListener("click", () => {
+    cycleInstance(true);
+  });
+  document.getElementById("previnstance").addEventListener("click", () => {
+    cycleInstance(false);
   });
 
   document.getElementById("schematic-title").textContent = DB.ui.schTitle;
@@ -318,14 +322,6 @@ function displayTooltip(result, fix) {
   } else if (result.type === "component") {
     context = DB.compProp(result.data, DB.KEY_LIB_ID) || "Part symbol";
   }
-
-  // cycle instance with closest
-  document.getElementById("nextinstance").onclick = function () {
-    cycleInstance(result, true);
-  };
-  document.getElementById("previnstance").onclick = function () {
-    cycleInstance(result, false);
-  };
 
   Viewport.Tooltip.setResult(DB, result, context);
   Viewport.Tooltip.show(fix);
@@ -571,109 +567,82 @@ function genpdf() {
   win.document.close();
 }
 
-// Find the next instance of elem and go to it
-// bool direction; True if cycling forwards, false if backwards.
-// FIXME: rewrite this to store the results from mouseover and index through it
-function cycleInstance(result, direction) {
-  if (!["net", "component"].includes(result.type)) {
-    return;
-  }
-
-  function getMatches(elem) {
-    // Return list of all duplicate instances of elem on current page
-    // FIXME: busentries are part of both a net and a bus, so rather than
-    // tracking by .name (which only has one), this needs to build up the
-    // list like in the history handler. Naturally that makes it difficult
-    // to say "find stuff like this element", so cycling may need to be
-    // restructured somehow
-    return Array.from(
+function cycleInstance(forward) {
+  function findElems(result) {
+    // Return list of all element groups on the current page that match "result"
+    let groups = {};
+    Array.from(
       svgPage.querySelectorAll(
-        ELEM_TYPE_SELECTORS.find((x) => x[0] === elem.type)[1].join(", "),
+        ELEM_TYPE_SELECTORS.find((x) => x[0] === result.type)[1].join(", "),
       ),
-    ).filter((e) => {
-      return lookupElem(e).value == elem.value;
+    ).forEach((e) => {
+      let elemResult = lookupElem(e);
+      if (elemResult.value === result.value) {
+        let groupName = e.getAttribute("p");
+        (groups[groupName] || (groups[groupName] = [])).push(e);
+      }
     });
+    return Object.values(groups);
   }
 
-  const pageList = result.pages;
-  let matches = getMatches(result);
-  let current_target_index = matches.indexOf(result.target);
-  if (current_target_index === -1) {
-    // Our match list doesn't work at this level of detail, so go higher.
-    result.target = result.container;
-    current_target_index = matches.indexOf(result.container);
+  const curResult = Viewport.Tooltip.curResult;
+  let curPageElems = Viewport.Tooltip.curPageElems;
+  if (Viewport.Tooltip.curPageElems === null) {
+    curPageElems = Viewport.Tooltip.curPageElems = findElems(curResult);
   }
-  let target = result.target;
-  // FIXME: eventually want to cycle between instances within a page
-  let is_group = true;
-  if (direction) {
-    //forward click
-    if (current_target_index != matches.length - 1) {
-      //there is a next instance on this page
-      target = matches[current_target_index + 1];
-    } else if (pageList.length == 1) {
-      // Only one page with this target and no next instance so cycle
-      // back to first instance on page.
-      target = matches[0];
+  const cur_page_elem_index = curPageElems.findIndex(
+    (x) => x.includes(curResult.target) || x.includes(curResult.container),
+  );
+  let targets = null;
+  if (forward) {
+    if (cur_page_elem_index !== curPageElems.length - 1) {
+      // there is a next instance on this page
+      targets = curPageElems[cur_page_elem_index + 1];
+    } else if (curResult.pages.length === 1) {
+      // Only one page and no next instance so cycle to first instance on page
+      targets = curPageElems[0];
     }
   } else {
-    // Backwards click
-    if (current_target_index == -1) {
-      target = result.target;
-    } else if (current_target_index != 0) {
+    if (cur_page_elem_index > 0) {
       // there is a previous instance on this page
-      target = matches[current_target_index - 1];
-    } else if (pageList.length == 1) {
-      // Only one page with this target and no prev instance so cycle
-      // back to last instance on page.
-      target = matches[matches.length - 1];
+      targets = curPageElems[cur_page_elem_index - 1];
+    } else if (curResult.pages.length === 1) {
+      // Only one page and no prev instance, so cycle to last instance
+      targets = curPageElems[curPageElems.length - 1];
     }
   }
 
-  if ((is_group || target.isSameNode(result.target)) && pageList.length > 1) {
-    // Need to navigate to a different page
-    let cycleIndex = 0;
-    for (let i = 0; i < pageList.length; ++i) {
-      if (pageList[i] == DB.curPageIndex) {
-        cycleIndex = i;
+  if (targets === null) {
+    if (curResult.pages.length <= 1) {
+      // Can't do much when there's no target and no other pages
+      return;
+    }
+    // Need to navigate to a different page (pages may be listed multiple times)
+    let resultPageIndex = curResult.pages.lastIndexOf(DB.curPageIndex);
+    if (forward) {
+      resultPageIndex = (resultPageIndex + 1) % curResult.pages.length;
+    } else {
+      resultPageIndex -= 1;
+      if (resultPageIndex < 0) {
+        resultPageIndex = curResult.pages.length - 1;
       }
     }
-    if (direction) {
-      cycleIndex += 1;
-      cycleIndex = cycleIndex % pageList.length;
+    injectPage(curResult.pages[resultPageIndex]);
+    curPageElems = Viewport.Tooltip.curPageElems = findElems(curResult);
+    // Going forwards to next page should select first instance on page
+    // Going backwards to prev page should select last instance on page
+    if (forward) {
+      targets = curPageElems[0];
     } else {
-      cycleIndex -= 1;
-      if (cycleIndex == -1) {
-        cycleIndex = pageList.length - 1;
-      }
-    }
-    let pageIndex = pageList[cycleIndex];
-    injectPage(pageIndex);
-    // FIXME: is this comparing objects across pages?
-    matches = getMatches(result);
-    // Going forward to next page should select first instance on page, similarly going backwards
-    // to prev page should select last instance.
-    if (direction) {
-      target = matches[0];
-    } else {
-      target = matches[matches.length - 1];
+      targets = curPageElems[curPageElems.length - 1];
     }
   }
 
-  if (target.tagName === "text") {
-    // Net targets do not have ids that can be referenced add one temporarily to follow link
-    target.id = result.value;
-  }
-  let target_href = DB.pageName() + "," + target.id;
+  Viewport.highlightElems(targets);
+  panToElems(targets);
+  Util.navigateTo(DB.pageName() + "," + curResult.value, true);
 
-  Viewport.highlightElems(is_group ? matches : [target]);
-  panToElems(is_group ? matches : [target]);
-  Util.navigateTo(target_href, true);
-  if (target.tagName === "text") {
-    // Remove temporary id
-    target.removeAttribute("id");
-  }
-  result.container = target;
-  result.target = target;
-  displayTooltip(result, true);
+  curResult.container = targets[0];
+  curResult.target = targets[0];
+  displayTooltip(curResult, true);
 }
