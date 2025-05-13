@@ -480,14 +480,12 @@ export function panToElems(elems, padding, widthOffset) {
   panToCenter(getCenter(bounds));
 
   // zoom to a level that at least captures the bounds (0.8 sets 10% padding for zoom)
-  pz.zoom(
+  pz.zoomBy(
     Math.min(
-      5,
-      ...[
-        (padding * (pz.getSizes().width + widthOffset)) /
-          (bounds.right - bounds.left),
-        (padding * pz.getSizes().height) / (bounds.bottom - bounds.top),
-      ],
+      5 / pz.getZoom(), // limit the maximum zoom-in
+      (padding * (pz.getSizes().width + widthOffset)) /
+        (bounds.right - bounds.left),
+      (padding * pz.getSizes().height) / (bounds.bottom - bounds.top),
     ),
   );
 
