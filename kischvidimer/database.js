@@ -205,6 +205,9 @@ export function compProp(compInst, key, def) {
     (k) => k.toLowerCase() === key.toLowerCase(),
   );
   if (key) {
+    if (key === KEY_PAGE) {
+      return parseInt(compInst[key]);
+    }
     return compInst[key];
   }
   return def;
@@ -244,6 +247,7 @@ export function searchNets(query) {
       result.pages = [];
       for (let pg in index.nets.map) {
         if (id in index.nets.map[pg]) {
+          pg = parseInt(pg);
           if (pg < 0) {
             // TODO: handle bus
           } else {
@@ -315,6 +319,7 @@ export function lookupNet(nameOrID, pageIndex) {
     // Find all the pages the net belongs to. TODO: build a lookup table?
     for (let pg in index.nets.map) {
       if (elemid in index.nets.map[pg]) {
+        pg = parseInt(pg);
         result.distance = 0;
         if (pg < 0) {
           // TODO: handle bus
