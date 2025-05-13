@@ -24,7 +24,7 @@ let index = null;
 result = {
   distance: NO_MATCH | int, where 0 is an exact match.
             in the case of NO_MATCH, the rest of the fields may be undefined
-  type: "component" | "pin" | "net" | "text"
+  type: "component" | "pin" | "net" | "bus" | "text"
   pages: list of pages that contain the result
   id: a reusable identifier for quick database access, depends on type
   prop: the name of the property that matched
@@ -236,34 +236,48 @@ export function refdesByPath(path, pageIndex) {
 /// NET FUNCTIONS
 function initNets() {}
 
+function netType(netID) {
+  return netID in index.nets.bus ? "bus" : "net";
+}
+
+function fillNetResult(result) {
+  result.type = netType(result.id);
+  result.pages = [];
+  // Find all the pages the net belongs to. TODO: build a lookup table?
+  for (let pg in index.nets.map) {
+    if (result.id in index.nets.map[pg]) {
+      pg = parseInt(pg);
+      result.pages.push(pg);
+      // If distance wasn't set by matchData, report an exact match
+      if (result.distance == NO_MATCH) {
+        result.distance = 0;
+      }
+    }
+  }
+  result.pages.sort();
+  if (result.type !== "bus") {
+    return;
+  }
+  // TODO: output members
+}
+
 export function searchNets(query) {
   let results = [];
   for (const [id, name] of Object.entries(index.nets.names)) {
-    let result = matchData(query, name, "net");
+    let result = matchData(query, name, "name");
     if (result) {
-      result.type = "net";
       result.id = id;
       result.display = name;
-      result.pages = [];
-      for (let pg in index.nets.map) {
-        if (id in index.nets.map[pg]) {
-          pg = parseInt(pg);
-          if (pg < 0) {
-            // TODO: handle bus
-          } else {
-            result.pages.push(pg);
-          }
-        }
-      }
-      result.pages.sort();
+      fillNetResult(result);
       results.push(result);
     }
   }
   return results;
 }
 
-export function lookupNet(nameOrID, pageIndex) {
+export function lookupNet(nameOrID, pageIndex, preferType) {
   // Returns a result of the net.
+  // preferType, if set, pick a certain result when an elem has multiple matches
   let result = {
     type: "net",
     distance: NO_MATCH,
@@ -286,7 +300,10 @@ export function lookupNet(nameOrID, pageIndex) {
     for (const [netid, nodes] of Object.entries(index.nets.map[pageIndex])) {
       if (nodes.indexOf(nameOrID) !== -1) {
         elemid = netid;
-        break;
+        // if we don't have a preference, or we found our preference, stop
+        if (!preferType || preferType === netType(netid)) {
+          break;
+        }
       }
     }
   }
@@ -310,24 +327,13 @@ export function lookupNet(nameOrID, pageIndex) {
     }
   }
   if (elemid) {
-    result.prop = "net";
     result.id = elemid;
     result.value = index.nets.names[elemid];
     result.display = result.value;
     result.data = {};
+    fillNetResult(result);
+    result.prop = result.type;
     result.data[result.prop] = result.value;
-    // Find all the pages the net belongs to. TODO: build a lookup table?
-    for (let pg in index.nets.map) {
-      if (elemid in index.nets.map[pg]) {
-        pg = parseInt(pg);
-        result.distance = 0;
-        if (pg < 0) {
-          // TODO: handle bus
-        } else {
-          result.pages.push(pg);
-        }
-      }
-    }
   }
   result.pages.sort();
   return result;

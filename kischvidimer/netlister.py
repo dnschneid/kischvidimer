@@ -665,16 +665,15 @@ class Netlister:
     #         ... ],
     #       ...
     #     },
-    #     None: [
-    #       netbus_id: [
-    #         containing_bus_id,
-    #       ]
-    #     ],
+    #   },
+    #   "bus": {
+    #     parent_bus_id: [child_netbus_id, ... ],
     #   }
     # }
     assert not self._unresolved_buses
     netmap = {}
     names = {}
+    busmap = {}
     for netbus in self._by_instcoord.values():
       netbus_id = svg.getuid(netbus)
       if not netbus.unmerged or netbus_id in names:
@@ -684,12 +683,16 @@ class Netlister:
         continue
       names[netbus_id] = netbus.name()
       for instance, node_id in netbus.nodes(svg):
-        netmap.setdefault(instance, {}).setdefault(netbus_id, []).append(
-          node_id
-        )
+        if instance is None:
+          busmap.setdefault(node_id, []).append(netbus_id)
+        else:
+          netmap.setdefault(instance, {}).setdefault(netbus_id, []).append(
+            node_id
+          )
     return {
       "names": names,
       "map": netmap,
+      "bus": busmap,
     }
 
   def generate_netlist(self, fmt):

@@ -229,8 +229,6 @@ class DiffUI:
     nm_uid_gen.uidtable = self._uidtable
     self.schematic_index["nets"] = self._netlister.generate_netmap(nm_uid_gen)
     netmap = self.schematic_index["nets"]["map"]
-    if None in netmap:  # bus memberships
-      netmap[-1] = netmap.pop(None)
 
     for i, (ui_page, page) in enumerate(
       zip(toc_page_map, self.schematic_index["pages"])

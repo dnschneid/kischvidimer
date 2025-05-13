@@ -29,6 +29,7 @@ let xprobe = null;
 // Ordering creates precedence when matching to mouse actions
 let ELEM_TYPE_SELECTORS = [
   ["net", ["[t]"]],
+  ["bus", ["[t]"]],
   ["component", ["[p]", "symbol"]],
   ["ghost", [".ghost"]],
 ];
@@ -110,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let result = lookupElem(e.target);
     if (
       (result.type === "net" && result.value !== "GND") ||
+      result.type === "bus" ||
       (result.type === "component" && result.data)
     ) {
       displayTooltip(result, false);
@@ -126,8 +128,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (Viewport.Tooltip.isvisible()) {
         Viewport.Tooltip.show(true);
         let result = lookupElem(e.target);
-        if (result.type === "net" && result.value !== "GND") {
+        if (result.type === "net") {
           crossProbe("NET", result.value);
+        } else if (result.type === "bus") {
+          // TODO: crossProbe buses by selecting all nets?
         } else if (result.type === "component" && result.data) {
           crossProbe("SELECT", result.value);
         }
@@ -316,9 +320,9 @@ function displayTooltip(result, fix) {
         context += " || " + result.target.children[2].textContent;
       }
     }
-  } else if (result.type === "net") {
+  } else if (result.type === "net" || result.type === "bus") {
     // FIXME: show local net name somehow
-    context = `Net: ${result.value}`;
+    context = `${result.prop}: ${result.value}`;
   } else if (result.type === "component") {
     context = DB.compProp(result.data, DB.KEY_LIB_ID) || "Part symbol";
   }
@@ -330,8 +334,9 @@ function displayTooltip(result, fix) {
 /* Takes in a random target/elem and returns the container element that
  * represents the object, which might be the same thing, along with database
  * information about it.
+ * preferType, if set, pick a certain result when an elem has multiple matches
  */
-function lookupElem(elem) {
+function lookupElem(elem, preferType) {
   if (!elem) {
     return null;
   }
@@ -361,9 +366,9 @@ function lookupElem(elem) {
         if (typ === "component") {
           const path = container.getAttribute("p");
           result = DB.lookupComp(path);
-        } else if (typ === "net") {
+        } else if (typ === "net" || typ === "bus") {
           const tid = container.getAttribute("t");
-          result = DB.lookupNet(tid);
+          result = DB.lookupNet(tid, undefined, preferType);
         } else if (typ === "ghost") {
           result.value = "GHOST";
         }
@@ -473,7 +478,7 @@ window.onpopstate = function (evt) {
     // filter net names. We want to search component props and notes...
     // exclude text matches from ghost pages
     for (let prop of Array.from(svgPage.getElementsByTagName("text")).filter(
-      (p) => !["net", "ghost"].includes(lookupElem(p).type),
+      (p) => !["net", "bus", "ghost"].includes(lookupElem(p).type),
     )) {
       let result = DB.matchData(target, prop.textContent, "text");
       if (result) {
@@ -568,6 +573,9 @@ function genpdf() {
 }
 
 function cycleInstance(forward) {
+  const curResult = Viewport.Tooltip.curResult;
+  let curPageElems = Viewport.Tooltip.curPageElems;
+
   function findElems(result) {
     // Return list of all element groups on the current page that match "result"
     let groups = {};
@@ -576,7 +584,7 @@ function cycleInstance(forward) {
         ELEM_TYPE_SELECTORS.find((x) => x[0] === result.type)[1].join(", "),
       ),
     ).forEach((e) => {
-      let elemResult = lookupElem(e);
+      let elemResult = lookupElem(e, curResult && curResult.type);
       if (elemResult.value === result.value) {
         let groupName = e.getAttribute("p");
         (groups[groupName] || (groups[groupName] = [])).push(e);
@@ -585,8 +593,6 @@ function cycleInstance(forward) {
     return Object.values(groups);
   }
 
-  const curResult = Viewport.Tooltip.curResult;
-  let curPageElems = Viewport.Tooltip.curPageElems;
   if (Viewport.Tooltip.curPageElems === null) {
     curPageElems = Viewport.Tooltip.curPageElems = findElems(curResult);
   }
