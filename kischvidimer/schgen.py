@@ -18,7 +18,7 @@ import re
 import sys
 import time
 
-from . import git, kicad_pro, kicad_sch
+from . import git, kicad_pro, kicad_sch, kicad_wks
 from .diff import threeway
 from .diffui import DiffUI
 from .netlister import Netlister
@@ -86,6 +86,7 @@ class Schematic:
     """Creates an empty project with no files."""
     self.diff = False
     self._license = None
+    self._worksheet = None
     self._proj = proj
     self._revs = []
 
@@ -154,7 +155,7 @@ class Schematic:
       title=title,
       ver=ver,
       proj=projs[0],
-      worksheet=worksheets[0],
+      worksheet=self._worksheet or worksheets[0],
       variables=variables,
       netlister=netlister,
       license_text=self._license,
@@ -228,6 +229,9 @@ revisions. Trailing ..'s in GIT_REV will compare to the working tree.
       s_re = re.compile(f.partition("=")[2] if "=" in f else next(args))
       kicad_pro.kicad_pro.data_filter_func = lambda d, r=s_re: r.sub("", d)
       kicad_sch.kicad_sch.data_filter_func = lambda d, r=s_re: r.sub("", d)
+    elif f in ("--worksheet", "-w"):
+      worksheet_file = f.partition("=")[2] if "=" in f else next(args)
+      sch._worksheet = kicad_wks.kicad_wks(open(worksheet_file))
     elif f == "--conflicts-ok":
       # FIXME: conflict marker handling
       conflicts_ok = (kicad_sch.kicad_sch.FileError,)
