@@ -560,7 +560,7 @@ function genpdf() {
   setTheme(DB.ui.themeBW, win.document.body);
 
   win.document.write(DB.getLibrarySvg());
-  win.document.querySelectorAll("svg")[0].style.display = "none";
+  win.document.querySelector("svg").style.display = "none";
 
   DB.forEachPageByNum((_, pageIndex) => {
     win.document.write(DB.getPageSvg(pageIndex));
