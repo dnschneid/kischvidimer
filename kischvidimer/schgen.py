@@ -13,6 +13,7 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
+import argparse
 import os
 import re
 import sys
@@ -201,68 +202,112 @@ class Schematic:
 
 
 def main(argv):
-  if len(argv) == 1:
-    sys.stderr.write(
-      argv[0]
-      + """[-o HTML|DIR|-] [--diff] [GIT_REV [GIT_REV]] project.kicad_pro
-Generates and displays a schematic.
-If GIT_REV is provided, generates a schematic diff between two or three
-revisions. Trailing ..'s in GIT_REV will compare to the working tree.
-  --diff  Hides any pages that do not have differences.
-"""
+  parser = argparse.ArgumentParser(
+    prog="kischvidimer schgen",
+    description="""Generates and displays a schematic""",
+  )
+  parser.add_argument(
+    "-q",
+    "--quiet",
+    action="count",
+    default=0,
+    help="make the console output quieter",
+  )
+  parser.add_argument(
+    "-v",
+    "--verbose",
+    action="count",
+    default=0,
+    help="make the console output more verbose",
+  )
+  parser.add_argument(
+    "-o",
+    "--output",
+    metavar="HTML|DIR",
+    help="write to a file/directory instead of displaying the UI",
+  )
+  parser.add_argument(
+    "-l",
+    "--license",
+    help="add LICENSE file to UI, overriding the licenseFile project variable",
+  )
+  parser.add_argument(
+    "-s",
+    "--scrub",
+    metavar="REGEX",
+    action="append",
+    help="remove any matching schematic data prior to processing the file",
+  )
+  parser.add_argument(
+    "-w",
+    "--worksheet",
+    help="override the page border specified in the project",
+  )
+  # parser.add_argument(
+  #  "-d", "--diff", action="store_true", help="only render pages with changes"
+  # )
+  # parser.add_argument(
+  #  "-c", "--conflicts-ok", action="store_true", help="ignore conflict markers"
+  # )
+  parser.add_argument(
+    "git_rev",
+    nargs="?",  # nargs="*",
+    help="git revision to render",
+    # ", rev range for a diff, or 3 revisions for a merge"
+  )
+  parser.add_argument(
+    "project",
+    help=".kicad_pro to render",
+  )
+  args = parser.parse_args(argv[1:])
+  verbosity = args.verbose - args.quiet
+
+  sch = Schematic(proj=args.project)
+
+  # Overrides
+  if args.license is not None:
+    sch._license = open(args.license).read() if args.license else ""
+  if args.scrub is not None:
+    s_re = re.compile("|".join(args.scrub))
+    kicad_pro.kicad_pro.data_filter_func = lambda d: s_re.sub("", d)
+    kicad_sch.kicad_sch.data_filter_func = lambda d: s_re.sub("", d)
+  if args.worksheet is not None:
+    sch._worksheet = kicad_wks.kicad_wks(
+      open(args.worksheet) if args.worksheet else None
     )
-    return 2
-  sch = Schematic(proj=None)
-  output = None
+
+  # Diff flags
+  # sch.diff = args.diff
+  # FIXME: conflict marker handling
+  # if args.conflicts_ok:
+  #  conflicts_ok = (kicad_sch.kicad_sch.FileError,)
+  # else:
   conflicts_ok = ()
-  verbosity = 0
-  args = iter(argv[1:])
-  for f in args:
-    if f in ("--diff", "-d"):
-      sch.diff = True
-    elif f in ("--output", "-o"):
-      output = f.partition("=")[2] if "=" in f else next(args)
-    elif f in ("--license", "-l"):
-      license_file = f.partition("=")[2] if "=" in f else next(args)
-      sch._license = open(license_file).read()
-    elif f in ("--scrub", "-s"):
-      s_re = re.compile(f.partition("=")[2] if "=" in f else next(args))
-      kicad_pro.kicad_pro.data_filter_func = lambda d, r=s_re: r.sub("", d)
-      kicad_sch.kicad_sch.data_filter_func = lambda d, r=s_re: r.sub("", d)
-    elif f in ("--worksheet", "-w"):
-      worksheet_file = f.partition("=")[2] if "=" in f else next(args)
-      sch._worksheet = kicad_wks.kicad_wks(open(worksheet_file))
-    elif f == "--conflicts-ok":
-      # FIXME: conflict marker handling
-      conflicts_ok = (kicad_sch.kicad_sch.FileError,)
-    elif f in ("--quiet", "--verbose", "-q", "-v"):
-      verbosity += 1 if "v" in f else -1
-    elif f.endswith(".kicad_pro"):
-      if sch._proj:
-        print("Ignoring extra proj " + f, file=sys.stderr)
-      else:
-        sch._proj = f
+
+  # Git revisions
+  # TODO: handle lists of revs for diffs
+  for rev in [args.git_rev] if args.git_rev else []:
+    revlist = git.rev_parse(rev, repo=os.path.dirname(args.project))
+    if revlist:
+      revlist.reverse()
+      if rev.endswith(".."):
+        revlist[1] = ""
+      for rev in revlist:
+        sch.add_rev(rev)
     else:
-      revlist = git.rev_parse(f)
-      if revlist:
-        revlist.reverse()
-        if f.endswith(".."):
-          revlist[1] = ""
-        for rev in revlist:
-          sch.add_rev(rev)
-      else:
-        print(f"Skipping '{f}'", file=sys.stderr)
-  if sch._proj is None:
-    raise GenSchError("Input .kicad_pro file is required")
+      print(f"Skipping '{rev}'", file=sys.stderr)
+
+  # Execute
   try:
-    if output is None:
+    if args.output is None:
       sch.launch_ui(v=verbosity)
     else:
-      sch.write(output, v=verbosity)
+      sch.write(args.output, v=verbosity)
   except conflicts_ok as e:
     if not e.is_conflict:
       raise
     print(e, file=sys.stderr)
+
   return 0
 
 
