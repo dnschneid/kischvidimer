@@ -91,13 +91,15 @@ class KicadPro(Comparable):
       p.set_text(f"Processing {self.project}").incr_max(1).write().incr()
 
   def get_license(self):
-    """Returns the contents of the license file referenced by the licenseFile
+    """Returns the contents of the license file referenced by the LICENSE_FILE
     project variable."""
-    if "licenseFile" not in self.variables:
+    for v in self.variables:
+      if v.lower() == "license_file":
+        license_file = self.variables[v]
+        break
+    else:
       return ""
-    licpath = os.path.join(
-      os.path.dirname(self._fname or ""), self.variables["licenseFile"]
-    )
+    licpath = os.path.join(os.path.dirname(self._fname or ""), license_file)
     if not os.path.isfile(licpath):
       print(f"Unable to load license from {licpath}", file=sys.stderr)
       return ""
