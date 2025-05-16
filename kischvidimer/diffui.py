@@ -618,7 +618,7 @@ class DiffUI:
         else ""
       ),
       "fbUrl": (
-        self._variables.resolve(self._variables.GLOBAL, "feedbackURL") or ""
+        self._variables.resolve(self._variables.GLOBAL, "feedback_url") or ""
         if self._variables
         else ""
       ),
