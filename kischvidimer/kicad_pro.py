@@ -105,6 +105,15 @@ class KicadPro(Comparable):
       return ""
     return open(licpath).read()
 
+  def get_license_header(self):
+    for v in self.variables:
+      if v.lower() == "license_header":
+        return self.variables[v]
+    return (
+      "Proprietary to its author and all rights are reserved to that "
+      "author unless expressly stated otherwise in the rendered schematic"
+    )
+
   def get_pages(self, projfile, rev, p):
     """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).
     Instances in turn are a tuple of (path ref, sheet ref)

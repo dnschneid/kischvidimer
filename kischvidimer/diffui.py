@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import zlib
@@ -146,6 +147,7 @@ class DiffUI:
     variables=None,
     netlister=None,
     license_text=None,
+    license_header=None,
     mode=MODE_MERGE,
     verbosity=0,
   ):
@@ -153,6 +155,7 @@ class DiffUI:
     self.title = title
     self.ver = ver or ""
     self._license = license_text
+    self._license_header = license_header
     self._proj = proj
     self._variables = variables
     self._netlister = netlister or Netlister.n([])
@@ -578,12 +581,24 @@ class DiffUI:
     if self.ver:
       window_title += f" - {self.ver}"
 
+    license_header = (
+      self._license_header or self._proj and self._proj.get_license_header()
+    )
+    license_header = license_header[0].lower() + license_header[1:]
+    if license_header[-1] != ".":
+      license_header += "."
+
     html = ["<!DOCTYPE html>"]
-    html.append("""<!--
+    top_license_header = "\n".join(
+      textwrap.wrap(
+        "The embeded schematic is " + license_header,
+        width=80,
+        subsequent_indent="    ",
+      )
+    )
+    html.append(f"""<!--
     Various licenses apply to portions of this file as indicated below.
-    The embedded schematic may be proprietary to its author and all rights are
-    reserved to that author unless expressly stated otherwise in the rendered
-    schematic.\n-->""")
+    {top_license_header}\n-->""")
 
     html.append('<html lang="en"><head>')
     html.append(
@@ -642,10 +657,15 @@ class DiffUI:
     html.append("</style>")
     # Data
     html.append("<script>")
-    html.append("""/*
-    The following encoded schematic may be proprietary to its author and all
-    rights are reserved to that author unless expressly stated otherwise in the
-    rendered schematic.\n*/""")
+    lower_license_header = "\n".join(
+      textwrap.wrap(
+        "The following encoded schematic is " + license_header,
+        width=80,
+        initial_indent="    ",
+        subsequent_indent="    ",
+      )
+    )
+    html.append(f"/*\n{lower_license_header}\n*/")
     zindex = self._compress(json.dumps(self.schematic_index, sort_keys=True))
     html.append(f"const indexData = '{zindex}';")
     if self._pages:

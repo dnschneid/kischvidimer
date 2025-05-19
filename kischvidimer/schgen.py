@@ -87,6 +87,7 @@ class Schematic:
     """Creates an empty project with no files."""
     self.diff = False
     self._license = None
+    self._license_header = None
     self._worksheet = None
     self._proj = proj
     self._revs = []
@@ -160,6 +161,7 @@ class Schematic:
       variables=variables,
       netlister=netlister,
       license_text=self._license,
+      license_header=self._license_header,
       mode=len(self._revs),
     )
     for page in pages:
@@ -229,7 +231,12 @@ def main(argv):
   parser.add_argument(
     "-l",
     "--license",
-    help="add LICENSE file to UI, overriding the licenseFile project variable",
+    "--license-file",
+    help="add LICENSE file to UI, overriding the LICENSE_FILE project variable",
+  )
+  parser.add_argument(
+    "--license-header",
+    help="add custom license header text to the file; overrides LICENSE_HEADER",
   )
   parser.add_argument(
     "-s",
@@ -267,6 +274,8 @@ def main(argv):
   # Overrides
   if args.license is not None:
     sch._license = open(args.license).read() if args.license else ""
+  if args.license_header:
+    sch._license_header = args.license_header
   if args.scrub is not None:
     s_re = re.compile("|".join(args.scrub))
     kicad_pro.kicad_pro.data_filter_func = lambda d: s_re.sub("", d)
