@@ -20,8 +20,9 @@
       - ".cache/**/*"
   before_script:
     - pip install virtualenv
-    - virtualenv .cache/venv
-    - source .cache/venv/bin/activate
+    - virtualenv .cache/kischvidimer-venv
+    - source .cache/kischvidimer-venv/bin/activate
+    - pip install -U fonttools
     - pip install -U git+https://gitlab.com/dnschneid/kischvidimer.git
 
 schgen:
