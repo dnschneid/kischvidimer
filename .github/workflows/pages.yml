@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cache Demos
+        id: cache-demos
+        uses: actions/cache@v4
+        with:
+          path: demos
+          key: kicad8-demos
+      - name: Download demos
+        if: steps.cache-demos.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p demos
+          test -d demos/kicad-8.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/8.0/kicad-8.0.tar.gz?path=demos' | tar -xzC demos
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Install dependencies
+        run: pip install fonttools
+      - name: Generate HTML files
+        run: |
+          mkdir -p public
+          find demos -name '*.kicad_pro' -not -regex '.*/simulation/.*' | while read -r pro; do
+            if test -f "${pro%pro}sch"; then
+              echo "$pro";
+              python3 -m kischvidimer schgen "$pro" -o "public/$(basename "$pro" .kicad_pro).html";
+            fi;
+          done
+          echo '<html><head><title>kischvidimer demos</title></head><body><h1>kischvidimer demos</h1><ul>' > "public/index.html"
+          find public -name "*.html" -not -name "index.html" | while read -r html; do
+            html="$(basename "$html")";
+            url="$(echo "$html" | sed 's/ /%20/g')";
+            echo "<li><a href=$url>$html</a></li>";
+          done >> "public/index.html"
+          echo "</ul></body></html>" >> "public/index.html"
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
