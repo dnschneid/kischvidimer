@@ -585,16 +585,19 @@ class DiffUI:
       self._license_header or self._proj and self._proj.get_license_header()
     )
     license_header = license_header[0].lower() + license_header[1:]
-    if license_header[-1] != ".":
+    if "\n" not in license_header and license_header[-1] != ".":
       license_header += "."
+    license_header = license_header.split("\n")
 
     html = ["<!DOCTYPE html>"]
     top_license_header = "\n".join(
-      textwrap.wrap(
-        "The embeded schematic is " + license_header,
+      textwrap.fill(
+        "The embedded schematic is " * (not i) + line,
         width=80,
+        initial_indent="    " * (i > 0),
         subsequent_indent="    ",
       )
+      for i, line in enumerate(license_header)
     )
     html.append(f"""<!--
     Various licenses apply to portions of this file as indicated below.
@@ -658,12 +661,13 @@ class DiffUI:
     # Data
     html.append("<script>")
     lower_license_header = "\n".join(
-      textwrap.wrap(
-        "The following encoded schematic is " + license_header,
+      textwrap.fill(
+        "The following encoded schematic is " * (not i) + line,
         width=80,
         initial_indent="    ",
         subsequent_indent="    ",
       )
+      for i, line in enumerate(license_header)
     )
     html.append(f"/*\n{lower_license_header}\n*/")
     zindex = self._compress(json.dumps(self.schematic_index, sort_keys=True))
