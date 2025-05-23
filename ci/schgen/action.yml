@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: (C) 2025 Rivos Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+name: kischvidimer schgen
+description: Generates an HTML schematic
+inputs:
+  kicad_pro:
+    description: ".kicad_pro to convert"
+    required: true
+  output:
+    description: "directory or file to output to"
+    default: "output.html"
+  args:
+    description: "additional arguments"
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pip install -U fonttools
+        pip install -U git+https://github.com/dnschneid/kischvidimer.git
+    - name: Generate HTML
+      shell: bash
+      run: |
+        python3 -m kischvidimer schgen \
+          ${{ inputs.args }} \
+          -o "${{ inputs.output }}" \
+          "${{ inputs.kicad_pro }}"
