@@ -224,6 +224,10 @@ SPDX-License-Identifier: Apache-2.0
     margin-left: 0 !important;
   }
 
+  #schematic-title {
+    padding-left: 36px;
+  }
+
   #schematic-version {
     width: 0 !important;
   }
