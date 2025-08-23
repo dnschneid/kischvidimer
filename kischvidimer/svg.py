@@ -558,7 +558,8 @@ class Svg:
     c = (z2 - z1) * (w - abs(w) ** 2) / (2j * w.imag) + z1
     r = abs(z1 - c)
     la = (z3 - z1).real * (c - z1).imag - (z3 - z1).imag * (c - z1).real < 0
-    return (c.real, c.imag), r, la
+    swap = (z1 - c).real * (z2 - c).imag - (z1 - c).imag * (z2 - c).real < 0
+    return (c.real, c.imag), r, la != swap, swap
 
   def arc(
     self,
@@ -599,6 +600,10 @@ class Svg:
           for i in range(len(crlas))
         ]
       )
+      # Some callers have reverse ordering of start/mid/stop, which breaks SVGs.
+      # We expect it to be consistent regardless of diffs.
+      if crlas[0][3]:
+        start, stop = stop, start
     else:
       assert radius and largearc
       radius = Param.ify(radius)
