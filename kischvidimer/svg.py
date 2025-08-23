@@ -759,7 +759,7 @@ class Svg:
     prop="",
     pos=(0, 0),
     size="100%",
-    color="notes",
+    textcolor="notes",
     justify="middle",
     vjustify="middle",
     bold=False,
@@ -778,7 +778,7 @@ class Svg:
     italic = [("italic" if i else "normal", c) for i, c in Param.ify(italic)]
     kisize = Param.ify([(self.size(s, False), c) for s, c in Param.ify(size)])
     emsize = Param.ify([(self.size(s, True), c) for s, c in Param.ify(size)])
-    color, opacity = self._color(color, "notes")
+    textcolor, opacity = self._color(textcolor, "notes")
     anchor = [(Svg.ANCHOR[str(j).lower()], c) for j, c in Param.ify(justify)]
     ### WORKAROUND for crbug/389845192
     vjustmap = dict(Svg.VJUST)
@@ -841,7 +841,7 @@ class Svg:
       ["<text", 'stroke="none"']
       + self.attr("x", [(p[0] * xpos_factor, c) for p, c in pos], 0)
       + self.attr("y", [(self.y(p[1]), c) for p, c in pos], 0)
-      + self.attr("fill", color, "none")
+      + self.attr("fill", textcolor, "none")
       + self.attr("fill-opacity", opacity, 1, convert=False)
       + self.attr("font-size", emsize, Svg.FONT_SIZE)
       + self.attr("font-style", italic, "normal")
@@ -1331,7 +1331,7 @@ class Svg:
   def _get_placeholder():
     if not isinstance(Svg._PLACEHOLDER, Svg):
       placeholder = Svg()
-      placeholder.text(Svg._PLACEHOLDER[0], color="device")
+      placeholder.text(Svg._PLACEHOLDER[0], textcolor="device")
       placeholder._bounds = (
         -(Svg._PLACEHOLDER[1] + 0) * placeholder._bounds[2],
         (Svg._PLACEHOLDER[2] + 0) * placeholder._bounds[1],

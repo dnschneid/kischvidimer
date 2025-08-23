@@ -300,7 +300,7 @@ class Effects(Modifier):
     args = {}
     args["justify"], args["vjustify"] = self.get_justify(diffs)
     args["size"] = self.get_size(diffs)
-    args["color"] = self.get_color(diffs)
+    args["textcolor"] = self.get_color(diffs)
     args["hidden"] = self.get_hidden(diffs)
     args["bold"], args["italic"] = self.get_style(diffs)
 
@@ -314,8 +314,8 @@ class Effects(Modifier):
       del args["vjustify"]
     if args["size"] is None:
       del args["size"]
-    if args["color"] is None:
-      del args["color"]
+    if args["textcolor"] is None:
+      del args["textcolor"]
     if not args["hidden"]:
       del args["hidden"]
 
@@ -529,7 +529,7 @@ class Text(Drawable):
       "text": Variables.v(context).expand(context + (self,), self[0]),
       "pos": self["at"][0].pos(diffs),
       "rotate": None,
-      "color": "device" if context[-1].type == "symbol" else "notes",
+      "textcolor": "device" if context[-1].type == "symbol" else "notes",
     }
     args.update(self.svgargs(diffs, context))
     svg.text(**args)
@@ -546,6 +546,7 @@ class TextBox(Drawable):
     args = {
       "rotate": None,
       "color": "notes",
+      "textcolor": "notes",
       "fill": "none",
       "thick": "wire",
     }
@@ -613,7 +614,7 @@ class TextBox(Drawable):
         for x in (
           "text",
           "size",
-          "color",
+          "textcolor",
           "justify",
           "vjustify",
           "rotate",
@@ -654,27 +655,27 @@ class Field(Drawable):
       text = f"{prop}: {text}"
     url = None
     if prop == "Reference":
-      color = "referencepart"
+      textcolor = "referencepart"
       text = instancedata("reference", diffs, context, text)
       if context[-1].show_unit(diffs, context):
         text += unit_to_alpha(instancedata("unit", diffs, context, 0))
     elif prop == "Value":
-      color = "valuepart"
+      textcolor = "valuepart"
     elif prop == "Intersheetrefs":
-      color = "intersheet_refs"
+      textcolor = "intersheet_refs"
     elif prop == "Sheetname":
-      color = "sheetname"
+      textcolor = "sheetname"
       url = Variables.v(context).resolve(context, "SHEETPATH")
       if url:
         url = "#" + url.rstrip("/")
     elif prop == "Sheetfile":
-      color = "sheetfilename"
+      textcolor = "sheetfilename"
       if not show_name:
         text = f"File: {text}"
     elif all(c.type != "symbol" for c in context):
-      color = "sheetfields"
+      textcolor = "sheetfields"
     else:
-      color = "fields"
+      textcolor = "fields"
     pos = self["at"][0].pos(diffs)
     # Properties of labels are rendered with offsets defined by the label type
     if hasattr(context[-1], "get_text_offset"):
@@ -689,7 +690,7 @@ class Field(Drawable):
       "prop": prop,
       "pos": pos,
       "rotate": 0,
-      "color": color,
+      "textcolor": textcolor,
       "url": url,
       "hidden": "hide" in self,
     }

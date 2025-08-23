@@ -223,7 +223,7 @@ class PinDef(Drawable):
         "justify": pin_config[part]["justify"],
         "vjustify": pin_config[part]["vjustify"],
         "rotate": rot % 180,
-        "color": f"pin{part[:3]}",
+        "textcolor": f"pin{part[:3]}",
         "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
       }
       if swap_side:

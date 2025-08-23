@@ -235,7 +235,7 @@ class TBText(Repeatable):
       text=text,
       pos=params["pos"],
       size=self.size(params["size"]),
-      color=params["color"],
+      textcolor=params["color"],
       bold=bold,
       italic=italic,
       justify=lr,

@@ -300,15 +300,15 @@ class Label(Drawable, HasUUID):
         "size": 1.27,
       }
       if self.bus(diffs, context):
-        args["color"] = "bus"
+        args["textcolor"] = "bus"
       elif self.type == "label":
-        args["color"] = "loclabel"
+        args["textcolor"] = "loclabel"
       elif self.type == "pin":
-        args["color"] = "sheetlabel"
+        args["textcolor"] = "sheetlabel"
       else:
-        args["color"] = f"{self.type[:4]}label"
+        args["textcolor"] = f"{self.type[:4]}label"
       if "color" in self and any(self["color"][0].data):
-        args["color"] = self["color"][0].data
+        args["textcolor"] = self["color"][0].data
       args.update(self.svgargs(diffs, context))
       pos = self["at"][0].pos(diffs)
     if draw & Drawable.DRAW_FG:
@@ -354,7 +354,7 @@ class Label(Drawable, HasUUID):
       toff = self.get_text_offset(diffs, context, is_field=False)
       svg.gstart(pos=pos, rotate=rot)
       if outline:
-        ocolor = args["color"]
+        ocolor = args["textcolor"]
         if isinstance(ocolor, str):
           ocolor = ocolor.replace("sheet", "hier")
         svg.polyline(
@@ -372,7 +372,7 @@ class Label(Drawable, HasUUID):
       )
       == 1
     ):
-      uc_color = args["color"]
+      uc_color = args["textcolor"]
       if isinstance(uc_color, str):
         uc_color = uc_color.replace("sheet", "hier")
       draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
