@@ -200,6 +200,9 @@ class KicadPro(Comparable):
         return default_wks
       wks = kicad_wks.kicad_wks(open(wks_path_expanded), wks_path_expanded)
     else:
+      projdir = os.path.dirname(self._fname or "")
+      if projdir:
+        wks_path_expanded = f"{projdir}/{wks_path_expanded}"
       wks = kicad_wks.kicad_wks(
         git.open_rb(wks_path_expanded, rev), wks_path_expanded
       )
