@@ -539,6 +539,7 @@ class Text(Drawable):
 class TextBox(Drawable):
   """Graphical text, but in a box!"""
 
+  @sexp.uses("margins")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
     is_pg = "${" in self[0]
@@ -549,9 +550,18 @@ class TextBox(Drawable):
       "thick": "wire",
     }
     args.update(self.svgargs(diffs, context))
-    margin = args["size"] * 4 / 5
+    # left, top, right, bottom
+    margins = [args["size"] * 4 / 5] * 4
+    if "margins" in self:
+      margins = self["margins"][0].data
     pos = self["at"][0].pos(diffs)
     size = self["size"][0].data
+    if size[0] < 0:
+      pos = (pos[0] + size[0], pos[1])
+      size = (-size[0], size[1])
+    if size[1] < 0:
+      pos = (pos[0], pos[1] + size[1])
+      size = (size[0], -size[1])
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
       rargs = {
         x: args[x] for x in ("color", "fill", "thick", "pattern") if x in args
@@ -568,7 +578,7 @@ class TextBox(Drawable):
       svg.rect(**rargs)
     if draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       # halve the right margin to account for character spacing
-      wrapwidth = size[0] - margin * 3 / 2
+      wrapwidth = size[0] - margins[0] - margins[2] / 2
       text = Variables.v(context).expand(context + (self,), self[0])
       lines = []
       # wrap rules: only wrap on space and don't split words.
@@ -591,13 +601,13 @@ class TextBox(Drawable):
       args["text"] = text = "\n".join(lines)
       tpos = (pos[0] + size[0] / 2, pos[1] + size[1] / 2)
       if args.get("justify") == "left":
-        tpos = (pos[0] + margin, tpos[1])
+        tpos = (pos[0] + margins[0], tpos[1])
       elif args.get("justify") == "right":
-        tpos = (pos[0] + size[0] - margin, tpos[1])
+        tpos = (pos[0] + size[0] - margins[2], tpos[1])
       if args.get("vjustify") == "top":
-        tpos = (tpos[0], pos[1] + margin)
+        tpos = (tpos[0], pos[1] + margins[1])
       elif args.get("vjustify") == "bottom":
-        tpos = (tpos[0], pos[1] + size[1] - margin)
+        tpos = (tpos[0], pos[1] + size[1] - margins[3])
       targs = {
         x: args[x]
         for x in (
