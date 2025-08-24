@@ -798,6 +798,13 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
         return False
     return self.root_path is not None
 
+  def fillsvg(self, svg, diffs, draw, context):
+    if "title_block" not in self:
+      sexp.parse("(title_block)")[0].fillsvg(
+        svg, diffs, draw, context + (self,)
+      )
+    super().fillsvg(svg, diffs, draw, context)
+
   def fillvars(self, variables, diffs, context=None):
     if self.is_root(context):
       variables.define(context, "FILENAME", os.path.basename(self._fname))
