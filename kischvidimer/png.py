@@ -19,34 +19,44 @@ import zlib
 MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
-def getsize(d):
+def getsize_mm(d):
   # Check header
   if not d or len(d) < 24:
     return None
   if d[0:8] != MAGIC:
     return None
-  if d[12:16] != b"IHDR":
-    return None
-  w = int.from_bytes(d[16:20], "big", signed=False)
-  h = int.from_bytes(d[20:24], "big", signed=False)
-  return (w, h)
+  offset = 8
+  w = h = None
+  mm_per_x = mm_per_y = 25.4 / 300
+  while offset < len(d):
+    hdrlen = int.from_bytes(d[offset : offset + 4], "big")
+    hdrtyp = d[offset + 4 : offset + 8]
+    if hdrtyp == b"IHDR":
+      w = int.from_bytes(d[offset + 8 : offset + 12], "big")
+      h = int.from_bytes(d[offset + 12 : offset + 16], "big")
+    elif hdrtyp == b"pHYs":
+      if d[offset + 16] == 1:  # meter
+        mm_per_x = 1000 / int.from_bytes(d[offset + 8 : offset + 12], "big")
+        mm_per_y = 1000 / int.from_bytes(d[offset + 12 : offset + 16], "big")
+    offset += hdrlen + 12
+  return (w * mm_per_x, h * mm_per_y)
 
 
 def encode(rows, width, height, has_alpha, bitdepth):
   def block(typ, data):
     crc = zlib.crc32(data, zlib.crc32(typ))
     return [
-      int.to_bytes(len(data), 4, "big", signed=False),
+      int.to_bytes(len(data), 4, "big"),
       typ,
       data,
-      int.to_bytes(crc, 4, "big", signed=False),
+      int.to_bytes(crc, 4, "big"),
     ]
 
   png = [MAGIC]
   # IHDR
-  ihdr = int.to_bytes(width, 4, "big", signed=False)
-  ihdr += int.to_bytes(height, 4, "big", signed=False)
-  ihdr += int.to_bytes(bitdepth, 1, "big", signed=False)
+  ihdr = int.to_bytes(width, 4, "big")
+  ihdr += int.to_bytes(height, 4, "big")
+  ihdr += int.to_bytes(bitdepth, 1, "big")
   ihdr += b"\x06" if has_alpha else b"\x02"  # colortype
   ihdr += b"\x00" * 3
   png += block(b"IHDR", ihdr)
@@ -61,7 +71,7 @@ def encode(rows, width, height, has_alpha, bitdepth):
 
 def main(argv):
   data = (open(argv[1], "rb") if len(argv) > 1 else sys.stdin).read()
-  sz = getsize(data)
+  sz = getsize_mm(data)
   if sz is None:
     return 1
   print("Size:", sz)

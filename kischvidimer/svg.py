@@ -1085,14 +1085,12 @@ class Svg:
     Width and height are in mm, not pixels.
     """
     # FIXME: does KiCad check metadata, or does it use 300 always?
-    px_to_mm = 25.4 / 300
     if isinstance(data, str):
       data = base64.b64decode(data)
     for typ, mod in ("png", png), ("bmp", bmp), ("jpeg", jpeg):
-      sz = mod.getsize(data)
+      sz = mod.getsize_mm(data)
       if sz is None:
         continue
-      sz = (sz[0] * px_to_mm, sz[1] * px_to_mm)
       if hasattr(mod, "to_png"):
         return ("png", mod.to_png(data)) + sz
       elif convert_all and typ != "png":

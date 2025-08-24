@@ -20,15 +20,17 @@ import sys
 from . import png
 
 
-def getsize(d):
+def getsize_mm(d):
   # Check header
   if not d or len(d) < 26:
     return None
   if d[0:2] != b"BM":
     return None
-  w = int.from_bytes(d[18:22], byteorder="little")
-  h = int.from_bytes(d[22:26], byteorder="little")
-  return (w, h)
+  w = int.from_bytes(d[18:22], "little")
+  h = int.from_bytes(d[22:26], "little")
+  mm_per_x = 1000 / int.from_bytes(d[38:42], "little") or 25.4 / 300
+  mm_per_y = 1000 / int.from_bytes(d[42:46], "little") or 25.4 / 300
+  return (w * mm_per_x, h * mm_per_y)
 
 
 def to_png(f):
@@ -39,16 +41,16 @@ def to_png(f):
   # Bitmap file header
   if f[0:2] != b"BM":
     raise Exception("not a BMP file")
-  data_offset = int.from_bytes(f[10:14], byteorder="little")
+  data_offset = int.from_bytes(f[10:14], "little")
   data = f[data_offset:]
 
   # Bitmap core header
-  header_size = int.from_bytes(f[14:18], byteorder="little")
-  w = int.from_bytes(f[18:22], byteorder="little")
-  h = int.from_bytes(f[22:26], byteorder="little")
-  if int.from_bytes(f[26:28], byteorder="little") != 1:
+  header_size = int.from_bytes(f[14:18], "little")
+  w = int.from_bytes(f[18:22], "little")
+  h = int.from_bytes(f[22:26], "little")
+  if int.from_bytes(f[26:28], "little") != 1:
     raise Exception("unsupported color plane count")
-  bpp = int.from_bytes(f[28:30], byteorder="little")
+  bpp = int.from_bytes(f[28:30], "little")
   if bpp not in (1, 2, 4, 8, 16, 24, 32):
     raise Exception("unsupported bit depth")
 
@@ -56,12 +58,11 @@ def to_png(f):
   bitmask = None
   num_colors = 2**bpp
   if header_size >= 40:
-    compression = int.from_bytes(f[30:34], byteorder="little")
+    compression = int.from_bytes(f[30:34], "little")
     if compression not in (0, 3):
       raise Exception(f"compression ({compression}) not supported")
     num_colors = (
-      min(int.from_bytes(f[46:50], byteorder="little"), num_colors)
-      or num_colors
+      min(int.from_bytes(f[46:50], "little"), num_colors) or num_colors
     )
     if compression == 3:
       if bpp not in (16, 32):
@@ -69,7 +70,7 @@ def to_png(f):
       if header_size < 52 and header_size != 40:
         raise Exception(f"bad header size ({header_size}) for bitmask")
       bitmask = tuple(
-        int.from_bytes(f[i : i + 4], byteorder="little")
+        int.from_bytes(f[i : i + 4], "little")
         for i in range(54, 54 + 4 * (3 if header_size < 56 else 4), 4)
       )
       if len(bitmask) == 4 and not bitmask[3]:
@@ -179,9 +180,7 @@ def to_png(f):
             map(
               lambda offs: (
                 (
-                  int.from_bytes(
-                    data[offs : offs + (bpp // 8)], byteorder="little"
-                  )
+                  int.from_bytes(data[offs : offs + (bpp // 8)], "little")
                   & mask
                 )
                 * 255
