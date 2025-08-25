@@ -444,7 +444,20 @@ class Polyline(Drawable):
       args["thick"] = 0
     if not draw & Drawable.DRAW_BG:
       args["fill"] = "none"
+    self._draw(svg, args)
+
+  @staticmethod
+  def _draw(svg, args):
     svg.polyline(**args)
+
+
+@sexp.handler("bezier")
+class Bezier(Polyline):
+  """Graphical bezier curve. Format is basically the same as a polyline."""
+
+  @staticmethod
+  def _draw(svg, args):
+    svg.bezier(**args)
 
 
 @sexp.handler("arc")

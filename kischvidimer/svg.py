@@ -669,6 +669,35 @@ class Svg:
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
     """
+    self._path(
+      lambda i: "L " if i else "M ",
+      xys=xys,
+      color=color,
+      fill=fill,
+      thick=thick,
+      pattern=pattern,
+      tag=tag,
+    )
+
+  def bezier(self, xys, color="notes", fill=None, thick="wire", pattern=None):
+    """Renders a bezier curve.
+    xys should be a list of tuples of coordinates, or a Param of such.
+    """
+    # TODO: fill isn't right if the bezier loops
+    self._path(
+      lambda i: "C " if i % 4 == 1 else "" if i else "M",
+      xys=xys,
+      color=color,
+      fill=fill,
+      thick=thick,
+      pattern=pattern,
+    )
+
+  def _path(self, ptfunc, xys, color, fill, thick, pattern, tag=None):
+    """Renders a path of various types.
+    ptfunc is a func converting point index (i) to svg path prefix with space.
+    xys should be a list of tuples of coordinates, or a Param of such.
+    """
     # Ensure xys is in the right format. Should be [([(
     if not isinstance(xys, Param):
       assert isinstance(xys[0], (list, tuple))
@@ -679,7 +708,7 @@ class Svg:
     d = [
       (
         " ".join(
-          f"{'L' if i else 'M'} {Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
+          f"{ptfunc(i)}{Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
           for i, pt in enumerate(pts)
         ),
         c,
