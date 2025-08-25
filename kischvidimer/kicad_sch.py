@@ -123,11 +123,8 @@ class Junction(Drawable):
     if "diameter" in self and self["diameter"][0][0]:
       diameter = self["diameter"][0][0]
     color = "junction"
-    try:
-      if Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0:
-        color = "bus_junction"
-    except KeyError:
-      pass
+    if Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0:
+      color = "bus_junction"
     if "color" in self and any(self["color"][0].data):
       color = tuple(self["color"][0].data)
     svg.circle(
@@ -407,6 +404,93 @@ class BusEntry(Drawable):
     }
     args.update(self.svgargs(diffs, context))
     svg.line(**args)
+
+
+@sexp.handler("netclass_flag")
+class NetclassFlag(Drawable, HasUUID):
+  """A net directive label"""
+
+  def fillnetlist(self, netlister, diffs, context):
+    # TODO: add netclass to location, fix nodecount, etc
+    pass
+
+  @sexp.uses("shape")
+  def shape(self, diffs):
+    """ "dot" "rectangle" "round" "diamond" """
+    if "shape" in self:
+      return self["shape"][0][0]
+    return "round"
+
+  @sexp.uses("at")
+  def pts(self, diffs):
+    return (self["at"][0].pos(diffs),)
+
+  @sexp.uses("length")
+  def fillsvg(self, svg, diffs, draw, context):
+    # svg.gstart(tag=svg.getuid(self))
+    args = pos = None
+    if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
+      # FIXME: diffs
+      args = {"size": 1.27, "textcolor": "netclass_refs"}
+      args.update(self.svgargs(diffs, context))
+      pos = self["at"][0].pos(diffs)
+    if draw & Drawable.DRAW_FG:
+      rot = self["at"][0].rot(diffs)
+      size = sexp.Decimal(0.915)
+      length = self["length"][0][0]
+      shape = self.shape(diffs)
+      ocolor = args["textcolor"]
+      svg.gstart(pos=pos, rotate=rot)
+      if shape == "dot":
+        svg.polyline(xys=((0, 0), (0, -length + size / 2)), color=ocolor)
+        svg.circle(
+          (0, -length),
+          radius=size / 2,
+          color="none",
+          fill=ocolor,
+        )
+      elif shape == "round":
+        svg.polyline(xys=((0, 0), (0, -length + size / 2)), color=ocolor)
+        svg.circle(
+          (0, -length),
+          radius=size / 2,
+          color=ocolor,
+          fill="none",
+        )
+      elif shape == "rectangle":
+        svg.polyline(
+          xys=(
+            (0, 0),
+            (0, -length + size / 2),
+            (size, -length + size / 2),
+            (size, -length - size / 2),
+            (-size, -length - size / 2),
+            (-size, -length + size / 2),
+            (0, -length + size / 2),
+          ),
+          color=ocolor,
+        )
+      elif shape == "diamond":
+        svg.polyline(
+          xys=(
+            (0, 0),
+            (0, -length + size / 2),
+            (size, -length),
+            (0, -length - size / 2),
+            (-size, -length),
+            (0, -length + size / 2),
+          ),
+          color=ocolor,
+        )
+      svg.gend()
+    if (
+      draw & Drawable.DRAW_FG_PG
+      and Netlister.n(context).get_node_count(context, pos, is_bus=False) <= 1
+    ):
+      uc_color = args["textcolor"]
+      draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
+    super().fillsvg(svg, diffs, draw, context)
+    # svg.gend()  # tag
 
 
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)

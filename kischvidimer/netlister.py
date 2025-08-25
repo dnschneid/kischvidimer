@@ -443,7 +443,7 @@ class Netlister:
   def get_node_count(self, context, xy, is_bus=False):
     """Returns the node count at a point+is_bus."""
     ic = InstCoord(context, xy, is_bus)
-    return self._instcoord_count[ic]
+    return self._instcoord_count.get(ic, 0)
 
   def _add_node(self, ic, item):
     if ic in self._by_instcoord:

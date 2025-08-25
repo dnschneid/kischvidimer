@@ -342,7 +342,7 @@ class Effects(Modifier):
           flipy = not flipy
         if c["mirror"][0][0] == "y":
           flipx = not flipx
-      if "at" in c and "label" not in c.type:
+      if "at" in c and "label" not in c.type and c.type != "netclass_flag":
         rot += c["at"][0].rot(diffs, context) * (-1 if flipy != flipx else 1)
     rot = rot % 360
     spin = False
