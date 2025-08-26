@@ -42,6 +42,7 @@ def get(theme=None):
     "valuepart": "var(--v)",  # Symbol values
     "fields": "var(--f)",  # Symbol fields
     "netclass_refs": "var(--Q)",  # Net class references
+    "rule_areas": "var(--R)",  # Rule area
     "device": "var(--b)",  # Symbol body outlines
     "device_background": "var(--B)",  # Symbol body fills
     "notes": "var(--g)",  # Schematic text && graphics
@@ -55,6 +56,7 @@ def get(theme=None):
     "sheetlabel": "var(--P)",  # Sheet pins
     "noconnect": "var(--x)",  # No-connect symbols
     "dnp_marker": "var(--X)",  # DNP markers
+    "excluded_from_sim": "var(--I)",  # Excluded from simulation indicator
     "schematic_background": "var(--d)",  # Background
     "schematic_drawingsheet": "var(--D)",  # Drawing sheet
     # UI
@@ -132,19 +134,21 @@ default = (
   ("DEVICE_BACKGROUND", (255, 255, 194)),
   ("DEVICE", (132, 0, 0)),
   ("SCHEMATIC_CURSOR", (15, 15, 15)),
-  ("DNP_MARKER", (220, 9, 13, 0.7)),
+  ("DNP_MARKER", (220, 9, 13, 0.85)),
+  ("EXCLUDED_FROM_SIM", (194, 194, 194, 0.95)),
   ("ERC_ERR", (230, 9, 13, 0.8)),
   ("ERC_WARN", (209, 146, 0, 0.8)),
-  ("ERC_EXCLUSION", (94, 194, 194, 0.8)),
+  ("ERC_EXCLUSION", (194, 194, 194, 0.8)),
   ("FIELDS", (132, 0, 132)),
   ("SCHEMATIC_GRID", (181, 181, 181)),
   ("SCHEMATIC_GRID_AXES", (0, 0, 132)),
-  ("HIDDEN", (94, 194, 194)),
+  ("HIDDEN", (194, 194, 194)),
   ("JUNCTION", (0, 150, 0)),
   ("GLOBLABEL", (132, 0, 0)),
   ("HIERLABEL", (114, 86, 0)),
   ("LOCLABEL", (15, 15, 15)),
   ("NETCLASS_REFS", (72, 72, 72)),
+  ("RULE_AREAS", (255, 0, 0)),
   ("NOCONNECT", (0, 0, 132)),
   ("NOTES", (0, 0, 194)),
   ("PRIVATE_NOTES", (72, 72, 255)),
@@ -177,7 +181,8 @@ classic = (
   ("DEVICE_BACKGROUND", (255, 255, 194)),
   ("DEVICE", (132, 0, 0)),
   ("SCHEMATIC_CURSOR", (0, 0, 0)),
-  ("DNP_MARKER", (255, 0, 0, 0.7)),
+  ("DNP_MARKER", (255, 0, 0, 0.85)),
+  ("EXCLUDED_FROM_SIM", (194, 194, 194, 0.95)),
   ("ERC_ERR", (255, 0, 0, 0.8)),
   ("ERC_WARN", (0, 255, 0, 0.8)),
   ("ERC_EXCLUSION", (194, 194, 194)),
@@ -190,6 +195,7 @@ classic = (
   ("HIERLABEL", (132, 132, 0)),
   ("LOCLABEL", (0, 0, 0)),
   ("NETCLASS_REFS", (0, 0, 0)),
+  ("RULE_AREAS", (132, 0, 0)),
   ("NOCONNECT", (0, 0, 132)),
   ("NOTES", (0, 0, 194)),
   ("PRIVATE_NOTES", (0, 0, 194)),
@@ -197,7 +203,6 @@ classic = (
   ("PINNAM", (0, 132, 132)),
   ("PINNUM", (132, 0, 0)),
   ("REFERENCEPART", (0, 132, 132)),
-  ("SELECTION_SHADOWS", (255, 179, 102, 0.8)),
   ("SHEET", (132, 0, 132)),
   ("SHEET_BACKGROUND", (255, 255, 255, 0.0)),
   ("SHEETFILENAME", (132, 132, 0)),
@@ -207,6 +212,7 @@ classic = (
   ("VALUEPART", (0, 132, 132)),
   ("WIRE", (0, 132, 0)),
   ("SCHEMATIC_DRAWINGSHEET", (132, 0, 0)),
+  ("SCHEMATIC_PAGE_LIMITS", (0, 0, 0, 0)),
   ("OP_VOLTAGES", (72, 0, 72)),
   ("OP_CURRENTS", (132, 0, 0)),
 )
