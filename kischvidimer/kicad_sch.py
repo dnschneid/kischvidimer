@@ -406,6 +406,11 @@ class BusEntry(Drawable):
     svg.line(**args)
 
 
+@sexp.handler("rule_area")
+class RuleArea(Drawable, HasUUID):
+  """A rule area; contains a polyline"""
+
+
 @sexp.handler("netclass_flag")
 class NetclassFlag(Drawable, HasUUID):
   """A net directive label"""

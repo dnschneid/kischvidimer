@@ -422,6 +422,7 @@ class Polyline(Drawable):
     xys = self.pts(diffs)
     if not draw & Drawable.DRAW_FG and len(xys) <= 2:
       return
+    close = False
     default_color = "notes"
     default_thick = "wire"
     if self.type == "wire":
@@ -431,6 +432,9 @@ class Polyline(Drawable):
       default_thick = "bus"
     elif context[-1].type == "symbol":
       default_color = "device"
+    elif context[-1].type == "rule_area":
+      default_color = "rule_areas"
+      close = True  # Rule areas are always closed polygons
     args = {
       "xys": xys,
       "color": default_color,
@@ -439,6 +443,8 @@ class Polyline(Drawable):
     }
     if tag is not None:
       args["tag"] = tag
+    if close:
+      args["close"] = close
     args.update(self.svgargs(diffs, context))
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0

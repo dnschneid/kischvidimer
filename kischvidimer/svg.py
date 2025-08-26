@@ -664,7 +664,14 @@ class Svg:
     ).nocontents()
 
   def polyline(
-    self, xys, color="notes", fill=None, thick="wire", pattern=None, tag=None
+    self,
+    xys,
+    color="notes",
+    fill=None,
+    thick="wire",
+    pattern=None,
+    close=False,
+    tag=None,
   ):
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -676,6 +683,7 @@ class Svg:
       fill=fill,
       thick=thick,
       pattern=pattern,
+      close=close,
       tag=tag,
     )
 
@@ -693,7 +701,9 @@ class Svg:
       pattern=pattern,
     )
 
-  def _path(self, ptfunc, xys, color, fill, thick, pattern, tag=None):
+  def _path(
+    self, ptfunc, xys, color, fill, thick, pattern, close=False, tag=None
+  ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -710,7 +720,8 @@ class Svg:
         " ".join(
           f"{ptfunc(i)}{Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
           for i, pt in enumerate(pts)
-        ),
+        )
+        + " Z" * close,
         c,
       )
       for pts, c in xys
