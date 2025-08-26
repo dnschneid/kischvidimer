@@ -498,6 +498,64 @@ class NetclassFlag(Drawable, HasUUID):
     # svg.gend()  # tag
 
 
+@sexp.handler("table")
+class Table(Drawable):
+  """Top table instance; defines extra properties at the table level."""
+
+  def fillsvg(self, svg, diffs, draw, context):
+    if draw & Drawable.DRAW_FG:
+      # FIXME: diffs? lolol good luck
+      pos = self["cells"][0].pos(diffs)
+      widths = self["column_widths"][0].data
+      heights = self["row_heights"][0].data
+      col_count = len(widths)
+      row_count = len(heights)
+      width = sum(widths)
+      height = sum(heights)
+      border_style = self["border"][0].svgargs(svg, context + (self,))
+      sep_style = self["separators"][0].svgargs(svg, context + (self,))
+
+      # render external border. external border is under inner border in Z
+      if self["border"][0]["external"][0][0] == "yes":
+        svg.rect(pos=pos, width=width, height=height, **border_style)
+
+      # render header
+      has_header = self["border"][0]["header"][0][0] == "yes"
+      if has_header:
+        y = pos[1] + heights[0]
+        svg.line(p1=(pos[0], y), p2=(pos[0] + width, y), **border_style)
+
+      # render inner horizontal lines (special-case header)
+      if self["separators"][0]["rows"][0][0] == "yes":
+        y = pos[1] + heights[0] * has_header
+        for i in range(has_header, row_count - 1):
+          y += heights[i]
+          svg.line(p1=(pos[0], y), p2=(pos[0] + width, y), **sep_style)
+
+      # render inner vertical lines
+      if self["separators"][0]["cols"][0][0] == "yes":
+        x = pos[0]
+        for i in range(col_count - 1):
+          x += widths[i]
+          svg.line(p1=(x, pos[1]), p2=(x, pos[1] + height), **sep_style)
+
+    super().fillsvg(svg, diffs, draw, context)
+
+
+@sexp.handler("border", "separators")
+class TableLines(Drawable):
+  pass
+
+
+@sexp.handler("cells")
+class Cells(Drawable):
+  """Contains all the cells of a table. Actual cells look like TextBoxes."""
+
+  def pos(self, diffs):
+    """Return the top-left cell location."""
+    return self["table_cell"][0].pos_size(diffs)[0]
+
+
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
 #          (instances (project "x" (path "y" (reference "z") (unit 1)))))
 class SymbolInst(Drawable, HasUUID):

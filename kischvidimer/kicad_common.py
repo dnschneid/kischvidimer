@@ -554,9 +554,21 @@ class Text(Drawable):
     svg.text(**args)
 
 
-@sexp.handler("text_box")
+@sexp.handler("text_box", "table_cell")
 class TextBox(Drawable):
   """Graphical text, but in a box!"""
+
+  @sexp.uses("pos", "size")
+  def pos_size(self, diffs):
+    pos = self["at"][0].pos(diffs)
+    size = self["size"][0].data
+    if size[0] < 0:
+      pos = (pos[0] + size[0], pos[1])
+      size = (-size[0], size[1])
+    if size[1] < 0:
+      pos = (pos[0], pos[1] + size[1])
+      size = (size[0], -size[1])
+    return pos, size
 
   @sexp.uses("margins")
   def fillsvg(self, svg, diffs, draw, context):
@@ -574,15 +586,12 @@ class TextBox(Drawable):
     margins = [args["size"] * 4 / 5] * 4
     if "margins" in self:
       margins = self["margins"][0].data
-    pos = self["at"][0].pos(diffs)
-    size = self["size"][0].data
-    if size[0] < 0:
-      pos = (pos[0] + size[0], pos[1])
-      size = (-size[0], size[1])
-    if size[1] < 0:
-      pos = (pos[0], pos[1] + size[1])
-      size = (size[0], -size[1])
-    if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
+    pos, size = self.pos_size(diffs)
+    if (
+      draw & Drawable.DRAW_BG
+      or draw & Drawable.DRAW_FG
+      and self.type != "table_cell"
+    ):
       rargs = {
         x: args[x] for x in ("color", "fill", "thick", "pattern") if x in args
       }
