@@ -482,10 +482,10 @@ class Svg:
       for i in range(max(map(len, (pattern, thick))))
     ]
     self._update_bounds(
-      (x[0][0], y[0][0]),
+      (x[0][0], self.y(y[0][0])),
       (
         float(x[0][0]) + float(width[0][0]),
-        float(y[0][0]) + float(self.y(height[0][0])),
+        self.y(float(y[0][0]) + float(height[0][0])),
       ),
       thick[0][0],
     )
