@@ -63,8 +63,8 @@ would be nigh impossible to implement the diffing and merging UI with them.
 
 ## What's in the works?
 
- * KiCad 9 support
- * Netlist intelligence and navigation
+ * KiCad 10 support
+ * Netclass support
  * Diffing and merging, of course
 
 ## How to pronounce kischvidimer?
