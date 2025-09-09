@@ -864,7 +864,7 @@ class Svg:
         - (kisize[0][0] * 1 / 3 if vjust[0][0][1] == "hanging" else 0)
       ),
     )
-    if any(not h for h, _ in hidden):
+    if any(not h for h, _ in hidden) and any(t[0] for t in text):
       # self.rect((textpos[0], textpos[1] - theight), twidth, theight)
       self._update_bounds(
         textpos,
