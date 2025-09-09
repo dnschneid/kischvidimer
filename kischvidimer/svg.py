@@ -859,8 +859,10 @@ class Svg:
     textpos = (
       textpos[0],
       textpos[1]
-      + theight * vjust[0][0][0]
-      - (kisize[0][0] * 1 / 3 if vjust[0][0][1] == "hanging" else 0),
+      + self.y(
+        theight * vjust[0][0][0]
+        - (kisize[0][0] * 1 / 3 if vjust[0][0][1] == "hanging" else 0)
+      ),
     )
     if any(not h for h, _ in hidden):
       # self.rect((textpos[0], textpos[1] - theight), twidth, theight)
