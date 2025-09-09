@@ -1037,10 +1037,10 @@ def main(argv):
   s = svg.Svg(theme="default")
   path = argv[1] if len(argv) > 1 else None
   with open(path) if path else sys.stdin as f:
-    data = sexp.parse(f.read())
+    data = kicad_sch(f, path)
   variables = Variables()
-  data[0].fillvars(variables, [], None)
-  data[0].fillsvg(s, [], Drawable.DRAW_ALL, variables.context())
+  data.fillvars(variables, [], None)
+  data.fillsvg(s, [], Drawable.DRAW_ALL, variables.context())
   print(str(s))
 
 
