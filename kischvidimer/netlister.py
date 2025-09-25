@@ -297,7 +297,9 @@ class Bus(NetBus):
     # Give it a name if there isn't one, although it doesn't mean much
     if self.name() is None:
       for sb in subsheet_buses:
-        self.add_name(sb.name(), NetBus.CAT_SHEETPIN)
+        sb_name = sb.name()
+        if sb_name:
+          self.add_name(sb_name, NetBus.CAT_SHEETPIN)
 
 
 class ReplaceableDict(dict):
