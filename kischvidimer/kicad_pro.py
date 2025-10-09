@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from . import git, kicad_sch, kicad_wks, progress
+from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
 
 
@@ -54,6 +54,18 @@ class KicadPro(Comparable):
       if "bus_alias" in sch:
         for ba in sch["bus_alias"]:
           context[0].add(ba)
+    # Starting with v10, bus aliases are stored in the kicad_pro
+    pro_aliases = self.json.get("schematic", {}).get("bus_aliases", {})
+    for name, members in pro_aliases.items():
+      context[0].add(
+        sexp.SExp(
+          [
+            sexp.Atom("bus_alias"),
+            name,
+            sexp.SExp([sexp.Atom("members")] + members),
+          ]
+        )
+      )
     for filename, (instances, sch) in pages.items():
       if p:
         p.set_text(f"Netlisting {filename[:-10]}").write().incr()
