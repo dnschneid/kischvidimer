@@ -609,13 +609,13 @@ class SymbolInst(Drawable, HasUUID):
     lib_id = self.lib_id(diffs, context)
     sym = lib.symbol(lib_id)
     unit = self.unit(diffs, context)
-    convert = self.variant(diffs, context)
+    variant = self.variant(diffs, context)
     sym.fillnetlist(
       netlister,
       diffs,
       context + (self,),
       unit=unit,
-      variant=convert,
+      variant=variant,
     )
 
   def transform_pin(self, pos, diffs):
@@ -658,7 +658,7 @@ class SymbolInst(Drawable, HasUUID):
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
-      convert = self.variant(diffs, context)
+      variant = self.variant(diffs, context)
       svg.gstart(
         pos=pos,
         rotate=rot,
@@ -666,14 +666,14 @@ class SymbolInst(Drawable, HasUUID):
         hidden=False,
       )
       svg.instantiate(
-        subdraw, lib, lib_id, unit=unit, variant=convert, context=(self,)
+        subdraw, lib, lib_id, unit=unit, variant=variant, context=(self,)
       )
       # Draw unconnected circles
       if subdraw & Drawable.DRAW_PINS:  # FIXME: should this be DRAW_FG_PG?
         n = Netlister.n(context)
         # NOTE: context passed to sym (intentionally) does not include self, so
         #       returned pts will be untransformed
-        for pos in sym.get_con_pin_coords(diffs, context, unit, convert):
+        for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
           abs_pos = self.transform_pin(pos, diffs)
           if n.get_net(context, abs_pos).is_floating_sympin():
             pos = (pos[0], -pos[1])
@@ -733,9 +733,9 @@ class SymbolInst(Drawable, HasUUID):
       return unit
     return unit_to_alpha(unit)
 
-  @sexp.uses("convert")
+  @sexp.uses("convert", "body_style")
   def variant(self, diffs, context):
-    return self.get("convert", default=[1])[0]
+    return self.get("body_style", default=self.get("convert", default=[1]))[0]
 
   def as_comp(self, context):
     # returns (refdes, {dict of properties})
