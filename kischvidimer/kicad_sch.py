@@ -956,6 +956,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     if self.is_root(context):
       variables.define(context, "FILENAME", os.path.basename(self._fname))
       variables.define(context, "FILEPATH", self._fname)
+      variables.define(context, "SHEETFILE", os.path.basename(self._fname))
       variables.define(context, "SHEETPATH", "/")
     super().fillvars(variables, diffs, context)
 
