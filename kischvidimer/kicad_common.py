@@ -966,9 +966,9 @@ class Variables:
     g["afterfirst"] = lambda a, c: str(a).partition(str(c)[0])[2]
     g["afterlast"] = lambda a, c: str(a).rpartition(str(c)[0])[2]
 
-    # g["format"]
-    # g["currency"]
-    # g["fixed"]
+    g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
+    g["fixed"] = g["format"]
+    g["currency"] = lambda x, symbol="$": f"{symbol}{float(x):.2f}"
 
     g["weekdayname"] = lambda d: time.strftime(
       "%A", time.gmtime(float(d) * 24 * 3600)
