@@ -18,8 +18,10 @@ Common classes and routines for handling sexp-based kicad files
 
 import math
 import os
+import random
 import re
 import sys
+import time
 from uuid import uuid4
 
 from . import sexp
@@ -820,6 +822,7 @@ class Variables:
   PAGENO = "#"
   PAGECOUNT = "##"
   RE_VAR = re.compile(r"\${([^}:]+:)?([^}]+)}")
+  RE_EXPR = re.compile(r"@{(?:" + RE_VAR.pattern + r"|[^}])*}")
 
   def __init__(self):
     # Maps a uuid to a dict of variable definitions. If a variable isn't defined
@@ -883,9 +886,19 @@ class Variables:
     vardict.setdefault(variable.upper(), value)
 
   def expand(self, context, text, hist=None):
-    return Variables.RE_VAR.sub(
-      lambda m: self.resolve(context, m, hist or set()), text
+    hist = set() if hist is None else hist
+    result = ""
+    last = 0
+    for expr in Variables.RE_EXPR.finditer(text):
+      result += Variables.RE_VAR.sub(
+        lambda m: self.resolve(context, m, hist), text[last : expr.pos]
+      )
+      last = expr.endpos
+      result += self.evaluate(context, expr[0], hist)
+    result += Variables.RE_VAR.sub(
+      lambda m: self.resolve(context, m, hist), text[last:]
     )
+    return result
 
   def resolve(self, context, variable, hist=None):
     """Variable can be x, x:y, or a match object.
@@ -893,7 +906,7 @@ class Variables:
     full match text if the variable is a match object.
     """
     # FIXME: support querying the netlist
-    hist = hist or set()
+    hist = set() if hist is None else hist
     orig_variable = None
     if isinstance(variable, re.Match):
       orig_variable = variable[0]
@@ -922,6 +935,81 @@ class Variables:
       if not context:
         return orig_variable
       context = context.rpartition("/")[0]
+
+  def evaluate(self, context, expr, hist=None):
+    """Evaluates an arbitrary string expression, including the @{}"""
+    orig_expr = expr
+    expr = expr[2:-1]  # remove @{}
+
+    hist = set() if hist is None else hist
+
+    # FIXME: parse units in literals, convert to default unit
+    # FIXME: numbers can be added to strings (becomes concat), not vice-versa
+    expr = expr.replace("^", "**")
+    expr = re.sub(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])", "__if__", expr)
+    g = {}
+
+    def resolve_variable(m):
+      placeholder = f"__{len(g)}__"
+      val = self.resolve(context, m, hist)
+      try:
+        g[placeholder] = int(val)
+      except ValueError:
+        try:
+          g[placeholder] = float(val)
+        except ValueError:
+          g[placeholder] = val
+      return placeholder
+
+    expr = Variables.RE_VAR.sub(resolve_variable, expr)
+
+    g["abs"] = abs
+    g["sqrt"] = math.sqrt
+    g["pow"] = math.pow
+    g["floor"] = math.floor
+    g["ceil"] = math.ceil
+    g["round"] = round
+    g["min"] = min
+    g["max"] = max
+    g["sum"] = sum
+    g["avg"] = lambda *a: sum(a) / len(a)
+
+    g["today"] = lambda: int(time.time() / (24 * 3600))
+    g["now"] = lambda: int(time.time())
+    g["random"] = lambda: random.uniform(0, 1)
+
+    g["upper"] = lambda a: str(a).upper()
+    g["lower"] = lambda a: str(a).lower()
+    g["concat"] = lambda *a: "".join(map(str, a))
+    g["beforefirst"] = lambda a, c: str(a).partition(str(c)[0])[0]
+    g["beforelast"] = lambda a, c: str(a).rpartition(str(c)[0])[0]
+    g["afterfirst"] = lambda a, c: str(a).partition(str(c)[0])[2]
+    g["afterlast"] = lambda a, c: str(a).rpartition(str(c)[0])[2]
+
+    # g["format"]
+    # g["currency"]
+    # g["fixed"]
+    # g["dateformat"]
+    # g["datestring"]
+    # g["weekdayname"]
+
+    g["__if__"] = lambda c, t, f: t if c else f
+    g["__builtins__"] = {}
+
+    try:
+      ret = eval(expr, g, g)
+    except NameError:
+      return orig_expr
+
+    # Booleans are output as 1 or 0
+    if isinstance(ret, bool):
+      ret = int(ret)
+
+    # Make sure we're receiving a sane type (e.g., not a function object)
+    if not isinstance(ret, (float, int, str)):
+      return orig_expr
+
+    return str(ret)
 
 
 def main(argv):
