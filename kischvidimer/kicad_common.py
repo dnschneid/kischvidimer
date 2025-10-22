@@ -887,18 +887,11 @@ class Variables:
 
   def expand(self, context, text, hist=None):
     hist = set() if hist is None else hist
-    result = ""
-    last = 0
-    for expr in Variables.RE_EXPR.finditer(text):
-      result += Variables.RE_VAR.sub(
-        lambda m: self.resolve(context, m, hist), text[last : expr.pos]
-      )
-      last = expr.endpos
-      result += self.evaluate(context, expr[0], hist)
-    result += Variables.RE_VAR.sub(
-      lambda m: self.resolve(context, m, hist), text[last:]
+    text = Variables.RE_VAR.sub(lambda m: self.resolve(context, m, hist), text)
+    text = Variables.RE_EXPR.sub(
+      lambda m: self.evaluate(context, m[0], hist), text
     )
-    return result
+    return text
 
   def resolve(self, context, variable, hist=None):
     """Variable can be x, x:y, or a match object.
@@ -947,21 +940,8 @@ class Variables:
     # FIXME: numbers can be added to strings (becomes concat), not vice-versa
     expr = expr.replace("^", "**")
     expr = re.sub(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])", "__if__", expr)
+
     g = {}
-
-    def resolve_variable(m):
-      placeholder = f"__{len(g)}__"
-      val = self.resolve(context, m, hist)
-      try:
-        g[placeholder] = int(val)
-      except ValueError:
-        try:
-          g[placeholder] = float(val)
-        except ValueError:
-          g[placeholder] = val
-      return placeholder
-
-    expr = Variables.RE_VAR.sub(resolve_variable, expr)
 
     g["abs"] = abs
     g["sqrt"] = math.sqrt
