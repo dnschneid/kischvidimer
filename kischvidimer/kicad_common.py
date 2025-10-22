@@ -823,6 +823,7 @@ class Variables:
   PAGECOUNT = "##"
   RE_VAR = re.compile(r"\${([^}:]+:)?([^}]+)}")
   RE_EXPR = re.compile(r"@{(?:" + RE_VAR.pattern + r"|[^}])*}")
+  RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
 
   def __init__(self):
     # Maps a uuid to a dict of variable definitions. If a variable isn't defined
@@ -938,86 +939,11 @@ class Variables:
 
     # FIXME: parse units in literals, convert to default unit
     # FIXME: numbers can be added to strings (becomes concat), not vice-versa
+    # FIXME: properly handle "if" and "^" inside strings
     expr = expr.replace("^", "**")
-    expr = re.sub(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])", "__if__", expr)
+    expr = Variables.RE_IF.sub("__if__", expr)
 
-    g = {}
-
-    g["abs"] = abs
-    g["sqrt"] = math.sqrt
-    g["pow"] = math.pow
-    g["floor"] = math.floor
-    g["ceil"] = math.ceil
-    g["round"] = round
-    g["min"] = min
-    g["max"] = max
-    g["sum"] = sum
-    g["avg"] = lambda *a: sum(a) / len(a)
-
-    g["today"] = lambda: int(time.time() / (24 * 3600))
-    g["now"] = lambda: int(time.time())
-    g["random"] = lambda: random.uniform(0, 1)
-
-    g["upper"] = lambda a: str(a).upper()
-    g["lower"] = lambda a: str(a).lower()
-    g["concat"] = lambda *a: "".join(map(str, a))
-    g["beforefirst"] = lambda a, c: str(a).partition(str(c)[0])[0]
-    g["beforelast"] = lambda a, c: str(a).rpartition(str(c)[0])[0]
-    g["afterfirst"] = lambda a, c: str(a).partition(str(c)[0])[2]
-    g["afterlast"] = lambda a, c: str(a).rpartition(str(c)[0])[2]
-
-    g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
-    g["fixed"] = g["format"]
-    g["currency"] = lambda x, symbol="$": f"{symbol}{float(x):.2f}"
-
-    g["weekdayname"] = lambda d: time.strftime(
-      "%A", time.gmtime(float(d) * 24 * 3600)
-    )
-
-    def datestring(s):
-      cjk = "年月日년월일"
-      is_cjk = any(c in s for c in cjk)
-      has_slash = "/" in s
-      if not is_cjk and len(s) == 8:
-        fmt = "%Y%d%m"
-      else:
-        p = [x.strip() for x in re.split(f"[-./{cjk}]", str(s), maxsplit=3)]
-        s = ".".join(p)
-        fmt = "%Y.%m.%d"
-        if len(p) == 1:
-          fmt = "%Y"
-        elif len(p) == 2:
-          fmt = "%Y.%m"
-        elif not is_cjk and has_slash and p[0] <= 12 and p[1] <= 31:
-          fmt = "%m.%d.%Y"
-        elif not is_cjk and has_slash and p[0] <= 12:
-          fmt = "%d.%m.%Y"
-      return int(time.mktime(time.strptime(s, fmt)) / (24 * 3600))
-
-    def dateformat(d, fmt="ISO"):
-      fmt = fmt.lower()
-      if fmt == "us":
-        fmt = "%m/%d/%Y"
-      elif fmt in ("eu", "european"):
-        fmt = "%d/%m/%Y"
-      elif fmt == "long":
-        fmt = "%B %d, %Y"
-      elif fmt == "short":
-        fmt = "%b %d, %Y"
-      elif fmt in ("cn", "jp", "chinese", "japanese", "中文", "日本語"):
-        fmt = "%Y年%m月%d日"
-      elif fmt in ("kr", "korean", "한국어"):
-        fmt = "%Y년%m월%d일"
-      else:
-        fmt = "%Y-%m-%d"
-      return time.strftime(fmt, time.gmtime(float(d) * 24 * 3600))
-
-    g["datestring"] = datestring
-    g["dateformat"] = dateformat
-
-    g["__if__"] = lambda c, t, f: t if c else f
-    g["__builtins__"] = {}
-
+    g = evaluation_context()
     try:
       ret = eval(expr, g, g)
     except (NameError, SyntaxError):
@@ -1032,6 +958,90 @@ class Variables:
       return orig_expr
 
     return str(ret)
+
+
+def evaluation_context():
+  """Defines all available symbols/functions for the string evaluator"""
+  if hasattr(evaluation_context, "g"):
+    return evaluation_context.g
+  g = evaluation_context.g = {}
+
+  g["abs"] = abs
+  g["sqrt"] = math.sqrt
+  g["pow"] = math.pow
+  g["floor"] = math.floor
+  g["ceil"] = math.ceil
+  g["round"] = round
+  g["min"] = min
+  g["max"] = max
+  g["sum"] = sum
+  g["avg"] = lambda *a: sum(a) / len(a)
+
+  g["today"] = lambda: int(time.time() / (24 * 3600))
+  g["now"] = lambda: int(time.time())
+  g["random"] = lambda: random.uniform(0, 1)
+
+  g["upper"] = lambda a: str(a).upper()
+  g["lower"] = lambda a: str(a).lower()
+  g["concat"] = lambda *a: "".join(map(str, a))
+  g["beforefirst"] = lambda a, c: str(a).partition(str(c)[0])[0]
+  g["beforelast"] = lambda a, c: str(a).rpartition(str(c)[0])[0]
+  g["afterfirst"] = lambda a, c: str(a).partition(str(c)[0])[2]
+  g["afterlast"] = lambda a, c: str(a).rpartition(str(c)[0])[2]
+
+  g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
+  g["fixed"] = g["format"]
+  g["currency"] = lambda x, symbol="$": f"{symbol}{float(x):.2f}"
+
+  g["weekdayname"] = lambda d: time.strftime(
+    "%A", time.gmtime(float(d) * 24 * 3600)
+  )
+
+  def datestring(s):
+    cjk = "年月日년월일"
+    is_cjk = any(c in s for c in cjk)
+    has_slash = "/" in s
+    if not is_cjk and len(s) == 8:
+      fmt = "%Y%d%m"
+    else:
+      p = [x.strip() for x in re.split(f"[-./{cjk}]", str(s), maxsplit=3)]
+      s = ".".join(p)
+      fmt = "%Y.%m.%d"
+      if len(p) == 1:
+        fmt = "%Y"
+      elif len(p) == 2:
+        fmt = "%Y.%m"
+      elif not is_cjk and has_slash and p[0] <= 12 and p[1] <= 31:
+        fmt = "%m.%d.%Y"
+      elif not is_cjk and has_slash and p[0] <= 12:
+        fmt = "%d.%m.%Y"
+    return int(time.mktime(time.strptime(s, fmt)) / (24 * 3600))
+
+  def dateformat(d, fmt="ISO"):
+    fmt = fmt.lower()
+    if fmt == "us":
+      fmt = "%m/%d/%Y"
+    elif fmt in ("eu", "european"):
+      fmt = "%d/%m/%Y"
+    elif fmt == "long":
+      fmt = "%B %d, %Y"
+    elif fmt == "short":
+      fmt = "%b %d, %Y"
+    elif fmt in ("cn", "jp", "chinese", "japanese", "中文", "日本語"):
+      fmt = "%Y年%m月%d日"
+    elif fmt in ("kr", "korean", "한국어"):
+      fmt = "%Y년%m월%d일"
+    else:
+      fmt = "%Y-%m-%d"
+    return time.strftime(fmt, time.gmtime(float(d) * 24 * 3600))
+
+  g["datestring"] = datestring
+  g["dateformat"] = dateformat
+
+  g["__if__"] = lambda c, t, f: t if c else f
+  g["__builtins__"] = {}
+
+  return g
 
 
 def main(argv):
