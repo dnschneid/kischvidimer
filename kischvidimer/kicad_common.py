@@ -969,16 +969,58 @@ class Variables:
     # g["format"]
     # g["currency"]
     # g["fixed"]
-    # g["dateformat"]
-    # g["datestring"]
-    # g["weekdayname"]
+
+    g["weekdayname"] = lambda d: time.strftime(
+      "%A", time.gmtime(float(d) * 24 * 3600)
+    )
+
+    def datestring(s):
+      cjk = "年月日년월일"
+      is_cjk = any(c in s for c in cjk)
+      has_slash = "/" in s
+      if not is_cjk and len(s) == 8:
+        fmt = "%Y%d%m"
+      else:
+        p = [x.strip() for x in re.split(f"[-./{cjk}]", str(s), maxsplit=3)]
+        s = ".".join(p)
+        fmt = "%Y.%m.%d"
+        if len(p) == 1:
+          fmt = "%Y"
+        elif len(p) == 2:
+          fmt = "%Y.%m"
+        elif not is_cjk and has_slash and p[0] <= 12 and p[1] <= 31:
+          fmt = "%m.%d.%Y"
+        elif not is_cjk and has_slash and p[0] <= 12:
+          fmt = "%d.%m.%Y"
+      return int(time.mktime(time.strptime(s, fmt)) / (24 * 3600))
+
+    def dateformat(d, fmt="ISO"):
+      fmt = fmt.lower()
+      if fmt == "us":
+        fmt = "%m/%d/%Y"
+      elif fmt in ("eu", "european"):
+        fmt = "%d/%m/%Y"
+      elif fmt == "long":
+        fmt = "%B %d, %Y"
+      elif fmt == "short":
+        fmt = "%b %d, %Y"
+      elif fmt in ("cn", "jp", "chinese", "japanese", "中文", "日本語"):
+        fmt = "%Y年%m月%d日"
+      elif fmt in ("kr", "korean", "한국어"):
+        fmt = "%Y년%m월%d일"
+      else:
+        fmt = "%Y-%m-%d"
+      return time.strftime(fmt, time.gmtime(float(d) * 24 * 3600))
+
+    g["datestring"] = datestring
+    g["dateformat"] = dateformat
 
     g["__if__"] = lambda c, t, f: t if c else f
     g["__builtins__"] = {}
 
     try:
       ret = eval(expr, g, g)
-    except NameError:
+    except (NameError, SyntaxError):
       return orig_expr
 
     # Booleans are output as 1 or 0
