@@ -939,9 +939,11 @@ class Variables:
 
     # FIXME: parse units in literals, convert to default unit
     # FIXME: numbers can be added to strings (becomes concat), not vice-versa
-    # FIXME: properly handle "if" and "^" inside strings
-    expr = expr.replace("^", "**")
-    expr = Variables.RE_IF.sub("__if__", expr)
+    # Use a parser-ignored and likely unique string to tag replaces so that we
+    # can undo them if it turns out they were inside a string literal.
+    tag = "\t \t  \t \t"
+    expr = expr.replace("^", f"{tag}**{tag}")
+    expr = Variables.RE_IF.sub(f"{tag}__if__{tag}", expr)
 
     g = evaluation_context()
     try:
@@ -956,6 +958,11 @@ class Variables:
     # Make sure we're receiving a sane type (e.g., not a function object)
     if not isinstance(ret, (float, int, str)):
       return orig_expr
+
+    # Undo changes that still have the tagging
+    if isinstance(ret, str):
+      ret = ret.replace(f"{tag}**{tag}", "^")
+      ret = ret.replace(f"{tag}__if__{tag}", "if")
 
     return str(ret)
 
