@@ -684,6 +684,7 @@ class Field(Drawable):
     if show_name:
       text = f"{prop}: {text}"
     url = None
+    icon = None
     if prop == "Reference":
       textcolor = "referencepart"
       text = instancedata("reference", diffs, context, text)
@@ -691,6 +692,11 @@ class Field(Drawable):
         text += unit_to_alpha(instancedata("unit", diffs, context, 0))
     elif prop == "Value":
       textcolor = "valuepart"
+      for i, c in enumerate(reversed(context)):
+        if hasattr(c, "power_net"):
+          if (c.power_net(diffs, context[: -i - 1]) or "").startswith("/"):
+            icon = "local"
+          break
     elif prop == "Intersheetrefs":
       textcolor = "intersheet_refs"
     elif prop == "Sheetname":
@@ -723,6 +729,7 @@ class Field(Drawable):
       "textcolor": textcolor,
       "url": url,
       "hidden": "hide" in self,
+      "icon": icon,
     }
     args.update(self.svgargs(diffs, context))
     svg.text(**args)

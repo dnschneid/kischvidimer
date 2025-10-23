@@ -539,17 +539,20 @@ class Netlister:
     symbol_def = None
     is_unique = False
     symuuid = None
+    power_net = None
     pins = None
-    for c in reversed(context):
+    for i, c in enumerate(reversed(context)):
       if isinstance(c, SymbolBody):
         unit = unit_to_alpha(c.unit)
       elif isinstance(c, SymbolDef):
         symbol_def = c
       elif hasattr(c, "refdes"):
+        sym_context = context[: -i - 1]
         symuuid = c.uuid(generate=True)
-        ref = c.refdes([], context)
-        show_unit = c.show_unit([], context)
-        variant = c.variant([], context)
+        ref = c.refdes([], sym_context)
+        show_unit = c.show_unit([], sym_context)
+        variant = c.variant([], sym_context)
+        power_net = c.power_net([], sym_context, self.netprefix)
         pins = symbol_def.get_pins([], context, variant=variant)
         break
     name, number = pin.name_num([], context)
@@ -563,7 +566,7 @@ class Netlister:
     if ref and show_unit and name and name != "~":
       ref += unit
     pinnet = (
-      name
+      power_net or name
       if is_pwr
       else NetBus.PIN_NAME(
         ref=ref, name=name, number=number, is_unique=is_unique
@@ -574,7 +577,7 @@ class Netlister:
     ic = InstCoord(context, pin.pts([], context)[0], False)
     self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
     if is_pwr:
-      il = InstLabel(context, pinnet, True)
+      il = InstLabel(context, pinnet, not pinnet.startswith("/"))
       netbus = self._by_instlabel.getrep(il, netbus)
     elif is_nc:
       netbus.add_nc(ic.instance)

@@ -807,6 +807,7 @@ class Svg:
     rotate=None,
     hidden=None,
     url=None,
+    icon=None,
     tag=None,
   ):
     needsgroup = False
@@ -827,6 +828,7 @@ class Svg:
     ### end workaround
     vjust = [(vjustmap[str(j).lower()], c) for j, c in Param.ify(vjustify)]
     url = Param.ify(url)
+    icon = Param.ify(icon)
     if (
       len(rotate) > 1
       or rotate[0][0]
@@ -836,6 +838,8 @@ class Svg:
       or "\n" in text[0][0]
       or len(url) > 1
       or self._mirror_text
+      or len(icon) > 1
+      or icon[0][0]
     ):
       needsgroup = True
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)
@@ -929,6 +933,9 @@ class Svg:
       )
       # KiCad ignores a single trailing newline
       t = text[i][0][:-1] if text[i][0].endswith("\n") else text[i][0]
+      # FIXME: render icon separately/accurately and handle multiple types
+      if icon.get(i)[0]:
+        t = f"📍{t}"  # FIXME: icons aren't supposed to affect justification...
       splittext = t.split("\n")
       for lineno, line in enumerate(splittext):
         yattr = (

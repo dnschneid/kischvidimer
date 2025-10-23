@@ -737,6 +737,24 @@ class SymbolInst(Drawable, HasUUID):
   def variant(self, diffs, context):
     return self.get("body_style", default=self.get("convert", default=[1]))[0]
 
+  @sexp.uses("power")
+  def power_net(self, diffs, context, netprefix="/"):
+    """If power symbol, return the net; if local, include netprefix"""
+    lib = context[-1]["lib_symbols"][0]
+    lib_id = self.lib_id(diffs, context)
+    sym = lib.symbol(lib_id)
+    power_type = sym.get("power", default=[None])[0]
+    if not power_type:
+      return None
+    netprefix = netprefix.rstrip("/") + "/" if power_type == "local" else ""
+    # Power symbols use the Value as the net
+    variables = Variables.v(context)
+    if "property" in self:
+      for prop in self["property"]:
+        if prop.name == "Value":
+          return netprefix + variables.expand(context + (self,), prop.value)
+    return netprefix + lib_id.rpartition(":")[2]
+
   def as_comp(self, context):
     # returns (refdes, {dict of properties})
     # Special properties:
