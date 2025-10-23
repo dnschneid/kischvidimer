@@ -824,6 +824,27 @@ class Variables:
   RE_VAR = re.compile(r"\${([^}:]+:)?([^}]+)}")
   RE_EXPR = re.compile(r"@{(?:" + RE_VAR.pattern + r"|[^}])*}")
   RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
+  UNITS = {
+    "ps/mm": 1,
+    "ps/cm": 1,
+    "ps/in": 1,
+    "mm": 1,
+    "cm": "1/10",
+    "in": "254/10",
+    # '"': "254/10",  # needs special-casing
+    "mil": "254/10000",
+    "thou": "254/10000",
+    "um": 1000,
+    "deg": 1,
+    "°": 1,
+    "ps": 1,
+    "ns": 1,
+    "fs": 1,
+  }
+  RE_UNITS = re.compile(
+    r"([0-9.]\s*)(" + "|".join(UNITS) + r")(?![a-zA-Z0-9_])"
+  )
+  UNITS_SUB = {u: f"*{v}{'':{i}}" for i, (u, v) in enumerate(UNITS.items())}
 
   def __init__(self):
     # Maps a uuid to a dict of variable definitions. If a variable isn't defined
@@ -937,13 +958,17 @@ class Variables:
 
     hist = set() if hist is None else hist
 
-    # FIXME: parse units in literals, convert to default unit
-    # FIXME: numbers can be added to strings (becomes concat), not vice-versa
     # Use a parser-ignored and likely unique string to tag replaces so that we
     # can undo them if it turns out they were inside a string literal.
     tag = "\t \t  \t \t"
+
+    # FIXME: parse quote unit
+    # FIXME: numbers can be added to strings (becomes concat), not vice-versa
     expr = expr.replace("^", f"{tag}**{tag}")
     expr = Variables.RE_IF.sub(f"{tag}__if__{tag}", expr)
+    expr = Variables.RE_UNITS.sub(
+      lambda m: f"{m[1]}{tag}{Variables.UNITS_SUB[m[2]]}{tag}", expr
+    )
 
     g = evaluation_context()
     try:
@@ -951,18 +976,21 @@ class Variables:
     except (NameError, SyntaxError):
       return orig_expr
 
-    # Booleans are output as 1 or 0
-    if isinstance(ret, bool):
+    if isinstance(ret, (bool, int)):
+      # Booleans are output as 1 or 0
       ret = int(ret)
-
-    # Make sure we're receiving a sane type (e.g., not a function object)
-    if not isinstance(ret, (float, int, str)):
-      return orig_expr
-
-    # Undo changes that still have the tagging
-    if isinstance(ret, str):
+    elif isinstance(ret, float):
+      # Floats should avoid having ".0" if possible
+      ret = f"{ret:g}"
+    elif isinstance(ret, str):
+      # Undo changes that still have the tagging
       ret = ret.replace(f"{tag}**{tag}", "^")
       ret = ret.replace(f"{tag}__if__{tag}", "if")
+      for orig, t in Variables.UNITS_SUB.items():
+        ret = ret.replace(f"{tag}{t}{tag}", orig)
+    else:
+      # Weird types suggest an eval issue (e.g., a function object returned)
+      ret = orig_expr
 
     return str(ret)
 
