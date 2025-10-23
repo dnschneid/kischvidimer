@@ -930,6 +930,13 @@ class Variables:
       variable = variable[2]
     elif ":" in variable:
       context, _, variable = variable.partition(":")
+    if variable.partition(" ")[0] in (
+      "ERC_WARNING",
+      "ERC_ERROR",
+      "DRC_WARNING",
+      "DRC_ERROR",
+    ):
+      return ""
     context = self._resolve_context(context)
     while True:
       hist_entry = (context, variable)
