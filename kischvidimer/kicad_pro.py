@@ -132,13 +132,22 @@ class KicadPro(Comparable):
     """
     pages = {}
     projdir = os.path.dirname(self._fname or "")
-    to_load = [
-      f"{projdir}/{self.project}.kicad_sch"
-      if projdir
-      else f"{self.project}.kicad_sch"
-    ]
+    tls = self.json.get("schematic", {}).get(
+      "top_level_sheets",
+      [
+        {
+          "filename": f"{self.project}.kicad_sch"  # name, uuid not known
+        }
+      ],
+    )
+    # FIXME: flat schematics have the name and uuid defined in the kicad_pro,
+    # overriding the uuid in the kicad_sch. All of the root pages share "/"
+    # as the path prefix.
+    # The whole TOC thing will need to be adjusted to support a list at top
+    assert len(tls) == 1, "flat schematics aren't supported yet"
+    to_load = [f"{projdir}/" * bool(projdir) + s["filename"] for s in tls]
     if p:
-      p.incr_max()
+      p.incr_max(len(to_load))
     while to_load:
       filepath = to_load.pop()
       relpath = os.path.relpath(filepath, projdir)
