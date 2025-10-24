@@ -379,6 +379,15 @@ class SymbolDef(sexp.SExp, Comparable):
         cfg["number"]["hide"] = True
     return cfg
 
+  @sexp.uses("duplicate_pin_numbers_are_jumpers", "jumper_pin_groups")
+  def jumpers(self, diffs):
+    # Returns a tuple of (bool(dupes are jumpers), pin groups)
+    # FIXME: diffs
+    return (
+      self.get("duplicate_pin_numbers_are_jumpers", [0])[0] == "yes",
+      self.get("jumper_pin_groups", []),
+    )
+
   @sexp.uses("extends")
   def _sym(self, diffs, context):
     # Returns the true symbol (e.g., if extending, returns that one)

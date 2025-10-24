@@ -399,6 +399,7 @@ class Netlister:
     self._nodes_by_inst = {}
     self._wires_by_inst = {}
     self._instcoord_count = {}  # connection count by coordinate
+    self._pinnets_by_ref = {}  # ref: {pin: net}
     self.netprefix = "/"  # updated by callers to set the local net name prefix
 
   def context(self):
@@ -541,11 +542,14 @@ class Netlister:
     symuuid = None
     power_net = None
     pins = None
+    jumper_dupe_pins = None
+    jumper_pin_groups = None
     for i, c in enumerate(reversed(context)):
       if isinstance(c, SymbolBody):
         unit = unit_to_alpha(c.unit)
       elif isinstance(c, SymbolDef):
         symbol_def = c
+        jumper_dupe_pins, jumper_pin_groups = symbol_def.jumpers([])
       elif hasattr(c, "refdes"):
         sym_context = context[: -i - 1]
         symuuid = c.uuid(generate=True)
@@ -582,6 +586,17 @@ class Netlister:
     elif is_nc:
       netbus.add_nc(ic.instance)
     netbus = self._by_instcoord.setrep(ic, netbus)
+    if ref and (jumper_dupe_pins or jumper_pin_groups):
+      # Initialize the pin groups
+      pinnets = self._pinnets_by_ref.setdefault(ref, ReplaceableDict())
+      if not pinnets:
+        for groups in jumper_pin_groups.data:
+          groupnetbus = Net()
+          for n in groups.data:
+            groupnetbus = pinnets.setrep(n, groupnetbus)
+      # Don't add to the map unless the pin can be jumpers
+      if jumper_dupe_pins or number in pinnets:
+        netbus = pinnets.setrep(number, netbus)
     netbus.add_node(ic.instance, self, (symuuid, number))
     netbus.add_name(
       pinnet, category=NetBus.CAT_POWER if is_pwr else NetBus.CAT_SYMPIN
