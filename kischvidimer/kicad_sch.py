@@ -743,7 +743,8 @@ class SymbolInst(Drawable, HasUUID):
     lib = context[-1]["lib_symbols"][0]
     lib_id = self.lib_id(diffs, context)
     sym = lib.symbol(lib_id)
-    power_type = sym.get("power", default=[None])[0]
+    power_type = sym.get("power", [None])
+    power_type = power_type[0] if power_type.data else "global"
     if not power_type:
       return None
     netprefix = netprefix.rstrip("/") + "/" if power_type == "local" else ""
