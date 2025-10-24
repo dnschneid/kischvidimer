@@ -681,8 +681,6 @@ class Field(Drawable):
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
     show_name = "show_name" in self  # TODO: is this ever "no"?
-    if show_name:
-      text = f"{prop}: {text}"
     url = None
     icon = None
     if prop == "Reference":
@@ -712,6 +710,8 @@ class Field(Drawable):
       textcolor = "sheetfields"
     else:
       textcolor = "fields"
+    if show_name:
+      text = f"{prop}: {text}"
     pos = self["at"][0].pos(diffs)
     # Properties of labels are rendered with offsets defined by the label type
     if hasattr(context[-1], "get_text_offset"):
