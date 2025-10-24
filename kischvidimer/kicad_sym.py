@@ -104,7 +104,7 @@ class PinDef(Drawable):
 
     pos = self["at"][0].pos(diffs)
     rot = self["at"][0].rot(diffs)
-    length = float(self.get("length", 0)[0])
+    length = float(self.get("length", [0])[0])
     mirror = 1 if rot in (0, 90) else -1
 
     # Compensate for mirror/rotation in instantiations
