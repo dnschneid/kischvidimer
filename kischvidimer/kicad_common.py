@@ -915,11 +915,8 @@ class Variables:
     vardict.setdefault(variable.upper(), value)
 
   def expand(self, context, text, hist=None):
-    hist = set() if hist is None else hist
     text = Variables.RE_VAR.sub(lambda m: self.resolve(context, m, hist), text)
-    text = Variables.RE_EXPR.sub(
-      lambda m: self.evaluate(context, m[0], hist), text
-    )
+    text = Variables.RE_EXPR.sub(lambda m: self.evaluate(context, m[0]), text)
     return text
 
   def resolve(self, context, variable, hist=None):
@@ -965,12 +962,10 @@ class Variables:
         return orig_variable
       context = context.rpartition("/")[0]
 
-  def evaluate(self, context, expr, hist=None):
+  def evaluate(self, context, expr):
     """Evaluates an arbitrary string expression, including the @{}"""
     orig_expr = expr
     expr = expr[2:-1]  # remove @{}
-
-    hist = set() if hist is None else hist
 
     # Use a parser-ignored and likely unique string to tag replaces so that we
     # can undo them if it turns out they were inside a string literal.
