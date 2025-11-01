@@ -648,6 +648,7 @@ class SymbolInst(Drawable, HasUUID):
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
+    dnp = self.dnp(diffs)
     svg.gstart(path=self.uuid(generate=True))
     if subdraw:
       # FIXME: diffs, of course
@@ -665,7 +666,8 @@ class SymbolInst(Drawable, HasUUID):
         mirror=mirror,
         hidden=False,
       )
-      svg.instantiate(
+      svg.gstart(filt="dim" * dnp)
+      bounds = svg.instantiate(
         subdraw, lib, lib_id, unit=unit, variant=variant, context=(self,)
       )
       # Draw unconnected circles
@@ -684,8 +686,13 @@ class SymbolInst(Drawable, HasUUID):
               color="device",  # FIXME: not the correct color
               thick="ui",
             )
+      svg.gend()  # dim
+      if dnp and bounds and subdraw & Drawable.DRAW_FG:
+        draw_dnp(svg, bounds)
       svg.gend()
+    svg.gstart(filt="dim" * dnp)
     super().fillsvg(svg, diffs, draw, context)
+    svg.gend()  # dim
     svg.gend()  # path
 
   def show_unit(self, diffs, context):
@@ -712,6 +719,10 @@ class SymbolInst(Drawable, HasUUID):
       rot = (rot + 180) % 360
       mirror = "x"
     return (rot, mirror)
+
+  @sexp.uses("dnp")
+  def dnp(self, diffs):
+    return self.get("dnp", default=[False])[0] == "yes"
 
   def refdes(self, diffs, context):
     return instancedata(
@@ -761,11 +772,14 @@ class SymbolInst(Drawable, HasUUID):
     # Special properties:
     #   chr(1): local uuid
     #   chr(2): lib_id
+    #   chr(3): dnp
     props = {
       chr(1): self.uuid(generate=True),
       chr(2): self.lib_id([], context),
       "Reference": self.refdes([], context),
     }
+    if self.dnp([]):
+      props[chr(3)] = True
     if "property" not in self:
       return props["Reference"], props
     variables = Variables.v(context)
@@ -837,8 +851,10 @@ class Sheet(Drawable, HasUUID):
     # FIXME: diffs, of course
     pos = self["at"][0].pos(diffs)
     size = self["size"][0].data
+    dnp = self.dnp(diffs)
 
     svg.gstart(path=self.uuid(generate=True))
+    svg.gstart(filt="dim" * dnp)
 
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
@@ -859,7 +875,25 @@ class Sheet(Drawable, HasUUID):
     # Draw the rest of the owl
     super().fillsvg(svg, diffs, draw, context)
 
+    svg.gend()  # dim
+    if dnp and draw & Drawable.DRAW_FG:
+      # FIXME: in the sheet case, margins for the X include property text
+      margin = sexp.Decimal("1.27")
+      draw_dnp(
+        svg,
+        (
+          pos[0] - margin,
+          pos[1] - margin,
+          pos[0] + size[0] + margin,
+          pos[1] + size[1] + margin,
+        ),
+      )
+
     svg.gend()  # path
+
+  @sexp.uses("dnp")
+  def dnp(self, diffs):
+    return self.get("dnp", default=[False])[0] == "yes"
 
   def paths(self, project=None):
     """Returns a list of path elements for a project"""
@@ -1047,6 +1081,22 @@ def kicad_sch(f, fname=None):
     if "version" in data[0] and data[0]["version"][0].is_supported:
       return data[0]
   return None
+
+
+def draw_dnp(svg, bounds):
+  # FIXME: SCH_SYMBOL::PlotDNP uses a fancy calculation for margins which comes
+  # out to -0.4x the pin length if pins exist on an edge, and -0.7x other pin
+  # length if the edge has none. Sheets are even wonkier, including properties.
+  margin = 0.4 * 1.27
+  bounds = list(map(float, bounds))
+  adj = (
+    bounds[0] + margin,
+    bounds[1] + margin,
+    bounds[2] - margin,
+    bounds[3] - margin,
+  )
+  pts = (adj[:2], adj[2:], (adj[0], adj[3]), (adj[2], adj[1]))
+  svg.lines(pts, color="dnp_marker", thick="dnp")
 
 
 def main(argv):

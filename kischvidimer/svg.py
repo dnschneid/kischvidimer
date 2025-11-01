@@ -66,6 +66,7 @@ class Svg:
     "ui": 0.0762,  # mm
     "wire": 0.1524,  # mm
     "bus": 0.3048,  # mm
+    "dnp": 0.1524 * 3,  # mm
   }
   # It seems a font of size 1.5775 has an em height of 2.54 in KiCad
   FONT_SIZE = 2.54 / 1.5775  # converting KiCad glyph width to em height
@@ -296,7 +297,14 @@ class Svg:
     self._animate = []
 
   def gstart(
-    self, pos=None, rotate=None, mirror=False, hidden=False, path=None, tag=None
+    self,
+    pos=None,
+    rotate=None,
+    mirror=False,
+    hidden=False,
+    filt="",
+    path=None,
+    tag=None,
   ):
     """Starts a group, optionally with coordinate offset."""
     transform = []
@@ -316,6 +324,7 @@ class Svg:
     pos = Param.ify(pos, (0, 0))
     rotate = Param.ify(rotate, 0)
     mirror = Svg._mirror(mirror)
+    filt = [(f"url(#{f})" if f else "", c) for f, c in Param.ify(filt)]
     if not prune and (len(pos) > 1 or pos[0][0] != (0, 0)):
       transform.append(
         ("translate", float(pos[0][0][0]), float(self.y(pos[0][0][1])))
@@ -329,9 +338,11 @@ class Svg:
           [((Svg.tounit(p[0]), Svg.tounit(self.y(p[1]))), c) for p, c in pos],
         )
         + self.attr("opacity", opacity, 1)
+        + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
       opacity = Param.ify(1)
+      filt = Param.ify("")
     if not prune and (len(mirror) > 1 or mirror[0][0] != (1, 1)):
       transform.append(("scale",) + mirror[0][0])
       self.add(
@@ -340,9 +351,11 @@ class Svg:
         + self.attr("p", path, "")
         + self.attr("scale", mirror)
         + self.attr("opacity", opacity, 1)
+        + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
       opacity = Param.ify(1)
+      filt = Param.ify("")
     if not prune and (len(rotate) > 1 or rotate[0][0]):
       transform.append(("rotate", -rotate[0][0]))
       self.add(
@@ -351,11 +364,19 @@ class Svg:
         + self.attr("p", path, "")
         + self.attr("rotate", [((-s,), c) for s, c in rotate])
         + self.attr("opacity", opacity, 1)
+        + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
       opacity = Param.ify(1)
+      filt = Param.ify("")
     if prune or not transform:
-      if not prune and len(opacity) == 1 and not path[0][0] and not tag:
+      if (
+        not prune
+        and len(opacity) == 1
+        and not path[0][0]
+        and not tag
+        and not filt
+      ):
         transform.append(("noop",))
       else:
         self.add(
@@ -364,6 +385,7 @@ class Svg:
           + prune
           + self.attr("p", path, "")
           + self.attr("opacity", opacity, 1)
+          + self.attr("filter", filt)
         ).hascontents()
     self._rotatestate.append(rotate)
     self._mirrorstate.append(mirror)
@@ -662,6 +684,28 @@ class Svg:
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
     ).nocontents()
+
+  def lines(
+    self,
+    xys,
+    color="notes",
+    fill=None,
+    thick="wire",
+    pattern=None,
+    tag=None,
+  ):
+    """Renders a set of disconnected lines.
+    xys should be a list of tuples of coordinates, or a Param of such.
+    """
+    self._path(
+      lambda i: "L " if i % 2 else "M ",
+      xys=xys,
+      color=color,
+      fill=fill,
+      thick=thick,
+      pattern=pattern,
+      tag=tag,
+    )
 
   def polyline(
     self,
@@ -1080,6 +1124,7 @@ class Svg:
     self._wks_bounds, self._bounds = self._bounds, orig_bounds
 
   def _instantiate(self, name):
+    bounds = None
     for i in range(len(name)):
       symsvg = self.symbols.get(name[i][0])
       if not symsvg:
@@ -1101,7 +1146,7 @@ class Svg:
         self._update_bounds(
           (bounds[0], self.y(bounds[1])), (bounds[2], self.y(bounds[3]))
         )
-    return True
+    return bounds
 
   def _mirror_state(self, i=0):
     mirror_state = False

@@ -111,6 +111,7 @@ export function pageNum(i) {
 export const KEY_PAGE = "\x00"; // component pageIndex
 export const KEY_PATH = "\x01"; // component path (uuid)
 export const KEY_LIB_ID = "\x02"; // component library ID
+export const KEY_DNP = "\x03"; // component DNP
 
 function initComps() {
   // Create a component lookup database
@@ -158,6 +159,9 @@ export function lookupComp(refdesOrPath, pageIndex) {
     result.prop = "Reference";
     result.value = refdes;
     result.display = refdes;
+    if (insts[instIndex][KEY_DNP]) {
+      result.display += " (DNP)";
+    }
     result.data = insts[instIndex]; // FIXME: merge the data?
   }
   return result;
@@ -186,6 +190,9 @@ export function searchComps(query) {
       result.type = "component";
       result.id = refdes;
       result.display = refdes;
+      if (instances[0][KEY_DNP]) {
+        result.display += " (DNP)";
+      }
       result.pages = instances.map((i) => compProp(i, KEY_PAGE));
       result.pages.sort();
       results.push(result);

@@ -273,6 +273,23 @@ function setTheme(name, target) {
     );
   }
   Diffs.applyAnimationColorWorkaround(name);
+
+  // Dim filter desaturates and does a 50% blend with the background
+  let bg = DB.ui.themes[name]["d"]
+    .replace(/[^0-9.,]/g, "")
+    .split(",")
+    .map(parseFloat);
+  document
+    .getElementById("dim")
+    .getElementsByTagName("feColorMatrix")[0]
+    .setAttribute(
+      "values",
+      ` \
+       0.1065 0.3575 0.036 0 ${bg[0] / 255 / 2} \
+       0.1065 0.3575 0.036 0 ${bg[1] / 255 / 2} \
+       0.1065 0.3575 0.036 0 ${bg[2] / 255 / 2} \
+       0 0 0 1 0`,
+    );
 }
 
 function injectPage(pageIndex) {
