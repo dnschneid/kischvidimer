@@ -288,19 +288,14 @@ class SymbolDef(sexp.SExp, Comparable):
   """A single library symbol entity, either in a library or cache"""
 
   def fillnetlist(self, netlister, diffs, context, unit, variant):
-    to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
-    sym = self._sym(diffs, context)
-    bodies = [b for b in sym["symbol"] if (b.unit, b.variant) in to_render]
-    for body in bodies:
+    for body in self._get_bodies(diffs, context, unit, variant):
       body.fillnetlist(netlister, diffs, context + (self,))
 
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
-    to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
-    sym = self._sym(diffs, context)
-    bodies = [b for b in sym["symbol"] if (b.unit, b.variant) in to_render]
-    for body in bodies:
+    for body in self._get_bodies(diffs, context, unit, variant):
       body.fillsvg(svg, diffs, draw, context + (self,))
     if draw & Drawable.DRAW_PROPS:
+      sym = self._sym(diffs, context)
       properties = {p.name: p for p in sym["property"]}
       if sym is not self:
         properties.update((p.name, p) for p in self["property"])
@@ -323,9 +318,7 @@ class SymbolDef(sexp.SExp, Comparable):
       if cacheentry in self._get_pins_cache:
         return self._get_pins_cache[cacheentry]
     pins = {}
-    sym = self._sym(diffs, context)
-    bodies = [b for b in sym["symbol"] if b.variant in (0, variant)]
-    for body in bodies:
+    for body in self._get_bodies(diffs, context, variant=variant):
       if "pin" not in body:
         continue
       for pin in body["pin"]:
@@ -338,10 +331,7 @@ class SymbolDef(sexp.SExp, Comparable):
   def get_con_pin_coords(self, diffs, context, unit, variant=1):
     # Returns a list of coordinates where unconnected markers can appear
     pins = set()
-    sym = self._sym(diffs, context)
-    to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
-    bodies = [b for b in sym["symbol"] if (b.unit, b.variant) in to_render]
-    for body in bodies:
+    for body in self._get_bodies(diffs, context, unit, variant):
       if "pin" not in body:
         continue
       for pin in body["pin"]:
@@ -354,7 +344,10 @@ class SymbolDef(sexp.SExp, Comparable):
 
   def show_unit(self, diffs, context):
     sym = self._sym(diffs, context)
-    return max(b.unit for b in sym["symbol"]) > 1
+    try:
+      return max(b.unit for b in sym["symbol"]) > 1
+    except KeyError:
+      return False
 
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs):
@@ -397,6 +390,22 @@ class SymbolDef(sexp.SExp, Comparable):
           return c.symbol(self["extends"][0][0])
       raise Exception("extended symbol with no library in context")
     return self
+
+  @sexp.uses("symbol")
+  def _get_bodies(self, diffs, context, unit=None, variant=None):
+    try:
+      bodies = self._sym(diffs, context)["symbol"]
+    except KeyError:
+      return []
+    if unit is None and variant is None:
+      return bodies.copy()
+    elif unit is None:
+      return [b for b in bodies if b.variant in (0, variant)]
+    elif variant is None:
+      return [b for b in bodies if b.unit in (0, unit)]
+    else:
+      to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
+      return [b for b in bodies if (b.unit, b.variant) in to_render]
 
 
 class SymbolInst(PlaceholderHandler):
