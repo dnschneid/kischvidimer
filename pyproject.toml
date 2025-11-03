@@ -32,6 +32,7 @@ license-files = ["LICENSES/*.txt"]
 
 [tool.setuptools_scm]
 version_file = "kischvidimer/_version.py"
+fallback_version = "0"
 
 [tool.ruff]
 extend-exclude = [
