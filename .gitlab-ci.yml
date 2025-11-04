@@ -11,6 +11,7 @@ pre-commit:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/build/cache/pip"
     PRE_COMMIT_HOME: "$CI_PROJECT_DIR/build/cache/pre-commit"
   before_script:
+    - apt-get update && apt-get install --no-install-recommends -y npm
     - pip install pre-commit
   script:
     - pre-commit run --all-files
