@@ -576,6 +576,8 @@ class Svg:
     # Returns the center, radius, and largearc flag from a set of three points
     # from https://math.stackexchange.com/a/3503338
     z1, z2, z3 = complex(*a), complex(*b), complex(*c)
+    if z1 == z2 or z2 == z3:
+      return (z2.real - 1e9, z2.imag - 1e9), 1e9, False, False
     w = (z3 - z1) / (z2 - z1)
     c = (z2 - z1) * (w - abs(w) ** 2) / (2j * w.imag) + z1
     r = abs(z1 - c)
