@@ -71,6 +71,12 @@ def unit_to_alpha(unit):
   return alpha
 
 
+def dec_to_float(dec):
+  if isinstance(dec, sexp.Decimal):
+    return float(dec)
+  return type(dec)(map(float, dec))
+
+
 def instancedata(field, diffs, context, default=None):
   # FIXME diffs!!!!
   project = None
@@ -587,8 +593,10 @@ class TextBox(Drawable):
     # left, top, right, bottom
     margins = [args["size"] * 4 / 5] * 4
     if "margins" in self:
-      margins = self["margins"][0].data
+      margins = dec_to_float(self["margins"][0].data)
     pos, size = self.pos_size(diffs)
+    pos = dec_to_float(pos)
+    size = dec_to_float(size)
     if (
       draw & Drawable.DRAW_BG
       or draw & Drawable.DRAW_FG
