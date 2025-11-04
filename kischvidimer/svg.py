@@ -487,10 +487,20 @@ class Svg:
         for i, c in enumerate(classes)
       ]
     else:
-      x = [(p[0], c) for p, c in pos]
-      y = [(self.y(p[1]), c) for p, c in pos]
       width = Param.ify(width)
       height = Param.ify(height)
+      x = [(p[0], c) for p, c in pos]
+      y = [
+        (
+          min(
+            self.y(pos.get(i)[0][1]),
+            self.y(pos.get(i)[0][1] + height.get(i)[0]),
+          ),
+          Svg.classunion(pos.get(i), height.get(i)),
+        )
+        for i in range(max(map(len, (pos, height))))
+      ]
+      height = [(abs(h), c) for h, c in height]
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)

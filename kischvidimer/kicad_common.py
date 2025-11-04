@@ -581,11 +581,12 @@ class TextBox(Drawable):
   @sexp.uses("margins")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
+    is_symbol = any(c.type == "symbol" for c in context)
     is_pg = "${" in self[0]
     args = {
       "rotate": None,
-      "color": "notes",
-      "textcolor": "notes",
+      "color": "device" if is_symbol else "notes",
+      "textcolor": "device" if is_symbol else "notes",
       "fill": "none",
       "thick": "wire",
     }
@@ -643,9 +644,12 @@ class TextBox(Drawable):
         tpos = (pos[0] + margins[0], tpos[1])
       elif args.get("justify") == "right":
         tpos = (pos[0] + size[0] - margins[2], tpos[1])
-      if args.get("vjustify") == "top":
+      # symbols have Y inverted, so compensate by swapping the vjust calcs.
+      # svg will handle the rest
+      vjust = ("bottom", "top") if is_symbol else ("top", "bottom")
+      if args.get("vjustify") == vjust[0]:
         tpos = (tpos[0], pos[1] + margins[1])
-      elif args.get("vjustify") == "bottom":
+      elif args.get("vjustify") == vjust[1]:
         tpos = (tpos[0], pos[1] + size[1] - margins[3])
       targs = {
         x: args[x]
