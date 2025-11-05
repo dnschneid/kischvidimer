@@ -72,7 +72,7 @@ def unit_to_alpha(unit):
 
 
 def dec_to_float(dec):
-  if isinstance(dec, sexp.Decimal):
+  if isinstance(dec, (sexp.Decimal, float, int)):
     return float(dec)
   return type(dec)(map(float, dec))
 
@@ -592,7 +592,7 @@ class TextBox(Drawable):
     }
     args.update(self.svgargs(diffs, context))
     # left, top, right, bottom
-    margins = [args["size"] * 4 / 5] * 4
+    margins = [dec_to_float(args["size"]) * 4 / 5] * 4
     if "margins" in self:
       margins = dec_to_float(self["margins"][0].data)
     pos, size = self.pos_size(diffs)
