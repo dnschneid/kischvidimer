@@ -34,6 +34,18 @@ license-files = ["LICENSES/*.txt"]
 version_file = "kischvidimer/_version.py"
 fallback_version = "0"
 
+[tool.setuptools.package-data]
+kischvidimer = [
+  "*.js",
+  "diffui.css",
+  "diffui.html",
+  "fonts/*.woff",
+  "icons/*.svg",
+  "js-libraries/*.min.css",
+  "js-libraries/*.min.js",
+  "templates/*.kicad_wks",
+]
+
 [tool.ruff]
 extend-exclude = [
   "kischvidimer/diff.py",
