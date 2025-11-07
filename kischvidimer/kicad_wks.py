@@ -290,12 +290,11 @@ class KicadWks(Drawable):
   def wks_hash(self, context):
     """calculates and returns the hash for a context."""
     # FIXME: include worksheet itself in hash?
-    return hash(
-      (
-        self["setup"][0].is_pgone(context),
-        self["setup"][0].page_corners(context),
-      )
-    )
+    try:
+      setup = self["setup"][0]
+    except KeyError:
+      setup = sexp.parse("(setup)")[0]
+    return hash((setup.is_pgone(context), setup.page_corners(context)))
 
 
 DEFAULT_WORKSHEET_PATH = "templates/pagelayout_default.kicad_wks"
@@ -345,7 +344,7 @@ def kicad_wks(f, fname=None):
       return data[0]
   defpath = os.path.join(os.path.dirname(__file__), DEFAULT_WORKSHEET_PATH)
   if fname == defpath or not os.path.isfile(defpath):
-    return sexp.parse(DEFAULT_WORKSHEET)
+    return sexp.parse(DEFAULT_WORKSHEET)[0]
   return kicad_wks(open(defpath), defpath)
 
 
