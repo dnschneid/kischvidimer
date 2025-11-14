@@ -186,9 +186,9 @@ class Coord(sexp.SExp, Comparable):
 class Drawable(sexp.SExp, Comparable):
   DRAW_WKS = 1 << 0  # worksheet
   DRAW_WKS_PG = 1 << 1  # page-specific worksheet elements
-  DRAW_IMG = 1 << 2
+  DRAW_SYMBG = 1 << 2
   DRAW_BG = 1 << 3
-  DRAW_SYMBG = 1 << 4
+  DRAW_IMG = 1 << 4
   DRAW_PINS = 1 << 5
   DRAW_SYMFG = DRAW_PINS  # context: schematic, includes pins/fg/text
   DRAW_TEXT_PG = 1 << 6  # page-specific text (variables)
@@ -246,6 +246,13 @@ class Drawable(sexp.SExp, Comparable):
     for item in self.data:
       if isinstance(item, Drawable):
         item.fillnetlist(netlister, diffs, context)
+
+  @staticmethod
+  def draw_body(draw, fill):
+    if isinstance(fill, dict):
+      fill = fill["fill"]
+    body_draw = Drawable.DRAW_FG if fill == "outline" else Drawable.DRAW_BG
+    return draw & body_draw != 0
 
 
 class Modifier(sexp.SExp, Comparable):
@@ -456,7 +463,7 @@ class Polyline(Drawable):
     args.update(self.svgargs(diffs, context))
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
-    if not draw & Drawable.DRAW_BG:
+    if not self.draw_body(draw, args):
       args["fill"] = "none"
     self._draw(svg, args)
 
@@ -490,7 +497,7 @@ class Arc(Drawable):
     }
     args["fill"] = f"{args['color']}_background"
     args.update(self.svgargs(diffs, context))
-    if draw & Drawable.DRAW_BG:
+    if not self.draw_body(draw, args):
       thick = args["thick"]
       args["thick"] = 0
       svg.arc(**args)
@@ -517,7 +524,7 @@ class Circle(Drawable):
     args.update(self.svgargs(diffs, context))
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
-    if not draw & Drawable.DRAW_BG:
+    if not self.draw_body(draw, args):
       args["fill"] = "none"
     svg.circle(**args)
 
@@ -538,7 +545,7 @@ class Rectangle(Drawable):
     args.update(self.svgargs(diffs, context))
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
-    if not draw & Drawable.DRAW_BG:
+    if not self.draw_body(draw, args):
       args["fill"] = "none"
     svg.rect(**args)
 
@@ -613,7 +620,7 @@ class TextBox(Drawable):
         rargs["thick"] = 0
       if not draw & Drawable.DRAW_FG:
         rargs["thick"] = 0
-      if not draw & Drawable.DRAW_BG:
+      if not self.draw_body(draw, args):
         rargs["fill"] = "none"
       svg.rect(**rargs)
     if draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):

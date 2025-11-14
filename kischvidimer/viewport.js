@@ -215,7 +215,6 @@ export function selectInstance(container, inst) {
     if (inst === undefined || anim.classList.contains(inst)) {
       anim.parentNode.removeAttribute("opacity");
       anim.outerHTML = "";
-      inst = null;
     } else {
       anim.parentNode.outerHTML = "";
     }

@@ -84,25 +84,21 @@ class Page:
     self.name = ": ".join(
       n for n in (name, self.svg.vars.get("~pagetitle")) if n
     )
-    # Common background elements
-    page.fillsvg(
-      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_BG, context=self.context
-    )
-    # Page-specific elements
-    for path, sheet in instances:
-      uuid = path.uuid(sheet)
-      self.svg.metadata_context = uuid
-      pgcontext = self.context + (path, sheet)
-      self.svg.gstart(hidden=[(True, None), (False, f"instance {uuid}")])
-      page.fillsvg(
-        self.svg, diffs, Drawable.DRAW_STAGE_PAGE_SPECIFIC, context=pgcontext
-      )
-      self.svg.gend()
-    self.svg.metadata_context = None
-    # Common foreground elements
-    page.fillsvg(
-      self.svg, diffs, Drawable.DRAW_STAGE_COMMON_FG, context=self.context
-    )
+    # Render layers
+    for draw in Drawable.DRAW_SEQUENCE:
+      if draw & Drawable.DRAW_STAGE_PAGE_SPECIFIC:
+        # Page-specific elements
+        for path, sheet in instances:
+          uuid = path.uuid(sheet)
+          self.svg.metadata_context = uuid
+          pgcontext = self.context + (path, sheet)
+          self.svg.gstart(hidden=[(True, None), (False, f"instance {uuid}")])
+          page.fillsvg(self.svg, diffs, draw, context=pgcontext)
+          self.svg.gend()
+        self.svg.metadata_context = None
+      else:
+        # Common elements
+        page.fillsvg(self.svg, diffs, draw, context=self.context)
     # Clear out symbol library; this is tracked elsewhere
     self.svg.symbols = {}
 

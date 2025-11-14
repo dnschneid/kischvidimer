@@ -868,7 +868,7 @@ class Sheet(Drawable, HasUUID):
       args.update(self.svgargs(diffs, context))
       if not draw & Drawable.DRAW_FG:
         args["thick"] = 0
-      if not draw & Drawable.DRAW_BG:
+      if not self.draw_body(draw, args):
         args["fill"] = "none"
       svg.rect(**args)
 
