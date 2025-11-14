@@ -14,7 +14,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import runpy
 import subprocess
 import sys
 import tempfile
@@ -83,7 +82,7 @@ def checkout(path, version):
   )
 
 
-def cat(path, ref=":", relative=False):
+def cat(path, ref=":", relative=False, quiet=False):
   """Returns a file for a path (and ref, if provided)."""
   return subprocess.Popen(
     [
@@ -95,6 +94,7 @@ def cat(path, ref=":", relative=False):
     ],
     cwd=None if relative else repo_path(),
     stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL if quiet else None,
   ).stdout
 
 
@@ -131,17 +131,29 @@ def rev_parse(revs, repo=None):
   return [rev.lstrip("^") for rev in revlist.splitlines()]
 
 
-def get_version(repo=None):
+def get_version(repo=None, githash=None):
   """Returns a friendly string of the current version.
   Specify repo to use a git repo other than the current one."""
   # Check for a _version.py file for special projects and kischvidimer itself
-  versionfile = os.path.join(repo or ".", "_version.py")
-  if os.path.isfile(versionfile):
-    glbls = runpy.run_path(versionfile)
+  versionpath = os.path.join(repo, "_version.py") if repo else "_version.py"
+  try:
+    versionfile = open_rb(versionpath, githash, quiet=True)
+  except FileNotFoundError:
+    versionfile = None
+  if versionfile:
+    glbls = {"__builtins__": {"object": object, "str": str}}
+    try:
+      exec(versionfile.read().decode(), glbls)
+    except NameError as e:
+      print(
+        f"Failed to execute _version.py ('{e.name}' not available)",
+        file=sys.stderr,
+      )
     if "__version__" in glbls:
       return glbls["__version__"]
   ret = subprocess.run(
-    "git describe --all --always --broken --dirty --long".split(),
+    ["git", "describe", "--all", "--always", "--long"]
+    + (["--", githash] if githash else ["--broken", "--dirty"]),
     cwd=repo or ".",
     capture_output=True,
     text=True,
@@ -225,13 +237,13 @@ def isfile(path_or_tuple, githash=None):
   return bool(ls_tree(path_or_tuple, githash, full_tree=False, recurse=False))
 
 
-def open_rb(path_or_tuple, githash=None):
+def open_rb(path_or_tuple, githash=None, quiet=False):
   """Behaves like open(x, 'rb') and handles git hashes as in listdir."""
   if isinstance(path_or_tuple, tuple):
     path_or_tuple, githash = path_or_tuple
   if not githash or not is_in_repo(path_or_tuple):
     return open(path_or_tuple, "rb")
-  return cat(path_or_tuple, githash, relative=True)
+  return cat(path_or_tuple, githash, relative=True, quiet=quiet)
 
 
 # A cache for is_rebase
