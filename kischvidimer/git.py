@@ -121,12 +121,13 @@ def add(path):
   return subprocess.call(["git", "add", "--", path], cwd=repo_path()) == 0
 
 
-def rev_parse(revs, repo=None):
+def rev_parse(revs, repo=None, quiet=False):
   """Parses a revspec for a list of revisions to be considered."""
   revlist = subprocess.check_output(
     ["git", "rev-parse", "--revs-only", revs],
     universal_newlines=True,
     cwd=repo or None,
+    stderr=subprocess.DEVNULL if quiet else None,
   )
   return [rev.lstrip("^") for rev in revlist.splitlines()]
 

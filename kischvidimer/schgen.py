@@ -142,11 +142,18 @@ class Schematic:
     # FIXME: handle diffs correctly
     netlister = Netlister()
     variables = kicad_sch.Variables()
+    projdir = os.path.dirname(self._proj)
+    try:
+      vcshash = git.rev_parse(self._revs[0] or "HEAD", projdir, quiet=True)[0]
+    except git.subprocess.CalledProcessError:
+      vcshash = "no hash"
+    variables.define(variables.GLOBAL, "VCSHASH", vcshash)
+    variables.define(variables.GLOBAL, "VCSSHORTHASH", vcshash[:8])
     for pageset in pagesets:
       projs[0].fillnetlist(netlister, [], pageset, p=p)
       projs[0].fillvars(variables, [], pageset, netlister=netlister, p=p)
 
-    ver = git.get_version(os.path.dirname(self._proj), self._revs[0])
+    ver = git.get_version(projdir, self._revs[0])
     ver += time.strftime(" (%Y-%m-%d %H:%M)")
     ver = " vs ".join(r or ver for r in self._revs)
     title = self._proj.lstrip("./\\")
