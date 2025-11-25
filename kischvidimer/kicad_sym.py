@@ -19,6 +19,7 @@ Also acts as a deduplifying library cache when used with schematic-embedded
 symbols
 """
 
+import random
 import sys
 
 from . import sexp, svg
@@ -344,11 +345,18 @@ class SymbolDef(sexp.SExp, Comparable):
     return pins
 
   def show_unit(self, diffs, context):
-    sym = self._sym(diffs, context)
     try:
-      return max(b.unit for b in sym["symbol"]) > 1
+      return self.num_units(diffs, context) > 1
     except KeyError:
       return False
+
+  def num_units(self, diffs, context):
+    sym = self._sym(diffs, context)
+    return max(b.unit for b in sym["symbol"])
+
+  def num_variants(self, diffs, context):
+    sym = self._sym(diffs, context)
+    return max(b.variant for b in sym["symbol"])
 
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs):
@@ -484,11 +492,21 @@ def main(argv):
     "context": (data[0],),
   }
   if len(argv) > 2:
-    data[0].symbols()[argv[2]].fillsvg(**params)
+    sym = data[0].symbols()[argv[2]]
   else:
-    import random
+    sym = random.choice(list(data[0].symbols().values()))
+  params["unit"] = (
+    int(argv[3])
+    if len(argv) > 3
+    else random.randint(1, sym.num_units([], params["context"]))
+  )
+  params["variant"] = (
+    int(argv[4])
+    if len(argv) > 4
+    else random.randint(1, sym.num_variants([], params["context"]))
+  )
 
-    random.choice(list(data[0].symbols().values())).fillsvg(**params)
+  sym.fillsvg(**params)
   print(str(s))
 
 
