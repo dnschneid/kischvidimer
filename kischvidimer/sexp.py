@@ -175,6 +175,14 @@ class SExp:
   def data(self):
     return self.sexp[1:] if self._has_type else self.sexp
 
+  @property
+  def yes(self):
+    return len(self.sexp) == 1 or is_atom(self.sexp[1], "yes")
+
+  def has_yes(self, atom):
+    item = self.get(atom)
+    return item.yes if isinstance(item, SExp) else bool(item)
+
   def enum(self, *atoms, start_i=0):
     for i, entry in enumerate(self.sexp):
       if i >= start_i and is_atom(entry, atoms[0]):
