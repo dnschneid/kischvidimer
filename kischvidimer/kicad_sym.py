@@ -294,13 +294,14 @@ class SymbolDef(sexp.SExp, Comparable):
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
     for body in self._get_bodies(diffs, context, unit, variant):
       body.fillsvg(svg, diffs, draw, context + (self,))
-    if draw & Drawable.DRAW_PROPS:
+    draw_props = draw & (Drawable.DRAW_PROPS | Drawable.DRAW_PROPS_PG)
+    if draw_props:
       sym = self._sym(diffs, context)
       properties = {p.name: p for p in sym["property"]}
       if sym is not self:
         properties.update((p.name, p) for p in self["property"])
       for field in properties.values():
-        field.fillsvg(svg, diffs, Drawable.DRAW_TEXT, context + (self,))
+        field.fillsvg(svg, diffs, draw_props, context + (self,))
 
   def get_pins(self, diffs, context, variant=1):
     # Returns a dict of pin names and a list of pin numbers for each name
