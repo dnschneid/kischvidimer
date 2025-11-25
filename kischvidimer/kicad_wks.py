@@ -254,8 +254,8 @@ class TBText(Repeatable):
   @sexp.uses("font", "bold", "italic")
   def style(self):
     if "font" in self:
-      bold = "bold" in self["font"][0]
-      italic = "italic" in self["font"][0]
+      bold = self["font"][0].has_yes("bold")
+      italic = self["font"][0].has_yes("italic")
       return (bold, italic)
     return (False, False)
 

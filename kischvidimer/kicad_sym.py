@@ -72,7 +72,7 @@ class PinDef(Drawable):
   @sexp.uses("hide")
   def hide(self, diffs):
     # FIXME: diffs
-    return "hide" in self
+    return self.has_yes("hide")
 
   def fillnetlist(self, netlister, diffs, context):
     self.netbus = netlister.add_sympin(context, self)
@@ -365,11 +365,11 @@ class SymbolDef(sexp.SExp, Comparable):
     if "pin_names" in self:
       if "offset" in self["pin_names"][0]:
         cfg["name"]["xoffset"] = float(self["pin_names"][0]["offset"][0][0])
-      if "hide" in self["pin_names"][0]:
+      if self["pin_names"][0].has_yes("hide"):
         cfg["name"]["hide"] = True
     if "pin_numbers" in self:
       assert "offset" not in self["pin_numbers"][0]
-      if "hide" in self["pin_numbers"][0]:
+      if self["pin_numbers"][0].has_yes("hide"):
         cfg["number"]["hide"] = True
     return cfg
 

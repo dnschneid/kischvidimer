@@ -307,7 +307,7 @@ class Effects(Modifier):
   @sexp.uses("hide")
   def get_hidden(self, diffs):
     # FIXME: diffs
-    return "hide" in self
+    return self.has_yes("hide")
 
   @sexp.uses("href", "mirror")
   def svgargs(self, diffs, context):
@@ -699,7 +699,7 @@ class Field(Drawable):
     is_pg = "${" in text or (prop.lower() in ("reference", "sheetname"))
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
-    show_name = "show_name" in self  # TODO: is this ever "no"?
+    show_name = self.has_yes("show_name")
     url = None
     icon = None
     if prop == "Reference":
@@ -747,7 +747,7 @@ class Field(Drawable):
       "rotate": 0,
       "textcolor": textcolor,
       "url": url,
-      "hidden": "hide" in self,
+      "hidden": self.has_yes("hide"),
       "icon": icon,
     }
     args.update(self.svgargs(diffs, context))
