@@ -1037,6 +1037,54 @@ class Variables:
     return str(ret)
 
 
+# fmt: off
+ESERIES_DATA = (
+  (24,
+    (
+      100, 110, 120, 130, 150, 160, 180, 200, 220, 240, 270, 300, 330, 360, 390,
+      430, 470, 510, 560, 620, 680, 750, 820, 910, 1000,
+    ),
+  ),
+  (192,
+    (
+      100, 101, 102, 104, 105, 106, 107, 109, 110, 111, 113, 114, 115, 117, 118,
+      120, 121, 123, 124, 126, 127, 129, 130, 132, 133, 135, 137, 138, 140, 142,
+      143, 145, 147, 149, 150, 152, 154, 156, 158, 160, 162, 164, 165, 167, 169,
+      172, 174, 176, 178, 180, 182, 184, 187, 189, 191, 193, 196, 198, 200, 203,
+      205, 208, 210, 213, 215, 218, 221, 223, 226, 229, 232, 234, 237, 240, 243,
+      246, 249, 252, 255, 258, 261, 264, 267, 271, 274, 277, 280, 284, 287, 291,
+      294, 298, 301, 305, 309, 312, 316, 320, 324, 328, 332, 336, 340, 344, 348,
+      352, 357, 361, 365, 370, 374, 379, 383, 388, 392, 397, 402, 407, 412, 417,
+      422, 427, 432, 437, 442, 448, 453, 459, 464, 470, 475, 481, 487, 493, 499,
+      505, 511, 517, 523, 530, 536, 542, 549, 556, 562, 569, 576, 583, 590, 597,
+      604, 612, 619, 626, 634, 642, 649, 657, 665, 673, 681, 690, 698, 706, 715,
+      723, 732, 741, 750, 759, 768, 777, 787, 796, 806, 816, 825, 835, 845, 856,
+      866, 876, 887, 898, 909, 920, 931, 942, 953, 965, 976, 988, 1000,
+    ),
+  ),
+)
+# fmt: on
+
+
+def eseries(mode, value, series):
+  snum = series[1:].isnumeric() and int(series[1:])
+  if series[0] not in "eE" or snum not in (3, 6, 12, 24, 48, 96, 192):
+    raise NameError("invalid E series")
+  scale = math.pow(10, int(math.log10(value)) - 2)
+  value /= scale
+  for base, data in ESERIES_DATA:
+    if snum <= base:
+      i = next(i for i, x in enumerate(data) if x > value)
+      down = data[i - 1] * scale
+      up = data[i] * scale
+      if mode < 0 or data[i] == value:
+        return down
+      if mode > 0:
+        return up
+      return up if abs(up - value) < abs(down - value) else down
+  raise RuntimeError()
+
+
 def evaluation_context():
   """Defines all available symbols/functions for the string evaluator"""
   if hasattr(evaluation_context, "g"):
@@ -1058,6 +1106,10 @@ def evaluation_context():
   g["dbv"] = lambda x: 20 * math.log10(x)
   g["fromdb"] = lambda x: math.pow(10, x / 10)
   g["fromdbv"] = lambda x: math.pow(10, x / 20)
+
+  g["enearest"] = lambda x, s="E24": eseries(0, x, s)
+  g["edown"] = lambda x, s="E24": eseries(-1, x, s)
+  g["eup"] = lambda x, s="E24": eseries(1, x, s)
 
   g["today"] = lambda: int(time.time() / (24 * 3600))
   g["now"] = lambda: int(time.time())
