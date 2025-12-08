@@ -847,8 +847,9 @@ class Variables:
   GLOBAL = ""
   PAGENO = "#"
   PAGECOUNT = "##"
-  RE_VAR = re.compile(r"\${([^}:]+:)?([^}]+)}")
-  RE_EXPR = re.compile(r"@{(?:" + RE_VAR.pattern + r"|[^}])*}")
+  # FIXME: handle backslash escapes better
+  RE_VAR = re.compile(r"(?<!\\)\${([^}:]+:)?([^}]+)}")
+  RE_EXPR = re.compile(r"(?<!\\)@{(?:" + RE_VAR.pattern + r"|[^}])*}")
   RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
   UNITS = {
     "ps/mm": 1,
