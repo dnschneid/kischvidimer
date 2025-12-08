@@ -867,9 +867,21 @@ class Variables:
     "ps": 1,
     "ns": 1,
     "fs": 1,
+    "f": "1e-15",
+    "p": "1e-12",
+    "n": "1e-9",
+    "u": "1e-6",
+    "m": "1e-3",
+    "k": 1000,
+    "K": 1000,
+    "M": 1000000,
+    "G": 1000000000,
+    "T": 1000000000000,
+    "P": 1000000000000000,
   }
+  RE_NUM = re.compile(r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
   RE_UNITS = re.compile(
-    r"([0-9.]\s*)(" + "|".join(UNITS) + r")(?![a-zA-Z0-9_])"
+    f"({RE_NUM.pattern}" + r"\s*)(" + "|".join(UNITS) + r")(?![a-zA-Z0-9_])"
   )
   UNITS_SUB = {u: f"*{v}{'':{i}}" for i, (u, v) in enumerate(UNITS.items())}
 
@@ -996,7 +1008,7 @@ class Variables:
     expr = expr.replace("^", f"{tag}**{tag}")
     expr = Variables.RE_IF.sub(f"{tag}__if__{tag}", expr)
     expr = Variables.RE_UNITS.sub(
-      lambda m: f"{m[1]}{tag}{Variables.UNITS_SUB[m[2]]}{tag}", expr
+      lambda m: f"{tag}({tag}{m[1]}{tag}{Variables.UNITS_SUB[m[2]]}){tag}", expr
     )
 
     g = evaluation_context()
@@ -1014,9 +1026,10 @@ class Variables:
     elif isinstance(ret, str):
       # Undo changes that still have the tagging
       ret = ret.replace(f"{tag}**{tag}", "^")
+      ret = ret.replace(f"{tag}({tag}", "")
       ret = ret.replace(f"{tag}__if__{tag}", "if")
       for orig, t in Variables.UNITS_SUB.items():
-        ret = ret.replace(f"{tag}{t}{tag}", orig)
+        ret = ret.replace(f"{tag}{t}){tag}", orig)
     else:
       # Weird types suggest an eval issue (e.g., a function object returned)
       ret = orig_expr
