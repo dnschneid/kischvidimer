@@ -1053,6 +1053,11 @@ def evaluation_context():
   g["max"] = max
   g["sum"] = sum
   g["avg"] = lambda *a: sum(a) / len(a)
+  g["shunt"] = lambda x, y: x * y / (x + y) if x + y > 0 else 0
+  g["db"] = lambda x: 10 * math.log10(x)
+  g["dbv"] = lambda x: 20 * math.log10(x)
+  g["fromdb"] = lambda x: math.pow(10, x / 10)
+  g["fromdbv"] = lambda x: math.pow(10, x / 20)
 
   g["today"] = lambda: int(time.time() / (24 * 3600))
   g["now"] = lambda: int(time.time())
