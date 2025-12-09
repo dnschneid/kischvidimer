@@ -51,7 +51,7 @@ class Version(sexp.SExp, Comparable):
   """File version"""
 
   MIN_VERSION = 20220000  # kicad 6.99
-  MAX_VERSION = 20251012  # kicad 9.99
+  MAX_VERSION = 20251028  # kicad 9.99
 
   def __init__(self, s):
     super().__init__(s)
