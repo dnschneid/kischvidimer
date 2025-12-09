@@ -959,13 +959,16 @@ class Variables:
     # FIXME: support querying the netlist
     hist = set() if hist is None else hist
     orig_variable = None
+    orig_context_text = None
     if isinstance(variable, re.Match):
       orig_variable = variable[0]
       if variable[1]:
-        context = variable[1][:-1]
-      variable = variable[2]
+        context = orig_context_text = variable[1][:-1].strip()
+      variable = variable[2].strip()
     elif ":" in variable:
       context, _, variable = variable.partition(":")
+      context = orig_context_text = context.strip()
+      variable = variable.strip()
     if variable.partition(" ")[0] in (
       "ERC_WARNING",
       "ERC_ERROR",
@@ -991,6 +994,8 @@ class Variables:
               return ""
           return expanded
       if not context:
+        if orig_context_text:
+          return f"<Unresolved: {orig_context_text}>"
         return orig_variable
       context = context.rpartition("/")[0]
 
