@@ -134,9 +134,13 @@ def rotated(pos, deg=None, rad=None):
 class Coord(sexp.SExp, Comparable):
   """A set of offset or coordinates, and sometimes rotation"""
 
-  def pos(self, diffs=None):
+  def pos(self, diffs=None, relative=False):
     # FIXME: diffs
-    return (self.data[0], self.data[1] if len(self.data) >= 2 else 0)
+    relativeto = (0, 0) if relative else self._find_ancestor_pos(diffs)
+    return (
+      self._relpos[0] + relativeto[0],
+      self._relpos[1] + relativeto[1] if len(self._relpos) >= 2 else 0,
+    )
 
   def gravity(self, diffs=None, default="lt"):
     # FIXME: diffs
@@ -152,6 +156,29 @@ class Coord(sexp.SExp, Comparable):
     rot = self.data[2]
     # see SCH_IO_KICAD_SEXPR_PARSER::parseText()
     return rot if rot < 360 else rot / 10
+
+  def reparent(self, new_parent):
+    super().reparent(new_parent)
+    relativeto = self._find_ancestor_pos()
+    self._relpos = (self._sexp[1] - relativeto[0],)
+    if len(self._sexp) >= 3:
+      self._relpos += (self._sexp[2] - relativeto[1],)
+
+  def _find_ancestor_pos(self, diffs=None):
+    for parent in self.ancestry:
+      at = parent.get("at")
+      if at is not None and at is not self:
+        return at.pos(diffs)
+    return (0, 0)
+
+  @property
+  def sexp(self):
+    # Update relative location
+    pos = self.pos()
+    self._sexp[1] = pos[0]
+    if len(self._sexp) >= 3:
+      self._sexp[2] = pos[1]
+    return self._sexp
 
   # def rotated(self, rot, diffs=None):
   #  pos = self.pos(diffs)
