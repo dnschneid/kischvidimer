@@ -130,20 +130,21 @@ class SExp:
     return getattr(handler, "_handlers", {}).get(data[0], cls)(data)
 
   def __init__(self, data=None):
+    self.parent = None
     if isinstance(data, SExp):
-      self.sexp = data.sexp
+      self._sexp = data._sexp
       self._subs = data._subs
       self._atoms = data._atoms
       return
-    self.sexp = data or []
+    self._sexp = data or []
     self._subs = {}
     self._atoms = {}
-    for item in self.sexp:
+    for item in self._sexp:
       if isinstance(item, SExp):
         self._subs.setdefault(item.type, []).append(item)
       elif isinstance(item, Atom):
         self._atoms[item] = self._atoms.get(item, 0) + 1
-    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
+    self._has_type = self._sexp and isinstance(self._sexp[0], Atom)
 
   def __getitem__(self, index_or_atom):
     if isinstance(index_or_atom, int):
@@ -154,7 +155,7 @@ class SExp:
     return Atom(atm) in self._subs or Atom(atm) in self._atoms
 
   def __eq__(self, other):
-    return self.sexp == other
+    return self._sexp == other._sexp
 
   def __str__(self):
     return dump(self)
@@ -164,27 +165,44 @@ class SExp:
 
   def hash(self):
     return hash(
-      tuple((s.hash(),) if isinstance(s, SExp) else s for s in self.sexp)
+      tuple((s.hash(),) if isinstance(s, SExp) else s for s in self._sexp)
     )
 
   @property
   def type(self):
-    return self.sexp[0] if self._has_type else None
+    return self._sexp[0] if self._has_type else None
 
   @property
   def data(self):
-    return self.sexp[1:] if self._has_type else self.sexp
+    return self._sexp[1:] if self._has_type else self._sexp
+
+  @property
+  def sexp(self):
+    return self._sexp
 
   @property
   def yes(self):
-    return len(self.sexp) == 1 or is_atom(self.sexp[1], "yes")
+    return len(self._sexp) == 1 or is_atom(self._sexp[1], "yes")
+
+  @property
+  def ancestry(self):
+    parent = self.parent
+    while parent is not None:
+      yield parent
+      parent = parent.parent
+
+  def reparent(self, new_parent):
+    self.parent = new_parent
+    for item in self._sexp:
+      if isinstance(item, SExp):
+        item.reparent(self)
 
   def has_yes(self, atom):
     item = self.get(atom)
     return item.yes if isinstance(item, SExp) else bool(item)
 
   def enum(self, *atoms, start_i=0):
-    for i, entry in enumerate(self.sexp):
+    for i, entry in enumerate(self._sexp):
       if i >= start_i and is_atom(entry, atoms[0]):
         if len(atoms) == 1:
           yield ((i, entry),)
@@ -205,13 +223,13 @@ class SExp:
     return default
 
   def add(self, item, i=None):
-    i = i or len(self.sexp)
+    i = i or len(self._sexp)
     if isinstance(item, SExp):
       # Add to sub list, maintaining relative ordering
       subs = self._subs.setdefault(item.type, [])
       for j in range(len(subs) - 1, -1, -1):
         try:
-          self.sexp.index(subs[j], i)
+          self._sexp.index(subs[j], i)
         except ValueError:
           subs.insert(j + 1, item)
           break
@@ -219,30 +237,32 @@ class SExp:
         subs.insert(0, item)
     elif isinstance(item, Atom):
       self._atoms[item] = self._atoms.get(item, 0) + 1
-    self.sexp.insert(i, item)
-    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
+    self._sexp.insert(i, item)
+    self._has_type = self._sexp and isinstance(self._sexp[0], Atom)
+    if isinstance(item, SExp):
+      item.reparent(self)
 
   def remove(self, atoms=None, func=None):
     if atoms is None and func is None:
       return
-    for i in range(len(self.sexp) - 1, -1, -1):
-      if (atoms is None or is_atom(self.sexp[i], atoms)) and (
-        func is None or func(self.sexp[i])
+    for i in range(len(self._sexp) - 1, -1, -1):
+      if (atoms is None or is_atom(self._sexp[i], atoms)) and (
+        func is None or func(self._sexp[i])
       ):
-        if isinstance(self.sexp[i], SExp):
-          _subs = self._subs.get(self.sexp[i].type, [])
+        if isinstance(self._sexp[i], SExp):
+          _subs = self._subs.get(self._sexp[i].type, [])
           for j in range(len(_subs) - 1, -1, -1):
-            if _subs[j] is self.sexp[i]:
+            if _subs[j] is self._sexp[i]:
               del _subs[j]
-        elif isinstance(self.sexp[i], Atom):
-          self._atoms[self.sexp[i]] -= 1
-          if not self._atoms[self.sexp[i]]:
-            del self._atoms[self.sexp[i]]
-        del self.sexp[i]
-    self._has_type = self.sexp and isinstance(self.sexp[0], Atom)
+        elif isinstance(self._sexp[i], Atom):
+          self._atoms[self._sexp[i]] -= 1
+          if not self._atoms[self._sexp[i]]:
+            del self._atoms[self._sexp[i]]
+        del self._sexp[i]
+    self._has_type = self._sexp and isinstance(self._sexp[0], Atom)
 
 
-def parse(data):
+def parse(data, parent=None):
   gc_enabled = gc.isenabled()
   gc.disable()
   stack = [[]]
@@ -277,7 +297,9 @@ def parse(data):
         stack[-1].append(Atom(a[2]))
   if gc_enabled:
     gc.enable()
-  return SExp.init(stack[-1])
+  ret = SExp.init(stack[-1])
+  ret.reparent(parent)
+  return ret
 
 
 def dump(data):
