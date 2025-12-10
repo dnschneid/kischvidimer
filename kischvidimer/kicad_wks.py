@@ -22,7 +22,7 @@ import re
 import sys
 
 from . import sexp, svg
-from .kicad_common import Drawable, Variables, rel_coord, unit_to_alpha
+from .kicad_common import Drawable, Variables, unit_to_alpha
 
 # NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
 # TODO: handle the following?
@@ -46,6 +46,24 @@ ALL_WKS_VARS = {
   "PAPER",
   "KICAD_VERSION",
 }.union({f"COMMENT{i}" for i in range(10)})
+
+DEFAULT_GRAVITY = "rbcorner"
+
+
+@sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
+def xy_from_corners(xy, gravity, corners=(0, 0, 0, 0)):
+  return (
+    corners[0] + xy[0] if gravity[0] == "l" else corners[2] - xy[0],
+    corners[1] + xy[1] if gravity[1] == "t" else corners[3] - xy[1],
+  )
+
+
+def coord_from_corners(coord, corners, diffs):
+  return xy_from_corners(
+    coord.pos(diffs),
+    coord.gravity(diffs, DEFAULT_GRAVITY),
+    corners,
+  )
 
 
 def to_mm(x, y):
@@ -146,20 +164,18 @@ class Repeatable(Drawable):
         config = c["setup"][0]
     assert config
     is_pgone = config.is_pgone(context)
-    rel = config.page_corners(context)
-    defgrav = "rb"
+    corners = config.page_corners(context)
     params = {
       "thick": config.thick,
       "textthick": config.textthick,
       "size": config.textsize,
       "color": "SCHEMATIC_DRAWINGSHEET",
     }
-    posparams = {"rel": rel, "defgravity": defgrav}
     if "pos" in self:
-      params["pos"] = self["pos"][0].pos(**posparams)
+      params["pos"] = coord_from_corners(self["pos"][0], corners, diffs)
     else:
-      params["start"] = self["start"][0].pos(**posparams)
-      params["end"] = self["end"][0].pos(**posparams)
+      params["start"] = coord_from_corners(self["start"][0], corners, diffs)
+      params["end"] = coord_from_corners(self["end"][0], corners, diffs)
     variables = Variables.v(context)
 
     def expandfunc(t):
@@ -179,15 +195,15 @@ class Repeatable(Drawable):
       # Advance!
       for p in "pos", "start", "end":
         if p in params:
-          gravity = self[p][0].gravity(default=defgrav)
-          vec = rel_coord(gravity, vect=(incrx, incry))
+          gravity = self[p][0].gravity(diffs, DEFAULT_GRAVITY)
+          vec = xy_from_corners((incrx, incry), gravity)
           params[p] = (vec[0] + params[p][0], vec[1] + params[p][1])
           # Stop early if we've gone beyond the page size
           if (
-            params[p][0] < rel[0]
-            or params[p][0] > rel[2]
-            or params[p][1] < rel[1]
-            or params[p][1] > rel[3]
+            params[p][0] < corners[0]
+            or params[p][0] > corners[2]
+            or params[p][1] < corners[1]
+            or params[p][1] > corners[3]
           ):
             return
 

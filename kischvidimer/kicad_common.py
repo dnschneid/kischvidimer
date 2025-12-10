@@ -130,36 +130,16 @@ def rotated(pos, deg=None, rad=None):
   return (pos[0] * cos - pos[1] * sin, pos[1] * cos + pos[0] * sin)
 
 
-@sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
-def rel_coord(gravity, rel=None, pos=None, vect=None):
-  """Calculates a relative coordinate or vector based on a gravity and the
-  relative pos/size."""
-  ret = vect if pos is None else pos
-  if gravity[0] == "l":
-    if pos is not None:
-      ret = (rel[0] + ret[0], ret[1])
-  elif gravity[0] == "r":
-    ret = (-ret[0], ret[1]) if pos is None else (rel[2] - ret[0], ret[1])
-  if gravity[1] == "t":
-    if pos is not None:
-      ret = (ret[0], rel[1] + ret[1])
-  elif gravity[1] == "b":
-    ret = (ret[0], -ret[1]) if pos is None else (ret[0], rel[3] - ret[1])
-  return ret
-
-
 @sexp.handler("at", "center", "end", "mid", "offset", "pos", "start", "xy")
 class Coord(sexp.SExp, Comparable):
   """A set of offset or coordinates, and sometimes rotation"""
 
-  def pos(self, diffs=None, rel=None, defgravity="lt"):
+  def pos(self, diffs=None):
     # FIXME: diffs
-    pos = (self.data[0], self.data[1] if len(self.data) >= 2 else 0)
-    if rel is not None:
-      return rel_coord(self.gravity(defgravity), rel, pos=pos)
-    return pos
+    return (self.data[0], self.data[1] if len(self.data) >= 2 else 0)
 
-  def gravity(self, default="lt"):
+  def gravity(self, diffs=None, default="lt"):
+    # FIXME: diffs
     return (
       self.data[2]
       if len(self.data) > 2 and sexp.is_atom(self.data[2])
