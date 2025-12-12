@@ -65,7 +65,7 @@ class Page:
     # Make sure safediffs is the right format (match conflicts)
     if safediffs and not isinstance(safediffs[0], tuple):
       safediffs = [(d, None) for d in safediffs]
-    diffs = diff_mod.targetdict(safediffs + conflicts)
+    diffs = diff_mod.TargetDict(safediffs + conflicts)
     # Generate the SVG for the page
     self.svg = Svg(header=False, auto_animate=False)
     self.svg.symbols = symbols

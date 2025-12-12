@@ -4,7 +4,6 @@
 
 exclude: "^$\
   |diff-project\
-  |kischvidimer/diff.py\
   |kischvidimer/fileparse.py\
   |kischvidimer/project.py\
   |kischvidimer/resolver.py\
