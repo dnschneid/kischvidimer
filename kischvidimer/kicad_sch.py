@@ -289,8 +289,9 @@ class Label(Drawable, HasUUID):
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
-    svg.gstart(tag=svg.getuid(self))
-    args = pos = None
+    pos = self["at"][0].pos(diffs, relative=True)
+    svg.gstart(pos=pos, tag=svg.getuid(self))
+    args = None
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {
@@ -307,7 +308,6 @@ class Label(Drawable, HasUUID):
       if "color" in self and any(self["color"][0].data):
         args["textcolor"] = self["color"][0].data
       args.update(self.svgargs(diffs, context))
-      pos = self["at"][0].pos(diffs)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
       shape = self.shape(diffs)
@@ -349,7 +349,7 @@ class Label(Drawable, HasUUID):
         if outline[-1] != outline[0]:
           outline.append(outline[0])
       toff = self.get_text_offset(diffs, context, is_field=False)
-      svg.gstart(pos=pos, rotate=rot)
+      svg.gstart(rotate=rot)
       if outline:
         ocolor = args["textcolor"]
         if isinstance(ocolor, str):
@@ -372,9 +372,9 @@ class Label(Drawable, HasUUID):
       uc_color = args["textcolor"]
       if isinstance(uc_color, str):
         uc_color = uc_color.replace("sheet", "hier")
-      draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
+      draw_uc_at(svg, (0, 0), color=uc_color)  # FIXME: not the correct color?
     super().fillsvg(svg, diffs, draw, context)
-    svg.gend()  # tag
+    svg.gend()  # tag, pos
 
 
 @sexp.handler("bus_entry")
@@ -432,20 +432,20 @@ class NetclassFlag(Drawable, HasUUID):
 
   @sexp.uses("length")
   def fillsvg(self, svg, diffs, draw, context):
-    # svg.gstart(tag=svg.getuid(self))
-    args = pos = None
+    pos = self["at"][0].pos(diffs)
+    svg.gstart(pos=pos)  # tag=svg.getuid(self))
+    args = None
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {"size": 1.27, "textcolor": "netclass_refs"}
       args.update(self.svgargs(diffs, context))
-      pos = self["at"][0].pos(diffs)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
       size = sexp.Decimal(0.915)
       length = self["length"][0][0]
       shape = self.shape(diffs)
       ocolor = args["textcolor"]
-      svg.gstart(pos=pos, rotate=rot)
+      svg.gstart(rotate=rot)
       if shape == "dot":
         svg.polyline(xys=((0, 0), (0, -length + size / 2)), color=ocolor)
         svg.circle(
@@ -493,9 +493,9 @@ class NetclassFlag(Drawable, HasUUID):
       and Netlister.n(context).get_node_count(context, pos, is_bus=False) <= 1
     ):
       uc_color = args["textcolor"]
-      draw_uc_at(svg, pos, color=uc_color)  # FIXME: not the correct color?
+      draw_uc_at(svg, (0, 0), color=uc_color)  # FIXME: not the correct color?
     super().fillsvg(svg, diffs, draw, context)
-    # svg.gend()  # tag
+    svg.gend()  # pos,  # tag
 
 
 @sexp.handler("table")
@@ -503,9 +503,10 @@ class Table(Drawable):
   """Top table instance; defines extra properties at the table level."""
 
   def fillsvg(self, svg, diffs, draw, context):
+    pos = self["cells"][0].pos(diffs)
+    svg.gstart(pos=pos)
     if draw & Drawable.DRAW_FG:
       # FIXME: diffs? lolol good luck
-      pos = self["cells"][0].pos(diffs)
       widths = self["column_widths"][0].data
       heights = self["row_heights"][0].data
       col_count = len(widths)
@@ -519,29 +520,30 @@ class Table(Drawable):
 
       # render external border. external border is under inner border in Z
       if self["border"][0]["external"][0][0] == "yes":
-        svg.rect(pos=pos, width=width, height=height, **border_style)
+        svg.rect(width=width, height=height, **border_style)
 
       # render header
       has_header = self["border"][0]["header"][0][0] == "yes"
       if has_header:
-        y = pos[1] + heights[0]
-        svg.line(p1=(pos[0], y), p2=(pos[0] + width, y), **border_style)
+        y = heights[0]
+        svg.line(p1=(0, y), p2=(width, y), **border_style)
 
       # render inner horizontal lines (special-case header)
       if self["separators"][0]["rows"][0][0] == "yes":
-        y = pos[1] + heights[0] * has_header
+        y = heights[0] * has_header
         for i in range(has_header, row_count - 1):
           y += heights[i]
-          svg.line(p1=(pos[0], y), p2=(pos[0] + width, y), **sep_style)
+          svg.line(p1=(0, y), p2=(width, y), **sep_style)
 
       # render inner vertical lines
       if self["separators"][0]["cols"][0][0] == "yes":
-        x = pos[0]
+        x = 0
         for i in range(col_count - 1):
           x += widths[i]
-          svg.line(p1=(x, pos[1]), p2=(x, pos[1] + height), **sep_style)
+          svg.line(p1=(x, 0), p2=(x, height), **sep_style)
 
     super().fillsvg(svg, diffs, draw, context)
+    svg.gend()  # pos
 
 
 @sexp.handler("border", "separators")
@@ -651,19 +653,18 @@ class SymbolInst(Drawable, HasUUID):
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
     dnp = self.dnp(diffs)
-    svg.gstart(path=self.uuid(generate=True))
+    sym_pos = self["at"][0].pos(diffs)
+    svg.gstart(pos=sym_pos, path=self.uuid(generate=True))
     if subdraw:
       # FIXME: diffs, of course
       lib = context[-1]["lib_symbols"][0]
       lib_id = self.lib_id(diffs, context)
       sym = lib.symbol(lib_id)
-      pos = self["at"][0].pos(diffs)
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
       variant = self.variant(diffs, context)
       svg.gstart(
-        pos=pos,
         rotate=rot,
         mirror=mirror,
         hidden=False,
@@ -680,7 +681,6 @@ class SymbolInst(Drawable, HasUUID):
         for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
           abs_pos = self.transform_pin(pos, diffs)
           if n.get_net(context, abs_pos).is_floating_sympin():
-            pos = (pos[0], -pos[1])
             svg.circle(
               pos=pos,
               radius=sexp.Decimal(0.3175),
@@ -692,10 +692,12 @@ class SymbolInst(Drawable, HasUUID):
       if dnp and bounds and subdraw & Drawable.DRAW_FG:
         draw_dnp(svg, bounds)
       svg.gend()
-    svg.gstart(filt="dim" * dnp)
+    if dnp:
+      svg.gstart(filt="dim")
     super().fillsvg(svg, diffs, draw, context)
-    svg.gend()  # dim
-    svg.gend()  # path
+    if dnp:
+      svg.gend()  # dim
+    svg.gend()  # pos, path
 
   def show_unit(self, diffs, context):
     for c in reversed(context):
@@ -855,13 +857,13 @@ class Sheet(Drawable, HasUUID):
     size = self["size"][0].data
     dnp = self.dnp(diffs)
 
-    svg.gstart(path=self.uuid(generate=True))
-    svg.gstart(filt="dim" * dnp)
+    svg.gstart(pos=pos, path=self.uuid(generate=True))
+    if dnp:
+      svg.gstart(filt="dim")
 
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
       args = {
-        "pos": pos,
         "width": size[0],
         "height": size[1],
         "color": "sheet",
@@ -877,19 +879,12 @@ class Sheet(Drawable, HasUUID):
     # Draw the rest of the owl
     super().fillsvg(svg, diffs, draw, context)
 
-    svg.gend()  # dim
+    if dnp:
+      svg.gend()  # dim
     if dnp and draw & Drawable.DRAW_FG:
       # FIXME: in the sheet case, margins for the X include property text
       margin = sexp.Decimal("1.27")
-      draw_dnp(
-        svg,
-        (
-          pos[0] - margin,
-          pos[1] - margin,
-          pos[0] + size[0] + margin,
-          pos[1] + size[1] + margin,
-        ),
-      )
+      draw_dnp(svg, (-margin, -margin, size[0] + margin, size[1] + margin))
 
     svg.gend()  # path
 

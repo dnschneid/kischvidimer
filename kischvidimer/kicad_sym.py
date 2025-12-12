@@ -101,9 +101,9 @@ class PinDef(Drawable):
       return  # FIXME: render invisible?
 
     name_num = self.name_num(diffs, context)
-    svg.gstart(path=name_num[1])
-
     pos = self["at"][0].pos(diffs)
+    svg.gstart(pos=pos, path=name_num[1])
+
     rot = self["at"][0].rot(diffs)
     length = float(self.get("length", [0])[0])
     mirror = 1 if rot in (0, 90) else -1
@@ -127,8 +127,8 @@ class PinDef(Drawable):
       flipy = -1
     typ, style = self.get_type_style(diffs, context)
     dot = "inverted" in style
-    end = translated(pos, rotated(length - 1.27 * dot, rot))
-    xys = [pos, end]
+    end = rotated(length - 1.27 * dot, rot)
+    xys = [(0, 0), end]
     if "clock" in style:
       # draw clk carrot
       svg.polyline(
@@ -142,11 +142,11 @@ class PinDef(Drawable):
     elif typ == "no_connect":
       # draw X at pin (supersedes non_logic style)
       xys = [
-        (float(pos[0]) - 0.381, float(pos[1]) - 0.381),
-        (float(pos[0]) + 0.381, float(pos[1]) + 0.381),
-        pos,
-        (float(pos[0]) + 0.381, float(pos[1]) - 0.381),
-        (float(pos[0]) - 0.381, float(pos[1]) + 0.381),
+        (-0.381, -0.381),
+        (0.381, 0.381),
+        (0, 0),
+        (0.381, -0.381),
+        (-0.381, 0.381),
       ] + xys
     elif style == "non_logic":
       # draw X at end of line (not pin)
@@ -228,12 +228,12 @@ class PinDef(Drawable):
         "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
       }
       if swap_side:
-        svg.gstart(pos=translated(pos, xoffset), rotate=180)
+        svg.gstart(pos=xoffset, rotate=180)
         if args["justify"] != "middle":
           args["justify"] = (args["justify"] + 180) % 360
         args["pos"] = yoffset
       else:
-        args["pos"] = translated(pos, translated(xoffset, yoffset))
+        args["pos"] = translated(xoffset, yoffset)
       args.update(
         Drawable.svgargs(self[part][0], diffs)
       )  # , context + (self,)))
@@ -241,7 +241,7 @@ class PinDef(Drawable):
       if swap_side:
         svg.gend()
 
-    svg.gend()  # pin path
+    svg.gend()  # pin pos, path
 
 
 class PinSheet(PlaceholderHandler):

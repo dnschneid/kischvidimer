@@ -165,7 +165,12 @@ class Coord(sexp.SExp, Comparable):
       self._relpos += (self._sexp[2] - relativeto[1],)
 
   def _find_ancestor_pos(self, diffs=None):
+    # The first thing with "at" in the parentage is a good pick.
+    # As a special case, table elements have their position as the first cell's.
     for parent in self.ancestry:
+      if parent.type == "cells":
+        # FIXME: diffs
+        return parent.get("table_cell").get("at").data[:2]
       at = parent.get("at")
       if at is not None and at is not self:
         return at.pos(diffs)
@@ -581,8 +586,8 @@ class TextBox(Drawable):
   """Graphical text, but in a box!"""
 
   @sexp.uses("pos", "size")
-  def pos_size(self, diffs):
-    pos = self["at"][0].pos(diffs)
+  def pos_size(self, diffs, relative=False):
+    pos = self["at"][0].pos(diffs, relative=relative)
     size = self["size"][0].data
     if size[0] < 0:
       pos = (pos[0] + size[0], pos[1])
@@ -609,7 +614,7 @@ class TextBox(Drawable):
     margins = [dec_to_float(args["size"]) * 4 / 5] * 4
     if "margins" in self:
       margins = dec_to_float(self["margins"][0].data)
-    pos, size = self.pos_size(diffs)
+    pos, size = self.pos_size(diffs, relative=True)
     pos = dec_to_float(pos)
     size = dec_to_float(size)
     if (
@@ -738,7 +743,7 @@ class Field(Drawable):
       textcolor = "fields"
     if show_name:
       text = f"{prop}: {text}"
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     # Properties of labels are rendered with offsets defined by the label type
     if hasattr(context[-1], "get_text_offset"):
       pos = translated(
