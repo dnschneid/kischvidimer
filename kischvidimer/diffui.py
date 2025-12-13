@@ -41,6 +41,16 @@ from .svg import Svg
 
 
 class Page:
+  class InstanceSelector(diff_mod.Diff):
+    """Fakes a diff so that instances can be selected in svg output."""
+
+    def __init__(self, uuid):
+      super().__init__("svg", "hidden", old=True, new=False)
+      self._svgclass = f"instance {uuid}"
+
+    def param(self):
+      return diff_mod.Param(diff_mod.Diff.Group(self))
+
   def __init__(
     self,
     name,
@@ -93,7 +103,7 @@ class Page:
           uuid = path.uuid(sheet)
           self.svg.metadata_context = uuid
           pgcontext = self.context + (path, sheet)
-          self.svg.gstart(hidden=[(True, None), (False, f"instance {uuid}")])
+          self.svg.gstart(hidden=Page.InstanceSelector(uuid).param())
           page.fillsvg(self.svg, diffs, draw, context=pgcontext)
           self.svg.gend()
         self.svg.metadata_context = None
@@ -249,7 +259,7 @@ class DiffUI:
         self.schematic_index["diffs"].setdefault(i, []).append(
           [
             [
-              {"text": str(s3).partition(": ")[2], "id": s3.svgclass(), "c": 1}
+              {"text": str(s3).partition(": ")[2], "id": s3.forsvg().c, "c": 1}
               for s3 in s2
             ]
             for s2 in s
@@ -260,7 +270,7 @@ class DiffUI:
         self.schematic_index["diffs"].setdefault(i, []).append(
           [
             [
-              {"text": str(s3).partition(": ")[2], "id": s3.svgclass()}
+              {"text": str(s3).partition(": ")[2], "id": s3.forsvg().c}
               for s3 in s2
             ]
             for s2 in s
@@ -737,7 +747,7 @@ class DiffUI:
       return None
     idmap = {}
     for page in self._pages:
-      idmap.update({d.svgclass(): d for d in page.alldiffs()})
+      idmap.update({d.forsvg().c: d for d in page.alldiffs()})
     return [idmap[d] for d in idmap if d not in self._response]
 
 

@@ -23,7 +23,7 @@ import random
 import sys
 
 from . import sexp, svg
-from .kicad_common import Comparable, Drawable, rotated, translated
+from .kicad_common import Drawable, rotated, translated
 
 
 class PlaceholderHandler(sexp.SExp):
@@ -31,8 +31,51 @@ class PlaceholderHandler(sexp.SExp):
     raise Exception(f'found "{s[0]}" in an unexpected context')
 
 
+class AlternateDef(sexp.SExp):
+  """One alternate definition on a pin"""
+
+  LITERAL_MAP = {"name": 1, "type": 2, "style": 3}
+  UNIQUE = "name"
+
+
+class AlternateInst(PlaceholderHandler):
+  pass
+
+
+@sexp.handler("alternate")
+def alternate_disambiguator(s):
+  """the "alternate" atom has two uses, which we disambiguate in order:
+  1) a definition, which has a name, type, and style
+  2) an instance, which just has a name
+  Figure out which of the two we're dealing with and instantiate the subclass
+  """
+  if len(s) > 2:
+    return AlternateDef(s)
+  return AlternateInst(s)
+
+
 class PinDef(Drawable):
   """pins in a symbol definition"""
+
+  LITERAL_MAP = {"type": 1, "style": 2}
+
+  def __str__(self):
+    return f"pin {self['number'][0][0]}"
+
+  def distance(self, other, fast, diffparam):
+    if self.type != other.type:
+      return None
+    if self["number"][0][0] == other["number"][0][0]:
+      return 0
+    if fast:
+      return 1
+    # FIXME: consider match distance for number/name
+    # FIXME: consider location closeness?
+    return (
+      1
+      + (self["name"][0][0] != other["name"][0][0]) * 2
+      + (self["at"] != other["at"])
+    )
 
   def name_num(self, diffs, context):
     # FIXME: alternate from context
@@ -258,7 +301,7 @@ def pin_disambiguator(s):
   1) a pin definition, whose first data will be an atom of the electrical type
   2) a sheet pin, whose second data will be an atom of the pin direction
   3) a pin instance
-  Figure out which of the two we're dealing with and instantiate the subclass
+  Figure out which of the three we're dealing with and instantiate the subclass
   """
   if len(s) >= 2 and isinstance(s[1], sexp.Atom):
     return PinDef(s)
@@ -269,6 +312,11 @@ def pin_disambiguator(s):
 
 class SymbolBody(Drawable):
   """The body of a symbol definition"""
+
+  LITERAL_MAP = {"body": 1}
+
+  def __str__(self):
+    return f"symbol body u{self.unit} v{self.variant}"
 
   def fillnetlist(self, netlister, diffs, context):
     if "pin" not in self:
@@ -285,8 +333,14 @@ class SymbolBody(Drawable):
     return int(self[0].rpartition("_")[-1])
 
 
-class SymbolDef(sexp.SExp, Comparable):
+class SymbolDef(sexp.SExp):
   """A single library symbol entity, either in a library or cache"""
+
+  LITERAL_MAP = {"libname": 1}
+  UNIQUE = "libname"
+
+  def __str__(self):
+    return f"libsymbol '{self[0]}'"
 
   def fillnetlist(self, netlister, diffs, context, unit, variant):
     for body in self._get_bodies(diffs, context, unit, variant):
@@ -439,8 +493,13 @@ def symbol_disambiguator(s):
 
 
 @sexp.handler("kicad_symbol_lib", "lib_symbols")
-class SymLib(sexp.SExp, Comparable):
+class SymLib(sexp.SExp):
   """Tracks a kicad_sym file or lib_symbols database"""
+
+  UNIQUE = True
+
+  def __str__(self):
+    return "library"
 
   def symbols(self):
     return {s[0]: s for s in self["symbol"]}

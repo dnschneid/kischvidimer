@@ -288,6 +288,12 @@ class KicadPro(Comparable):
         return None
     return "/".join(name)
 
+  def __eq__(self, other):
+    raise NotImplementedError()
+
+  def apply(self, key, data):
+    raise NotImplementedError()
+
 
 def config_env_vars():
   """Searches kicad configuration directories for environment variable defines

@@ -25,7 +25,6 @@ import time
 from uuid import uuid4
 
 from . import sexp
-from .diff import Comparable
 
 # hack for keyword testing
 if __name__ == "__main__":
@@ -35,6 +34,8 @@ if __name__ == "__main__":
 
 
 class HasUUID:
+  UNIQUE = False  # UUID-containing things are usually not unique
+
   @sexp.uses("uuid")
   def uuid(self, generate=False):
     if "uuid" in self:
@@ -45,9 +46,31 @@ class HasUUID:
     self.__uuidcache = gen = str(uuid4())
     return gen
 
+  def uuid_matches(self, other):
+    """Returns True if the uuids match, False if they do not match, and None if
+    at least one of the UUIDs is undefined.
+    """
+    if not isinstance(other, HasUUID):
+      return False
+    this = self.uuid()
+    that = other.uuid()
+    return None if this is None or that is None else this == that
+
+  def distance(self, other, fast, diffparam):
+    if self.type != other.type:
+      return None
+    uuid_matches = self.uuid_matches(other)
+    if uuid_matches:
+      return 0
+    if uuid_matches is False:  # definite UUID mismatch; don't accept changes
+      return None
+    if fast:
+      return 1
+    return super().distance(other, fast, diffparam)
+
 
 @sexp.handler("version")
-class Version(sexp.SExp, Comparable):
+class Version(sexp.SExp):
   """File version"""
 
   MIN_VERSION = 20220000  # kicad 6.99
@@ -130,24 +153,20 @@ def rotated(pos, deg=None, rad=None):
   return (pos[0] * cos - pos[1] * sin, pos[1] * cos + pos[0] * sin)
 
 
-@sexp.handler("at", "center", "end", "mid", "offset", "pos", "start", "xy")
-class Coord(sexp.SExp, Comparable):
+@sexp.handler("at")
+class Coord(sexp.SExp):
   """A set of offset or coordinates, and sometimes rotation"""
+
+  LITERAL_MAP = {"pos": (1, 2), "rot": 3}
 
   def pos(self, diffs=None, relative=False):
     # FIXME: diffs
-    relativeto = (0, 0) if relative else self._find_ancestor_pos(diffs)
+    relativeto = not relative and self._find_ancestor_pos()
+    assert not (relativeto and diffs), "can't do absolute locations with diffs"
+    relativeto = relativeto or (0, 0)
     return (
       self._relpos[0] + relativeto[0],
       self._relpos[1] + relativeto[1] if len(self._relpos) >= 2 else 0,
-    )
-
-  def gravity(self, diffs=None, default="lt"):
-    # FIXME: diffs
-    return (
-      self.data[2]
-      if len(self.data) > 2 and sexp.is_atom(self.data[2])
-      else default
     )
 
   def rot(self, diffs=None, context=None):
@@ -159,31 +178,71 @@ class Coord(sexp.SExp, Comparable):
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
-    relativeto = self._find_ancestor_pos()
+    relativeto = self._find_ancestor_pos() or (0, 0)
     self._relpos = (self._sexp[1] - relativeto[0],)
     if len(self._sexp) >= 3:
       self._relpos += (self._sexp[2] - relativeto[1],)
 
-  def _find_ancestor_pos(self, diffs=None):
+  def _find_ancestor_pos(self):
     # The first thing with "at" in the parentage is a good pick.
-    # As a special case, table elements have their position as the first cell's.
     for parent in self.ancestry:
+      # Table elements have their position as the first cell's.
       if parent.type == "cells":
-        # FIXME: diffs
         return parent.get("table_cell").get("at").data[:2]
+      # TODO: if we do this, rendering needs to be updated
+      # # Arcs, rects, etc are relative to their start pos
+      # if self.type in ("start", "mid", "end"):
+      #   return parent.get("start").get("start").data[:2]
+      # # Polylines, bezier, etc, are relative to their first coordinate
+      # if self.type == "xy":
+      #   return parent["xy"][0].data[:2]
       at = parent.get("at")
       if at is not None and at is not self:
-        return at.pos(diffs)
-    return (0, 0)
+        return at.pos()
+    return None
 
   @property
   def sexp(self):
-    # Update relative location
+    """sexp for the purposes of outputting to a file."""
     pos = self.pos()
     self._sexp[1] = pos[0]
     if len(self._sexp) >= 3:
       self._sexp[2] = pos[1]
     return self._sexp
+
+  @property
+  def comp_sexp(self):
+    """sexp for the purposes of comparison."""
+    ret = self._sexp.copy()
+    ret[1:3] = self._relpos
+    return ret
+
+  def sortkey(self):
+    """Sort key that tries to be more stable between changes."""
+    # Add the two coordinates together in an attempt to get a sort key that's
+    # less affected by small moves. Appends remaining data for uniqueness.
+    metric = sum(self.data[:2])
+    return " ".join(f"{x:08d}" for x in (metric,) + self.data[1:])
+
+  def distance(self, other, fast, _diffparam):
+    """Returns the distance between two points."""
+    if self.type != other.type:
+      return None
+    if fast:
+      return self != other
+    return math.hypot(
+      *(x - y for x, y in zip(self._relpos, other._relpos, strict=True))
+    ) + (len(self.data) != len(other.data) or self.data[2:] != other.data[2:])
+
+  def __eq__(self, other):
+    if self.type != other.type:
+      return False
+    lendata = len(self.data)
+    if lendata != len(other.data):
+      return False
+    if lendata > 2 and self.data[2:] != other.data[2:]:
+      return False
+    return self._relpos == other._relpos
 
   # def rotated(self, rot, diffs=None):
   #  pos = self.pos(diffs)
@@ -195,7 +254,51 @@ class Coord(sexp.SExp, Comparable):
   #  return rotated
 
 
-class Drawable(sexp.SExp, Comparable):
+@sexp.handler("pos", "center", "start", "mid", "end", "offset")
+class GravCoord(Coord):
+  """Coordinate without rotation, possibly with gravity."""
+
+  LITERAL_MAP = {"pos": (1, 2), "gravity": 3}
+
+  def gravity(self, diffs=None):
+    # FIXME: diffs
+    return (
+      self.data[2]
+      if len(self.data) > 2 and sexp.is_atom(self.data[2])
+      else "rbcorner"
+    )
+
+  def rot(self, diffs=None, context=None):
+    raise Exception("rot() not valid on GravCoord")
+
+
+@sexp.handler("xy")
+class MultiCoord(Coord):
+  """Coordinate that might be one of many."""
+
+  UNIQUE = False
+  ORDERED = True
+  LITERAL_MAP = {"pos": (1, 2)}
+
+  def distance(self, other, fast, diffparam):
+    if self.type != other.type:
+      return None
+    this_i = None
+    other_i = None
+    for i, xy in enumerate(self.parent["xy"]):
+      if self is xy:
+        this_i = i
+        break
+    for i, xy in enumerate(other.parent["xy"]):
+      if other is xy:
+        other_i = i
+        break
+    return abs(this_i - other_i)
+
+
+class Drawable(sexp.SExp):
+  UNIQUE = False
+
   DRAW_WKS = 1 << 0  # worksheet
   DRAW_WKS_PG = 1 << 1  # page-specific worksheet elements
   DRAW_SYMBG = 1 << 2
@@ -222,6 +325,15 @@ class Drawable(sexp.SExp, Comparable):
     | DRAW_FG_PG
   )
   DRAW_STAGE_COMMON_FG = DRAW_TEXT | DRAW_PROPS | DRAW_FG
+
+  def __str__(self):
+    at = self.get("at")
+    if at is None:
+      raise NotImplementedError(
+        f"__str__ not defined for {self.__class__.__name__}"
+      )
+    pos = at.pos()
+    return f"{self.type} at ({pos[0]}, {pos[1]})"
 
   def fillsvg(self, svg, diffs, draw=DRAW_ALL, context=None):
     if not isinstance(context, tuple):
@@ -267,7 +379,7 @@ class Drawable(sexp.SExp, Comparable):
     return draw & body_draw != 0
 
 
-class Modifier(sexp.SExp, Comparable):
+class Modifier(sexp.SExp):
   def svgargs(self, diffs, context):
     return {}
 
@@ -436,6 +548,10 @@ class Fill(Modifier):
 class Polyline(Drawable):
   """Graphical polyline"""
 
+  def __str__(self):
+    start = self["pts"][0]["xy"][0].pos()
+    return f"{self.type} from ({start[0]}, {start[1]})"
+
   @sexp.uses("pts")
   def pts(self, diffs):
     # FIXME: diffs
@@ -497,6 +613,10 @@ class Bezier(Polyline):
 class Arc(Drawable):
   """Graphical arc"""
 
+  def __str__(self):
+    start = self["start"][0].pos()
+    return f"{self.type} from ({start[0]}, {start[1]})"
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
@@ -523,6 +643,14 @@ class Arc(Drawable):
 class Circle(Drawable):
   """Graphical circle"""
 
+  def __str__(self):
+    center = self["center"][0].pos()
+    radius = self["radius"][0][0]
+    descr = self.type
+    if radius > 100:
+      descr = f"large {descr}"
+    return f"{descr} at ({center[0]}, {center[1]})"
+
   @sexp.uses("radius")
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
@@ -545,6 +673,14 @@ class Circle(Drawable):
 class Rectangle(Drawable):
   """Graphical rectangle"""
 
+  def __str__(self):
+    start = self["start"][0].pos()
+    end = self["end"][0].pos()
+    descr = self.type
+    if (start[0] - end[0]) ** 2 + (start[1] - end[1]) ** 2 > 100**2:
+      descr = f"large {descr}"
+    return f"{descr} at ({start[0]}, {start[1]})"
+
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
@@ -566,6 +702,8 @@ class Rectangle(Drawable):
 class Text(Drawable):
   """Graphical text"""
 
+  LITERAL_MAP = {"text": 1}
+
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
     is_pg = "${" in self[0]
@@ -581,9 +719,16 @@ class Text(Drawable):
     svg.text(**args)
 
 
-@sexp.handler("text_box", "table_cell")
+@sexp.handler("text_box")
 class TextBox(Drawable):
   """Graphical text, but in a box!"""
+
+  def __str__(self):
+    pos, size = self.pos_size()
+    descr = self.type.replace("_", " ")
+    if size[0] ** 2 + size[1] ** 2 > 100**2:
+      descr = f"large {descr}"
+    return f"{descr} at ({pos[0]}, {pos[1]})"
 
   @sexp.uses("pos", "size")
   def pos_size(self, diffs, relative=False):
@@ -687,9 +832,35 @@ class TextBox(Drawable):
       svg.text(**targs)
 
 
+@sexp.handler("table_cell")
+class TableCell(TextBox):
+  ORDERED = True
+
+  def __str__(self):
+    pos = self["at"][0].pos(relative=True)
+    rc = self.parent.to_row_col(pos, relative=True)
+    return f"cell {unit_to_alpha(rc[1] + 1)}{rc[0] + 1}"
+
+  def distance(self, other, fast, diffparam):
+    if self.type != other.type:
+      return None
+    # Consider cells the same if they are the same row+column
+    thispos = self["at"][0].pos(relative=True)
+    thatpos = other["at"][0].pos(relative=True)
+    thisrc = self.parent.to_row_col(thispos, relative=True)
+    thatrc = other.parent.to_row_col(thatpos, relative=True)
+    return abs(thisrc[0] - thatrc[0]) + abs(thisrc[1] - thatrc[1])
+
+
 @sexp.handler("property")
 class Field(Drawable):
   """Properties/fields in labels, sheets, and symbols"""
+
+  UNIQUE = "name"
+  LITERAL_MAP = {"name": 1, "value": 2}
+
+  def __str__(self):
+    return f"{self.type} '{self.name}'"
 
   @property
   def name(self):

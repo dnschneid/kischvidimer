@@ -47,8 +47,6 @@ ALL_WKS_VARS = {
   "KICAD_VERSION",
 }.union({f"COMMENT{i}" for i in range(10)})
 
-DEFAULT_GRAVITY = "rbcorner"
-
 
 @sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
 def xy_from_corners(xy, gravity, corners=(0, 0, 0, 0)):
@@ -61,7 +59,7 @@ def xy_from_corners(xy, gravity, corners=(0, 0, 0, 0)):
 def coord_from_corners(coord, corners, diffs):
   return xy_from_corners(
     coord.pos(diffs),
-    coord.gravity(diffs, DEFAULT_GRAVITY),
+    coord.gravity(diffs),
     corners,
   )
 
@@ -195,7 +193,7 @@ class Repeatable(Drawable):
       # Advance!
       for p in "pos", "start", "end":
         if p in params:
-          gravity = self[p][0].gravity(diffs, DEFAULT_GRAVITY)
+          gravity = self[p][0].gravity(diffs)
           vec = xy_from_corners((incrx, incry), gravity)
           params[p] = (vec[0] + params[p][0], vec[1] + params[p][1])
           # Stop early if we've gone beyond the page size

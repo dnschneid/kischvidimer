@@ -18,7 +18,6 @@ import sys
 
 from . import kicad_sym, kicad_wks, sexp, svg
 from .kicad_common import (
-  Comparable,
   Drawable,
   Field,
   HasUUID,
@@ -35,9 +34,19 @@ from .netlister import Netlister
 #        on last check, there are around 79 unused atoms
 
 
+@sexp.handler("comment")
+class Comment(sexp.SExp):
+  """comment entry in a title block"""
+
+  UNIQUE = "#"
+  LITERAL_MAP = {"#": 1, "text": 2}
+
+
 @sexp.handler("title_block")
 class TitleBlock(Drawable):
   """title_block"""
+
+  UNIQUE = True
 
   @property
   @sexp.uses("title")
@@ -64,6 +73,7 @@ class TitleBlock(Drawable):
       name = str(var.type)
       if name == "date":
         name = "ISSUE_DATE"
+      # FIXME: move comment handling to Comment.fillvars
       if len(var.data) > 1:
         name += "".join(str(s) for s in var.data[:-1])
       name = name.upper()
@@ -100,7 +110,7 @@ class TitleBlock(Drawable):
 
 
 @sexp.handler("junction")
-class Junction(Drawable):
+class Junction(HasUUID, Drawable):
   """junction"""
 
   def fillnetlist(self, netlister, diffs, context):
@@ -165,7 +175,7 @@ class NoConnect(Drawable):
 
 # FIXME: (wire (pts (xy) (xy)) (stroke) (uuid))
 @sexp.handler("wire", "bus")
-class Wire(Polyline, HasUUID):
+class Wire(HasUUID, Polyline):
   """wire or bus"""
 
   def fillnetlist(self, netlister, diffs, context):
@@ -183,8 +193,10 @@ class Wire(Polyline, HasUUID):
 # FIXME: (label "x" (at) (effects) (uuid) (property))
 # FIXME: (global_label "x" (shape input) (at) (effects) (uuid) (property))
 @sexp.handler("global_label", "hierarchical_label", "label")
-class Label(Drawable, HasUUID):
+class Label(HasUUID, Drawable):
   """any type of label"""
+
+  LITERAL_MAP = {"name": 1}
 
   BUS_RE = re.compile(r"(?<![_~^$]){(?!slash})(.+)}|\[(\d+)[.][.](\d+)\]")
 
@@ -407,12 +419,12 @@ class BusEntry(Drawable):
 
 
 @sexp.handler("rule_area")
-class RuleArea(Drawable, HasUUID):
+class RuleArea(HasUUID, Drawable):
   """A rule area; contains a polyline"""
 
 
 @sexp.handler("netclass_flag")
-class NetclassFlag(Drawable, HasUUID):
+class NetclassFlag(HasUUID, Drawable):
   """A net directive label"""
 
   def fillnetlist(self, netlister, diffs, context):
@@ -548,21 +560,38 @@ class Table(Drawable):
 
 @sexp.handler("border", "separators")
 class TableLines(Drawable):
-  pass
+  UNIQUE = True
 
 
 @sexp.handler("cells")
 class Cells(Drawable):
   """Contains all the cells of a table. Actual cells look like TextBoxes."""
 
+  UNIQUE = True
+
   def pos(self, diffs):
     """Return the top-left cell location."""
     return self["table_cell"][0].pos_size(diffs)[0]
 
+  def to_row_col(self, coord, relative=False):
+    """Returns a tuple of row#, col# for a coordinate"""
+    # Does not rely on any sorting of the cells.
+    # Count the number of cells up-left of the coordinate and the number of
+    # unique X coordinates. The number of unique X coordinates is the column and
+    # the count divided by that is the row number.
+    xs = set()
+    count = 0
+    for cell in self["table_cell"]:
+      pos = cell["at"].pos(relative=relative)
+      if pos[0] <= coord[0] and pos[1] <= coord[1]:
+        xs.add(pos[0])
+        count += 1
+    return count // len(xs), len(xs) - 1
+
 
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
 #          (instances (project "x" (path "y" (reference "z") (unit 1)))))
-class SymbolInst(Drawable, HasUUID):
+class SymbolInst(HasUUID, Drawable):
   """An instance of a symbol in a schematic"""
 
   def fillvars(self, variables, diffs, context):
@@ -804,8 +833,19 @@ class SymbolInst(Drawable, HasUUID):
 kicad_sym.SymbolInst = SymbolInst
 
 
-class PinInst(sexp.SExp, Comparable, HasUUID):
+class AlternateInst(sexp.SExp):
+  """Alternate selection on a pin"""
+
+  LITERAL_MAP = {"name": 1}
+
+
+kicad_sym.AlternateInst = AlternateInst
+
+
+class PinInst(HasUUID, sexp.SExp):
   """pins in a symbol instance"""
+
+  LITERAL_MAP = {"number": 1}
 
   @property
   def number(self):
@@ -829,6 +869,22 @@ class PinSheet(Label):
 kicad_sym.PinSheet = PinSheet
 
 
+@sexp.handler("bus_alias")
+class BusAlias(sexp.SExp):
+  """Before KiCad 9.0, bus alias definitions were stored as a sheet object."""
+
+  UNIQUE = "alias"
+  LITERAL_MAP = {"alias": 1}
+
+
+@sexp.handler("member")
+class Member(sexp.SExp):
+  """Before KiCad 9.0, bus alias definitions were stored as a sheet object."""
+
+  LITERAL_MAP = {"members": (1, -1)}
+  # FIXME: members are a list of literals; this needs custom diff handling.
+
+
 def fakesheet(uuid):
   """Creates a fake sheet element for the purposes of UUIDs"""
   if not isinstance(uuid, str):
@@ -839,7 +895,7 @@ def fakesheet(uuid):
 
 
 @sexp.handler("sheet")
-class Sheet(Drawable, HasUUID):
+class Sheet(HasUUID, Drawable):
   """Sheet instance"""
 
   def fillvars(self, variables, diffs, context):
@@ -908,7 +964,7 @@ class Sheet(Drawable, HasUUID):
 
 
 @sexp.handler("instances")
-class Instances(sexp.SExp, Comparable):
+class Instances(sexp.SExp):
   """Tracks instances of a sheet or symbol"""
 
   @sexp.uses("project")
@@ -930,8 +986,17 @@ class Instances(sexp.SExp, Comparable):
     return ret
 
 
+@sexp.handler("project")
+class Project(sexp.SExp):
+  UNIQUE = "name"
+  LITERAL_MAP = {"name": 1}
+
+
 @sexp.handler("path")
-class Path(sexp.SExp, Comparable):
+class Path(sexp.SExp):
+  UNIQUE = "path"
+  LITERAL_MAP = {"path": 1}
+
   def uuid(self, ref=None, generate=False):
     if ref and not isinstance(ref, (tuple, list)):
       ref = [ref]
@@ -948,6 +1013,11 @@ def fakepath(path):
 @sexp.handler("kicad_sch")
 class KicadSch(Drawable):  # ignore the uuid for the most part
   """A schematic page"""
+
+  UNIQUE = True  # although we'll want to ignore this when handling renames
+
+  def __str__(self):
+    return os.path.basename(getattr(self, "_fname", "kicad_sch"))
 
   @property
   def paper(self):

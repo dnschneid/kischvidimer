@@ -28,6 +28,8 @@ import sys
 from decimal import Decimal
 from string import whitespace
 
+from .diff import Comparable, Diff, difflists
+
 INT_DEC_ATOM_RE = re.compile(
   r"""
       ([+-]?[0-9]+)           # Group 0: Integer portion
@@ -120,7 +122,25 @@ def uses(*atoms):
   return register_me
 
 
-class SExp:
+class SExp(Comparable):
+  """Superclass tracking SExps"""
+
+  # Indicates that only one of these SExps should appear in a context
+  # Specifying a literal name will enforce uniqueness across LITERAL_MAP[name]
+  UNIQUE = True  # True by default since there a lot of singular data classes
+
+  # If not UNIQUE, indicates that the order must be maintained
+  # FIXME: actually use this somehow
+  ORDERED = False
+
+  # Contains a mapping of friendly names to ranges of literals/atoms, INCLUSIVE.
+  # Index is based on sexp; subclasses should start from 1.
+  # Negative range indices are relative to the index of the first sub-sexp.
+  # Subclasses should override this. Default: all literals are treated as one.
+  # Literals/atoms not covered by any range in the map raises an error.
+  # TODO: simplify if the range feature isn't used except by the default case.
+  LITERAL_MAP: dict[str, int | tuple[int, int]] = {"data": (0, -1)}
+
   @classmethod
   def init(cls, data):
     if not data:
@@ -145,6 +165,16 @@ class SExp:
       elif isinstance(item, Atom):
         self._atoms[item] = self._atoms.get(item, 0) + 1
     self._has_type = self._sexp and isinstance(self._sexp[0], Atom)
+    # Assert that UNIQUE is accurate
+    for atm, items in self._subs.items():
+      unique = items[0].UNIQUE
+      if unique is True:
+        assert len(items) == 1, f"duplicate {atm} entries"
+      elif unique:
+        index = items[0].LITERAL_MAP.get(unique, unique)
+        assert isinstance(index, int), "bad UNIQUE definition"
+        nunique_values = len({item._sexp[index] for item in items})
+        assert nunique_values == len(items), f"duplicate {atm}[{unique}]"
 
   def __getitem__(self, index_or_atom):
     if isinstance(index_or_atom, int):
@@ -158,10 +188,120 @@ class SExp:
     return self._sexp == other._sexp
 
   def __str__(self):
-    return dump(self)
+    return self.type or repr(self)
 
   def __repr__(self):
     return dump(self)
+
+  def distance(self, other, fast, diffparam):
+    """Enforces uniqueness by type; should be overridden for other purposes."""
+    if self.type != other.type:
+      return None
+    if self.UNIQUE is True:
+      return 0
+    if self.UNIQUE:
+      index = self.LITERAL_MAP.get(self.UNIQUE, self.UNIQUE)
+      this = self.comp_sexp
+      that = other.comp_sexp
+      if index < len(this) and index < len(that) and this[index] == that[index]:
+        return 0
+    # Use the Comparable implementation, which will sum up the number of
+    # differences returned by diff
+    return super().distance(other, fast, diffparam)
+
+  def diff(self, other, diffparam=None):
+    """Returns a list of differences the other has. Akin to (other - self).
+    Returns an empty list if the two are the same.
+    Returns None if the two are disparate (shouldn't be compared).
+    """
+    if self.type != other.type:
+      return None
+    diffs = []
+
+    # See when sub-sexps start; we expect no more literals/atoms after that
+    this = self.comp_sexp
+    that = other.comp_sexp
+    this_sexp_i = len(this)
+    that_sexp_i = len(that)
+    for i, item in enumerate(this):
+      if isinstance(item, SExp):
+        this_sexp_i = i
+        break
+    for i, item in enumerate(that):
+      if isinstance(item, SExp):
+        that_sexp_i = i
+        break
+    assert all(isinstance(item, SExp) for item in this[this_sexp_i:]), this
+    assert all(isinstance(item, SExp) for item in that[that_sexp_i:]), that
+
+    # Handle modified/added/removed literals/atoms, grouped by the class
+    max_end = -2
+    for key, start_end in self.LITERAL_MAP.items():
+      is_tuple = isinstance(start_end, tuple)
+      if not is_tuple:
+        start_end = (start_end, start_end)
+      start, end = start_end
+      # Don't include the type if start is 0
+      start += not start and self._has_type
+      this_end = min(end, this_sexp_i - 1) if end >= 0 else this_sexp_i + end
+      that_end = min(end, that_sexp_i - 1) if end >= 0 else that_sexp_i + end
+      max_end = max(max_end, this_end, that_end)
+      this_chunk = this[start : this_end + 1]
+      that_chunk = that[start : that_end + 1]
+      if this_chunk != that_chunk:
+        if not is_tuple:
+          this_chunk = this_chunk[0]
+          that_chunk = that_chunk[0]
+        diffs.append(Diff((self, SExp), key, old=this_chunk, new=that_chunk))
+    # Sanity-check that we didn't miss anything (not checking for gaps)
+    assert max_end + 1 >= max(this_sexp_i, that_sexp_i), "unexpected data found"
+
+    # Handle sub-sexps, which can be reordered
+    diffs += difflists(
+      (self, SExp),
+      key=None,
+      base=this[this_sexp_i:],
+      other=that[that_sexp_i:],
+      data=None,
+    )
+
+    return diffs
+
+  def apply(self, key, data):
+    """Applies a single difference. apply(d) for d in diff(other) => other
+    Return an error string if the patch could not be applied due to conflict.
+    Return True if the diff was redundant.
+    key:  the key provided during instantiation of Diff
+    data: One of a few things, depending on the type of diff.
+          tuple(old, None) -> removal of "old" (value or instance)
+          tuple(None, new) -> addition of "new" (value or instance)
+          tuple(old, new) -> change from "old" to "new" (value)
+    """
+    # FIXME: need to define a relative sort order on each sexp subclass, if
+    # using the type name isn't sufficient
+    # FIXME: ensure Coord's apply gets handled correctly
+    if key in self.LITERAL_MAP or key is None:
+      pass
+    else:
+      raise ValueError(f"unhandled key {key}")
+    #  if key in self.PROPS:
+    #    # Add: None == data[0] (OK)
+    #    # Mod: old == data[0] (OK)
+    #    # Add-Add: new == data[1] or conflict
+    #    # Mod-Mod: new == data[1] or conflict
+    #    # Del-Mod: conflict (None not in data)
+    #    if self.__dict__[key] not in data:
+    #      return key
+    #    if self.__dict__[key] == data[1]:
+    #      return True
+    #    self.__dict__[key] = data[1]
+    #  else:
+    #    raise Exception("unhandled diff")
+    pass
+
+  def child_is_deleted(self, child):
+    # FIXME: is this correct?
+    return not any(s is child for s in self._sexp)
 
   def hash(self):
     return hash(
@@ -178,6 +318,12 @@ class SExp:
 
   @property
   def sexp(self):
+    """sexp for the purposes of outputting to a file."""
+    return self._sexp
+
+  @property
+  def comp_sexp(self):
+    """sexp for the purposes of comparison."""
     return self._sexp
 
   @property

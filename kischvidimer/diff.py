@@ -13,25 +13,19 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
-import copy
+from abc import ABC, abstractmethod
+from collections import namedtuple
+from copy import deepcopy
+
+DiffParam = namedtuple("DiffParam", ["v", "c"])
 
 
-class Comparable:
+class Comparable(ABC):
   """Superclass that simplifies implementation of comparables."""
 
+  @abstractmethod
   def __eq__(self, other):
-    """Default implementation checks self.KEYWORD and then compares the
-    properties in self.PROPS if present.
-    """
-    if "PROPS" not in self.__class__.__dict__:
-      raise Exception("__eq__ not implemented")
-    return self.KEYWORD == other.KEYWORD and all(
-      self.__dict__[v] == other.__dict__[v] for v in self.PROPS
-    )
-
-  def __ne__(self, other):
-    """Default implementation of != is the opposite of ==."""
-    return not self.__eq__(other)
+    """Checks for equality, ideally quickly."""
 
   def sortkey(self):
     """Default implementation of sortkey is just the string representation."""
@@ -41,21 +35,9 @@ class Comparable:
     """Returns a list of differences the other has. Akin to (other - self).
     Returns an empty list if the two are the same.
     Returns None if the two are disparate (shouldn't be compared).
-    Default implementation checks self.KEYWORD and then compares the properties
-    in self.PROPS if present.
-    Otherwise, returns an empty set if equal and None otherwise.
+    Default implementation returns an empty list if equal, and None otherwise.
     """
-    if "PROPS" not in self.__class__.__dict__:
-      return [] if self == other else None
-    if self.KEYWORD != other.KEYWORD:
-      return None
-    diff = []
-    for prop in self.PROPS:
-      selfprop = self.__dict__[prop]
-      otherprop = other.__dict__[prop]
-      if selfprop != otherprop:
-        diff.append(Diff((self, Comparable), prop, old=selfprop, new=otherprop))
-    return diff
+    return [] if self == other else None
 
   def distance(self, other, fast, diffparam=None):
     """Calculates a distance metric for the diff with another object.
@@ -73,6 +55,7 @@ class Comparable:
     diff = self.diff(other, diffparam)
     return None if diff is None else len(diff)
 
+  @abstractmethod
   def apply(self, key, data):
     """Applies a single difference. apply(d) for d in diff(other) => other
     Return an error string if the patch could not be applied due to conflict.
@@ -84,21 +67,6 @@ class Comparable:
           tuple(old, new) -> change from "old" to "new" (value)
     Default implementation handles keys with properties in self.PROPS.
     """
-    if "PROPS" not in self.__class__.__dict__:
-      raise Exception("unimplemented")
-    if key in self.PROPS:
-      # Add: None == data[0] (OK)
-      # Mod: old == data[0] (OK)
-      # Add-Add: new == data[1] or conflict
-      # Mod-Mod: new == data[1] or conflict
-      # Del-Mod: conflict (None not in data)
-      if self.__dict__[key] not in data:
-        return key
-      if self.__dict__[key] == data[1]:
-        return True
-      self.__dict__[key] = data[1]
-    else:
-      raise Exception("unhandled diff")
 
   def child_is_deleted(self, _child):
     """Used to check if the diff's target was deleted.
@@ -108,105 +76,112 @@ class Comparable:
     return False
 
 
-class FakeParam(list):
-  """Fake instance of Param that provides the get function for a list.
-  Enables the same code to use both lists and Params by generating FakeParams as
-  appropriate using Param.ify()"""
-
-  def get(self, i):
-    return self[min(len(self) - 1, i)]
-
-
 class Param:
   """Tracks zero or more diffs as a single parameter."""
 
-  def __init__(
-    self,
-    difflist,
-    target=None,
-    key=None,
-    base=None,
-    func=lambda x: x,
-    combinewith=None,
-  ):
-    """Creates a list of value+diff combos from a parameter and difflist.
-    difflist -- the dictionary of lists of diffs to query; see TargetDict.
-    target, key -- the diff target. used to index the dictionary of diffs.
-                   If both are None, the entire difflist is considered a match.
-    base -- the value of the base version
-    func -- a function to apply to all values. Takes a single parameter.
-            If combinewith is provided, takes a second parameter, which is the
-            list of corresponding values for that diff.
-    combinewith -- another Param to use in conjunction with this param to
-                   generate the final values. The resulting svg class is a
-                   union of the two diffs.
+  def __init__(self, func, *args):
+    """Tracks a lazy-eval parameter, based on constants, diffs, or other Params.
+    func  -- a function to lazy-apply to args, or a constant value for the Param
+    *args -- one or more arguments, Params, or list[Diff]s.
+             The resulting svg class is a union of any diffs included.
     """
-    # FIXME: the semantics of combinewith don't really make a lot of sense.
-    #        Probably needs to be revisited based on its usage.
-    self._diffs = [base]
-    if target is None and key is None:
-      self._diffs += difflist
+    assert callable(func) == bool(args), "missing either function or args"
+    if isinstance(func, Param):
+      # Shallow copy, since Param operations are idempotent
+      assert not args
+      self._args = func._args
+      self._func = func._func
+      self._lencache = func._lencache
+      self._evalcache = func._evalcache
+      return
+    if not args:
+      assert not isinstance(func, Diff)
+      self._args = [func]
+      self._func = None
     else:
-      self._diffs += difflist.get(target, key)
-    self._combinewith = combinewith or []
-    if combinewith:
+      assert not any(isinstance(a, list) for a in args), "ambiguous arg type"
+      assert not any(isinstance(a, Diff) for a in args), "arg not a Diff.Group"
+      self._args = args
       self._func = func
-    else:
-      self._func = lambda x, _: func(x)
+    self._lencache = 1
+    for arg in self._args:
+      if isinstance(arg, (Param, Diff.Group)):
+        self._lencache = max(self._lencache, len(arg))
+    self._evalcache = {}
+
+  def __str__(self):
+    return (
+      f"<Param({self._func}, "
+      f"*({', '.join(map(str, self._args))})[:{len(self)}])>"
+    )
+
+  @staticmethod
+  def multi(count, func, *args):
+    """Returns a tuple of Params that provides the result of a function applied
+    to the args. Function must return a tuple of length count.
+    """
+    intermediate = Param(func, *args)
+    return tuple(intermediate.map(lambda x, i: x[i], i) for i in range(count))
 
   def __getitem__(self, i):
-    """Indexes into the diffs and returns a tuple of (value, Diff).
+    """Indexes into the diffs and returns a DiffParam of (value, svgclassset).
     raises IndexError if the index is out of bounds.
+    Caches calculations.
     """
     if isinstance(i, slice):
       ret = []
       for j in range(*i.indices(len(self))):
         ret.append(self[j])
       return ret
-    if i >= self.__len__():
+    if not (0 <= i < len(self)):
       raise IndexError(i)
-    combinewith = [c.get(i) for c in self._combinewith]
-    cparams = [c[0] for c in combinewith]
-    # FIXME: what to do about cclass if there aren't enough of them
-    cclass = [c[1] for c in combinewith if c[1]]
-    diff_i = min(len(self._diffs) - 1, i)
-    if diff_i == 0:
-      return (self._func(self._diffs[0], cparams), " ".join(cclass))
-    return (
-      self._func(self._diffs[diff_i].forsvg()[1], cparams),
-      " ".join([self._diffs[diff_i].svgclass()] + cclass),
-    )
+    if i not in self._evalcache:
+      args = []
+      svgclasses = set()
+      for arg in self._args:
+        if isinstance(arg, Param):
+          arg = arg.get(i)
+        elif isinstance(arg, Diff.Group):
+          diff_i = min(len(arg), i)
+          arg = arg[diff_i]
+          if isinstance(arg, Diff):
+            arg = arg.forsvg()
+        if isinstance(arg, DiffParam):
+          args.append(arg.v)
+          svgclasses.update({arg.c} if isinstance(arg.c, str) else arg.c)
+        else:
+          args.append(arg)
+      assert self._func or len(args) == 1
+      self._evalcache[i] = DiffParam(
+        v=self._func(*args) if self._func else args[0],
+        c=svgclasses,
+      )
+    return self._evalcache[i]
 
   def get(self, i):
     """Clamps i to the last diff in the set."""
     return self.__getitem__(min(len(self) - 1, i))
 
   def __len__(self):
-    return max(map(len, [self._diffs] + self._combinewith))
+    return self._lencache
 
-  @staticmethod
-  def is_none(d):
-    """Convenience function to return True if the data is None."""
-    return d is None
+  def map(self, func, *args):
+    """Returns a Param that provides the result of a function applied to this
+    plus other args.
+    Function will be passed self and *args
+    """
+    return Param(func, self, *args)
 
-  @staticmethod
-  def pos(p):
-    """Convenience function to turn an object with .x and .y into a tuple."""
-    return (p.x, p.y)
-
-  @staticmethod
-  def int(d):
-    """Convenience function to turn data into an int, and default to 0."""
-    return int(d or 0)
+  def reduce(self, func):
+    """Returns the result of a function applied across len(self)
+    Function will be passed all of the versions as an iterable.
+    """
+    return func(x.v for x in self)
 
   @staticmethod
   def ify(param, default=None):
     """Ensures param is a Param-like object."""
-    if isinstance(param, (Param, FakeParam)):
-      return param
-    if isinstance(param, list):
-      return FakeParam(param)
-    return FakeParam(((default if param is None else param, None),))
+    return Param(default if param is None else param)
 
 
 class Diff:
@@ -217,6 +192,15 @@ class Diff:
   APPLY_FORCEIMPORTANT = 1 << 2
   APPLY_ALL = APPLY_IMPORTANT | APPLY_UNIMPORTANT
   APPLY_FORCEALL = APPLY_ALL | APPLY_FORCEIMPORTANT
+
+  class Group(list):
+    """A matching set of diffs in an n-way diff"""
+
+    def __init__(self, *entries):
+      if len(entries) == 1 and isinstance(entries[0], Diff):
+        entries = (entries[0]._data[0], entries[0])
+      assert all(isinstance(e, Diff) for e in entries[1:])
+      super().__init__(entries)
 
   # datatypes:
   # add (None, elem)
@@ -253,7 +237,7 @@ class Diff:
       self._target_class = target.__class__
     self._key = key
     if old is not None or new is not None:
-      self._data = (copy.deepcopy(old), new)
+      self._data = (deepcopy(old), new)
       if old is None:
         self._description = "add"
       elif new is None:
@@ -334,14 +318,14 @@ class Diff:
     else:
       return [self]
 
-  def forsvg(self, func=lambda x: x):
-    """Returns the before and after data and flags the diff as rendered.
-    func -- apply a function to both data. Data may be None.
+  def forsvg(self):
+    """Returns a DiffParam of the applied diff, including the value and an
+    SVG-compatible class name set associated with this diff.
     """
     if isinstance(self._data, list):
       raise Exception("diff lists are not renderable")
     self._rendered = True
-    return tuple(map(func, self._data))
+    return DiffParam(self._data[1], self._svgclass)
 
   def is_redundant(self):
     """Returns True if the change is redundant, or if it exists of changes
@@ -383,10 +367,6 @@ class Diff:
       self._rendered = rendered
     return self._rendered
 
-  def svgclass(self):
-    """Returns a SVG-compatible class name associated with this diff."""
-    return self._svgclass
-
   def _flatten(self, applymode=APPLY_ALL):
     """Returns a flat list of diffs, even if they are nested.
     applymode -- optionally filters out diffs that shouldn't be applied yet
@@ -415,9 +395,19 @@ class Diff:
     return " ".join(
       (
         self._target_str(),
-        " => ".join(str(x) for x in self._data or [] if x is not None),
+        " => ".join(data_to_str(x) for x in self._data or [] if x is not None),
       )
     )
+
+
+def data_to_str(x):
+  if isinstance(x, (list, tuple)):
+    if len(x) > 1:
+      g = ((z if len(z) <= 10 else f"{z:.7}...") for y in x for z in (str(y),))
+      ret = f"({', '.join(g)})"
+      return ret if len(ret) <= 30 else f"{ret:.27}..."
+    return str(x[0])
+  return str(x)
 
 
 def _minmatrix(matrix):
@@ -459,7 +449,7 @@ class TargetDict(dict):
     """
     for diff in _flatten(difflist):
       target = diff._target
-      if isinstance(target, tuple):
+      if isinstance(target, tuple):  # target, class
         target = target[0]
       self.setdefault((id(target), diff._key), []).append(diff)
 
@@ -467,7 +457,11 @@ class TargetDict(dict):
     raise Exception("Deepcopy not possible")
 
   def get(self, target, key):
-    return super().get((id(target), key), [])
+    return super().get((id(target), key))
+
+  def param(self, target, key, base):
+    diffs = self.get(target, key)
+    return Param(Diff.Group(base, *(diffs or ())))
 
 
 def matchlists(base, other, data=None):
@@ -597,7 +591,7 @@ def _determine_association(state, pairs, associate_redundant_diffs):
     if not ours_indices:
       # Do a new round of applying diffs, first applying the theirs conflict, in
       # order to find the corresponding ours conflicts
-      state_copy = copy.deepcopy(state)
+      state_copy = deepcopy(state)
       if state_copy["dtheirs_flat"][theirs_index].apply():
         raise Exception("unexpected: failed to apply theirs diff")
       # Force unimportant diffs to be conflicting so that they're grouped with
@@ -661,7 +655,7 @@ def threeway(base, ours, theirs, return_safe=None):
   for diff in state["dtheirs"]:
     state["dtheirs_flat"] += diff._flatten()
   # Do a trial run of the merge to capture any conflicts in theirs
-  state_copy = copy.deepcopy(state)
+  state_copy = deepcopy(state)
   if _applylist(state_copy["dours"], Diff.APPLY_IMPORTANT):
     raise Exception("unexpected: failed to apply ours diff")
   # Force unimportant diffs to be conflicts now, so sets of conflicting commits

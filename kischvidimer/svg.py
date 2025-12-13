@@ -15,13 +15,14 @@
 
 import base64
 import math
+import operator as op
 import os
 import re
 import subprocess
 from xml.sax.saxutils import escape
 
 from . import bmp, jpeg, png, themes
-from .diff import Param
+from .diff import DiffParam, Param
 from .kicad_common import Drawable
 
 
@@ -216,23 +217,33 @@ class Svg:
     return self
 
   def attr_opacity(self, cnt, i, name="opacity"):
-    """Generates an opacity attribute, if cnt > 1"""
+    """Generates an opacity attribute, if len(cnt) > 1"""
     if len(cnt) == 1:
       return []
     c = cnt[i][1] if i else " ".join((c for _, c in cnt[1:] if c))
-    return self.attr(
-      name, [(1 * (i == 0), None), (1 * (i > 0), c)], 1, convert=False
-    )
+    return self.attr(name, [DiffParam(i == 0, None), DiffParam(i > 0, c)], True)
 
   def attr(self, name, value=None, default="", i=0, convert=True):
     """Generates an XML attribute and queues an animation if there is more than
     one value. Skips outputting the attribute if it equals default.
     """
-    for newvalue, c in value[1:]:
-      if value[0][0] != newvalue:
-        self._animate.append((name, Svg.tounit(value[0][0]), newvalue, c))
-    val = Param.ify(value).get(i)[0]
+    orig_v = value[0].v
+    for new_v, c in value[1:]:
+      if orig_v != new_v:
+        conv_orig_v = orig_v
+        if name in Svg.TRANSFORM_TYPES:
+          if not isinstance(orig_v, (tuple, list)):
+            conv_orig_v = (orig_v,)
+          if not isinstance(new_v, (tuple, list)):
+            new_v = (new_v,)
+        elif convert:
+          conv_orig_v = Svg.tounit(orig_v)
+          new_v = Svg.tounit(new_v)
+        self._animate.append((name, conv_orig_v, new_v, c))
+    val = Param(value).get(i).v
     if name in Svg.TRANSFORM_TYPES:
+      if not isinstance(val, (tuple, list)):
+        val = (val,)
       return [f'transform="{name}({",".join(map(str, val))})"'] * any(val)
     elif convert:
       val = Svg.tounit(val)
@@ -294,7 +305,8 @@ class Svg:
           f'from="{fromval}"',
           f'to="{toval}"',
         ]
-      self.add(params + self._animate_attrs + [f'class="{c}"/>'])
+      class_str = " ".join(sorted(c))
+      self.add(params + self._animate_attrs + [f'class="{class_str}"/>'])
     self._animate = []
 
   def gstart(
@@ -311,24 +323,28 @@ class Svg:
     transform = []
     hidden = Param.ify(hidden, False)
     path = Param.ify(path, "")
-    if all((h for h, _ in hidden)):
+    if hidden.reduce(all):
       # Prune this and all subsequent elements
       transform.append(("hide",))
       # If pruning is off, simplify the g tag.
       prune = ["hidden"]
-      opacity = Param.ify(1)
+      opacity = Param(1)
     else:
       prune = []
-      opacity = [(1 * (not h), c) for h, c in hidden]
+      opacity = hidden.map(op.not_)
     # adds in this function should be pruned, so append the transform stack now
     self._transforms.append(transform)
     pos = Param.ify(pos, (0, 0))
     rotate = Param.ify(rotate, 0)
-    mirror = Svg._mirror(mirror)
-    filt = [(f"url(#{f})" if f else "", c) for f, c in Param.ify(filt)]
-    if not prune and (len(pos) > 1 or pos[0][0] != (0, 0)):
+    # Mirror is represented by x and y scale factors
+    mirror = Param(
+      lambda m: (-1 if m == "y" else 1, -1 if m == "x" else 1),
+      mirror,
+    )
+    filt = Param(lambda f: f"url(#{f})" if f else "", filt)
+    if not prune and (len(pos) > 1 or pos[0].v != (0, 0)):
       transform.append(
-        ("translate", float(pos[0][0][0]), float(self.y(pos[0][0][1])))
+        ("translate", float(pos[0].v[0]), float(self.y(pos[0].v[1])))
       )
       self.add(
         ["<g"]
@@ -336,7 +352,7 @@ class Svg:
         + self.attr("p", path, "")
         + self.attr(
           "translate",
-          [((Svg.tounit(p[0]), Svg.tounit(self.y(p[1]))), c) for p, c in pos],
+          Param(lambda p: (Svg.tounit(p[0]), Svg.tounit(self.y(p[1]))), pos),
         )
         + self.attr("opacity", opacity, 1)
         + self.attr("filter", filt)
@@ -344,8 +360,8 @@ class Svg:
       path = Param.ify("")
       opacity = Param.ify(1)
       filt = Param.ify("")
-    if not prune and (len(mirror) > 1 or mirror[0][0] != (1, 1)):
-      transform.append(("scale",) + mirror[0][0])
+    if not prune and (len(mirror) > 1 or mirror[0].v != (1, 1)):
+      transform.append(("scale",) + mirror[0].v)
       self.add(
         ["<g"]
         + Svg._tagattr(tag)
@@ -357,13 +373,13 @@ class Svg:
       path = Param.ify("")
       opacity = Param.ify(1)
       filt = Param.ify("")
-    if not prune and (len(rotate) > 1 or rotate[0][0]):
-      transform.append(("rotate", -rotate[0][0]))
+    if not prune and (len(rotate) > 1 or rotate[0].v):
+      transform.append(("rotate", -rotate[0].v))
       self.add(
         ["<g"]
         + Svg._tagattr(tag)
         + self.attr("p", path, "")
-        + self.attr("rotate", [((-s,), c) for s, c in rotate])
+        + self.attr("rotate", Param(op.neg, rotate))
         + self.attr("opacity", opacity, 1)
         + self.attr("filter", filt)
       ).hascontents()
@@ -374,7 +390,7 @@ class Svg:
       if (
         not prune
         and len(opacity) == 1
-        and not path[0][0]
+        and not path[0].v
         and not tag
         and not filt
       ):
@@ -430,21 +446,14 @@ class Svg:
     # FIXME: don't emit anything if color is none?
     color, opacity = self._color(color, "wire")
     thick = Svg._thick(thick)
-    pattern = Param.ify(pattern)
-    pattern = [
-      (
-        Svg.pattern(pattern.get(i)[0], thick.get(i)[0]),
-        Svg.classunion(pattern.get(i), thick.get(i)),
-      )
-      for i in range(max(map(len, (pattern, thick))))
-    ]
-    self._update_bounds(p1[0][0], p2[0][0], thick[0][0])
+    pattern = Param(Svg.pattern, pattern, thick)
+    self._update_bounds(p1[0].v, p2[0].v, thick[0].v)
     self.add(
       ["<line"]
-      + self.attr("x1", [(p[0], c) for p, c in p1], 0)
-      + self.attr("y1", [(self.y(p[1]), c) for p, c in p1], 0)
-      + self.attr("x2", [(p[0], c) for p, c in p2], 0)
-      + self.attr("y2", [(self.y(p[1]), c) for p, c in p2], 0)
+      + self.attr("x1", p1.map(self.getx), 0)
+      + self.attr("y1", p1.map(self.gety), 0)
+      + self.attr("x2", p2.map(self.getx), 0)
+      + self.attr("y2", p2.map(self.gety), 0)
       + self.attr("stroke", color)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-dasharray", pattern)
@@ -466,61 +475,31 @@ class Svg:
   ):
     pos = Param.ify(pos, (0, 0))
     if end is not None:
-      end = Param.ify(end)
-      classes = [
-        Svg.classunion(end.get(i), pos.get(i))
-        for i in range(max(map(len, (pos, end))))
-      ]
-      width = [
-        (max(abs(end.get(i)[0][0] - pos.get(i)[0][0]), 1 / Svg.SCALE), c)
-        for i, c in enumerate(classes)
-      ]
-      height = [
-        (max(abs(end.get(i)[0][1] - pos.get(i)[0][1]), 1 / Svg.SCALE), c)
-        for i, c in enumerate(classes)
-      ]
-      x = [
-        (min(end.get(i)[0][0], pos.get(i)[0][0]), c)
-        for i, c in enumerate(classes)
-      ]
-      y = [
-        (min(self.y(end.get(i)[0][1]), self.y(pos.get(i)[0][1])), c)
-        for i, c in enumerate(classes)
-      ]
+      width = Param(lambda e, p: max(abs(e[0] - p[0]), 1 / Svg.SCALE), end, pos)
+      height = Param(
+        lambda e, p: max(abs(e[1] - p[1]), 1 / Svg.SCALE), end, pos
+      )
+      x = Param(lambda e, p: min(e[0], p[0]), end, pos)
+      y = Param(lambda e, p: min(self.y(e[1]), self.y(p[1])), end, pos)
     else:
-      width = Param.ify(width)
-      height = Param.ify(height)
-      x = [(p[0], c) for p, c in pos]
-      y = [
-        (
-          min(
-            self.y(pos.get(i)[0][1]),
-            self.y(pos.get(i)[0][1] + height.get(i)[0]),
-          ),
-          Svg.classunion(pos.get(i), height.get(i)),
-        )
-        for i in range(max(map(len, (pos, height))))
-      ]
-      height = [(abs(h), c) for h, c in height]
+      width = Param(width)
+      height = Param(height)
+      x = pos.map(self.getx)
+      y = pos.map(lambda p, h: min(self.y(p[1]), self.y(p[1] + h)), height)
+      height = height.map(op.abs)
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
     thick = Svg._thick(thick)
-    pattern = Param.ify(pattern)
-    pattern = [
-      (
-        Svg.pattern(pattern.get(i)[0], thick.get(i)[0]),
-        Svg.classunion(pattern.get(i), thick.get(i)),
-      )
-      for i in range(max(map(len, (pattern, thick))))
-    ]
+    pattern = Param(Svg.pattern, pattern, thick)
+    # FIXME: use map/reduce to consider the bounds of all diffs
     self._update_bounds(
-      (x[0][0], self.y(y[0][0])),
+      (x[0].v, self.y(y[0].v)),
       (
-        float(x[0][0]) + float(width[0][0]),
-        self.y(float(y[0][0]) + float(height[0][0])),
+        float(x[0].v) + float(width[0].v),
+        self.y(float(y[0].v) + float(height[0].v)),
       ),
-      thick[0][0],
+      thick[0].v,
     )
     self.add(
       ["<rect"]
@@ -548,30 +527,23 @@ class Svg:
     tag=None,
   ):
     pos = Param.ify(pos, (0, 0))
-    radius = Param.ify(radius)
-    if any(r[0] < 0 for r in radius):
+    radius = Param(radius)
+    if any(r.v < 0 for r in radius):
       raise Exception("negative radius")
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
     thick = Svg._thick(thick)
-    pattern = Param.ify(pattern)
-    pattern = [
-      (
-        Svg.pattern(pattern.get(i)[0], thick.get(i)[0]),
-        Svg.classunion(pattern.get(i), thick.get(i)),
-      )
-      for i in range(max(map(len, (pattern, thick))))
-    ]
+    pattern = Param(Svg.pattern, pattern, thick)
     self._update_bounds(
-      (pos[0][0][0] - radius[0][0], pos[0][0][1] - radius[0][0]),
-      (pos[0][0][0] + radius[0][0], pos[0][0][1] + radius[0][0]),
-      thick[0][0],
+      (pos[0].v[0] - radius[0].v, pos[0].v[1] - radius[0].v),
+      (pos[0].v[0] + radius[0].v, pos[0].v[1] + radius[0].v),
+      thick[0].v,
     )
     self.add(
       ["<circle"]
-      + self.attr("cx", [(p[0], c) for p, c in pos], 0)
-      + self.attr("cy", [(self.y(p[1]), c) for p, c in pos], 0)
+      + self.attr("cx", pos.map(self.getx), 0)
+      + self.attr("cy", pos.map(self.gety), 0)
       + self.attr("r", radius, 0)
       + self.attr("stroke", color)
       + self.attr("stroke-dasharray", pattern)
@@ -608,83 +580,54 @@ class Svg:
     thick="wire",
     pattern=None,
   ):
-    start = Param.ify(start)
-    stop = Param.ify(stop)
+    start = Param(start)
+    stop = Param(stop)
     center = None
     if mid is not None:
-      mid = Param.ify(mid)
-      crlas = [
-        Svg.c_r_la(start.get(i)[0], mid.get(i)[0], stop.get(i)[0])
-        for i in range(max(map(len, (start, stop, mid))))
-      ]
-      center = Param.ify(
-        [
-          (crlas[i][0], Svg.classunion(start.get(i), stop.get(i), mid.get(i)))
-          for i in range(len(crlas))
-        ]
-      )
-      radius = Param.ify(
-        [
-          (crlas[i][1], Svg.classunion(start.get(i), stop.get(i), mid.get(i)))
-          for i in range(len(crlas))
-        ]
-      )
-      largearc = Param.ify(
-        [
-          (crlas[i][2], Svg.classunion(start.get(i), stop.get(i), mid.get(i)))
-          for i in range(len(crlas))
-        ]
+      mid = Param(mid)
+      center, radius, largearc, reverse = Param.multi(
+        4, Svg.c_r_la, start, mid, stop
       )
       # Some callers have reverse ordering of start/mid/stop, which breaks SVGs.
       # We expect it to be consistent regardless of diffs.
-      if crlas[0][3]:
+      if reverse.reduce(any):
         start, stop = stop, start
     else:
       assert radius and largearc
-      radius = Param.ify(radius)
-      largearc = Param.ify(largearc)
+      radius = Param(radius)
+      largearc = Param(largearc)
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
     thick = Svg._thick(thick)
-    pattern = Param.ify(pattern)
-    pattern = [
-      (
-        Svg.pattern(pattern.get(i)[0], thick.get(i)[0]),
-        Svg.classunion(pattern.get(i), thick.get(i)),
-      )
-      for i in range(max(map(len, (pattern, thick))))
-    ]
-    d = [
-      (
+    pattern = Param(Svg.pattern, pattern, thick)
+    d = Param(
+      lambda start, stop, center, radius, largearc, fill: (
         " ".join(
           (
             "M",
-            Svg.tounit(start.get(i)[0][0]),
-            Svg.tounit(self.y(start.get(i)[0][1])),
+            Svg.tounit(start[0]),
+            Svg.tounit(self.y(start[1])),
             "A",
-            Svg.tounit(radius.get(i)[0]),
-            Svg.tounit(radius.get(i)[0]),
+            Svg.tounit(radius),
+            Svg.tounit(radius),
             "0",
-            str(1 * largearc.get(i)[0]),
+            str(1 * largearc),
             str(int(0.5 + self.y(0.5))),  # flip sweep dir when y is flipped
-            Svg.tounit(stop.get(i)[0][0]),
-            Svg.tounit(self.y(stop.get(i)[0][1])),
+            Svg.tounit(stop[0]),
+            Svg.tounit(self.y(stop[1])),
           )
           + (
             "L",
-            Svg.tounit(center.get(i)[0][0]),
-            Svg.tounit(self.y(center.get(i)[0][1])),
+            Svg.tounit(center[0]),
+            Svg.tounit(self.y(center[1])),
             "Z",
           )
-          * (center and fill.get(i)[0] != "none")
-        ),
-        Svg.classunion(
-          start.get(i), stop.get(i), radius.get(i), largearc.get(i), fill.get(i)
-        ),
-      )
-      for i in range(max(map(len, (start, stop, radius, largearc, fill))))
-    ]
+          * (center and fill != "none")
+        )
+      ),
+      *(start, stop, center, radius, largearc, fill),
+    )
     # FIXME: this is wrong but it doesn't really matter that much
     self._update_bounds(start[0][0], stop[0][0], thick[0][0])
     self.add(
@@ -763,41 +706,30 @@ class Svg:
   ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
-    xys should be a list of tuples of coordinates, or a Param of such.
+    xys should be a list of tuples of coordinates, or a list of Params of tuples
+    of coordinates
     """
-    # Ensure xys is in the right format. Should be [([(
-    if not isinstance(xys, Param):
-      assert isinstance(xys[0], (list, tuple))
-      if isinstance(xys[0][0], (list, tuple)):
-        assert isinstance(xys[0][0][0], tuple)
-      else:
-        xys = [(xys, None)]
-    d = [
-      (
+    assert isinstance(xys, (tuple, list))
+    xys = [Param(xy) for xy in xys]
+    d = Param(
+      lambda close, *pts: (
         " ".join(
           f"{ptfunc(i)}{Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
           for i, pt in enumerate(pts)
         )
-        + " Z" * close,
-        c,
-      )
-      for pts, c in xys
-    ]
+        + " Z" * close
+      ),
+      close,
+      *xys,
+    )
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
     thick = Svg._thick(thick)
-    pattern = Param.ify(pattern)
-    pattern = [
-      (
-        Svg.pattern(pattern.get(i)[0], thick.get(i)[0]),
-        Svg.classunion(pattern.get(i), thick.get(i)),
-      )
-      for i in range(max(map(len, (pattern, thick))))
-    ]
-    for pts, _ in xys:
-      for pt in pts:
-        self._update_bounds(pt, thick=thick[0][0])
+    pattern = Param(Svg.pattern, pattern, thick)
+    for xy in xys:
+      for pt in xy:
+        self._update_bounds(pt.v, thick=thick[0].v)
     self.add(
       ["<path"]
       + self.attr("d", d)
@@ -815,35 +747,32 @@ class Svg:
     data = Param.ify(data)
     pos = Param.ify(pos, (0, 0))
     scale = Param.ify(scale)
-    for i in range(len(data)):
-      image, width, height = self._image(data[i][0])
-      width = Param.ify([(round(width * float(s)), c) for s, c in scale])
-      height = Param.ify([(round(height * float(s)), c) for s, c in scale])
-      pos = [
-        (
-          (
-            pos.get(i)[0][0] - width.get(i)[0] // 2,
-            pos.get(i)[0][1] - height.get(i)[0] // 2,
-          ),
-          Svg.classunion(pos.get(i), scale.get(i)),
-        )
-        for i in range(max(map(len, (pos, scale))))
-      ]
+
+    image, width, height = Param.multi(3, self._image, data)
+    width = Param(lambda w, s: round(w * float(s)), width, scale)
+    height = Param(lambda h, s: round(h * float(s)), height, scale)
+    pos = Param(
+      lambda p, w, h: (p[0] - w // 2, p[1] - h // 2),
+      pos,
+      width,
+      height,
+    )
+    # FIXME: this seems really broken for diffs
+    for i in range(max(map(len, (data, pos, scale)))):
       self._update_bounds(
-        pos[i][0], (pos[i][0][0] + width[i][0], pos[i][0][1] + height[i][0])
+        pos[i].v, (pos[i].v[0] + width[i].v, pos[i].v[1] + height[i].v)
       )
       self.add(
-        ["<image", f'href="{image}"']
-        + self.attr("x", [(p[0], c) for p, c in pos], 0, i)
-        + self.attr("y", [(self.y(p[1]), c) for p, c in pos], 0, i)
+        ["<image", f'href="{image.get(i).v}"']
+        + self.attr("x", pos.map(self.getx), 0, i)
+        + self.attr("y", pos.map(self.gety), 0, i)
         + self.attr("width", width, 0, i)
         + self.attr("height", height, 0, i)
         + self.attr(
           "image-rendering",
-          [
-            ("pixelated" if s >= self.IMAGE_PIXEL_SCALE_THRESHOLD else "", c)
-            for s, c in scale
-          ],
+          scale.map(
+            lambda s: "pixelated" * (s >= self.IMAGE_PIXEL_SCALE_THRESHOLD)
+          ),
           "",
           i,
         )
@@ -870,80 +799,84 @@ class Svg:
     needsgroup = False
     rotate = Param.ify(rotate, 0)
     hidden = Param.ify(hidden, False)
-    text = Param.ify(text)
+    text = Param(text)
     pos = Param.ify(pos, (0, 0))
-    bold = [("bold" if b else "normal", c) for b, c in Param.ify(bold)]
-    italic = [("italic" if i else "normal", c) for i, c in Param.ify(italic)]
-    kisize = Param.ify([(self.size(s, False), c) for s, c in Param.ify(size)])
-    emsize = Param.ify([(self.size(s, True), c) for s, c in Param.ify(size)])
+    bold = Param(lambda b: "bold" if b else "normal", bold)
+    italic = Param(lambda i: "italic" if i else "normal", italic)
+    kisize = Param(lambda s: self.size(s, False), size)
+    emsize = Param(lambda s: self.size(s, True), size)
     textcolor, opacity = self._color(textcolor, "notes")
-    anchor = [(Svg.ANCHOR[str(j).lower()], c) for j, c in Param.ify(justify)]
+    anchor = Param(lambda j: Svg.ANCHOR[str(j).lower()], justify)
     ### WORKAROUND for crbug/389845192
     vjustmap = dict(Svg.VJUST)
-    if any("~{" in t for t, _ in text):
+    if any("~{" in t.v for t in text):
       vjustmap["middle"] = (vjustmap["middle"][0], "middle")
     ### end workaround
-    vjust = [(vjustmap[str(j).lower()], c) for j, c in Param.ify(vjustify)]
-    url = Param.ify(url)
-    icon = Param.ify(icon)
+    vjust = Param(lambda j: vjustmap[str(j).lower()], vjustify)
+    url = Param(url)
+    icon = Param(icon)
+    # FIXME: reduce across all diffs instead of assuming
     if (
       len(rotate) > 1
-      or rotate[0][0]
+      or rotate[0].v
       or len(hidden) > 1
-      or hidden[0][0]
+      or hidden[0].v
       or len(text) > 1
-      or "\n" in text[0][0]
+      or "\n" in text[0].v
       or len(url) > 1
       or self._mirror_text
       or len(icon) > 1
-      or icon[0][0]
+      or icon[0].v
     ):
       needsgroup = True
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)
-      pos = Param.ify((0, 0))
+      pos = Param((0, 0))
     # Calculate bounding box
     # FIXME: get rid of the duplicate calcs by moving it into the render loop
     # FIXME: revamp the positioning to match better
-    textpos = (float(pos[0][0][0]), float(pos[0][0][1]))
+    # FIXME: diffify
+    textpos = (float(pos[0].v[0]), float(pos[0].v[1]))
     theight = max(
-      (1 + t[0].count("\n")) * emsize.get(i)[0] for i, t in enumerate(text)
+      (1 + t.v.count("\n")) * emsize.get(i).v for i, t in enumerate(text)
     )
     twidth = max(
-      Svg.calcwidth(t[0], kisize.get(i)[0]) for i, t in enumerate(text)
+      Svg.calcwidth(t.v, kisize.get(i).v) for i, t in enumerate(text)
     )
     # Reference: gr_text.cpp: reg=size/8, demibold=size/6, bold=size/5
-    thick = max(s * Svg.FONT_HEIGHT / 5 for s, _ in kisize)
-    if anchor[0][0] == "middle":
+    thick = max(s.v * Svg.FONT_HEIGHT / 5 for s in kisize)
+    if anchor[0].v == "middle":
       textpos = (textpos[0] - twidth / 2, textpos[1])
-    elif anchor[0][0] == "end":
+    elif anchor[0].v == "end":
       textpos = (textpos[0] - twidth, textpos[1])
     textpos = (
       textpos[0],
       textpos[1]
       + self.y(
-        theight * vjust[0][0][0]
-        - (kisize[0][0] * 1 / 3 if vjust[0][0][1] == "hanging" else 0)
+        theight * vjust[0].v[0]
+        - (kisize[0].v * 1 / 3 if vjust[0].v[1] == "hanging" else 0)
       ),
     )
-    if any(not h for h, _ in hidden) and any(t[0] for t in text):
+    if any(not h.v for h in hidden) and any(t.v for t in text):
       # self.rect((textpos[0], textpos[1] - theight), twidth, theight)
       self._update_bounds(
         textpos,
         (textpos[0] + twidth, textpos[1] - self.y(theight)),
         thick=thick,
       )
+    # done with bounding box calculations
     xpos_factor = 1
     if self._mirror_text:
-      anchor = [
-        ({"start": "end", "end": "start"}.get(a, a), c) for a, c in anchor
-      ]
+      anchor = Param(
+        lambda a: {"start": "end", "end": "start"}.get(a, a),
+        anchor,
+      )
       xpos_factor = -1
     # It is critical that no extraneous newlines exist within <text>, otherwise
     # textContent will be inaccurate. Use extend=True on all calls to Svg.add
     self.add(
       ["<text", 'stroke="none"']
-      + self.attr("x", [(p[0] * xpos_factor, c) for p, c in pos], 0)
-      + self.attr("y", [(self.y(p[1]), c) for p, c in pos], 0)
+      + self.attr("x", pos.map(lambda p: p[0] * xpos_factor), 0)
+      + self.attr("y", pos.map(self.gety), 0)
       + self.attr("fill", textcolor, "none")
       + self.attr("fill-opacity", opacity, 1, convert=False)
       + self.attr("font-size", emsize, Svg.FONT_SIZE)
@@ -956,7 +889,7 @@ class Svg:
     ).hascontents()
     # FIXME: clean up this janky way of collecting pin names/numbers
     if prop and isinstance(prop, int) and prop < Svg.PROP_LABEL:
-      pintext = "\n".join(t for t, _ in text)
+      pintext = "\n".join(t.v for t in text)
       if not self.pin_text or len(self.pin_text[-1]) == 3:
         self.pin_text.append((self.metadata_context, pintext))
       elif prop == Svg.PROP_PIN_NAME:
@@ -973,35 +906,35 @@ class Svg:
       and not self._prune(force=True)
     ):
       self.generic_text.append(
-        (self.metadata_context, "\n".join(t for t, _ in text))
+        (self.metadata_context, "\n".join(t.v for t in text))
       )
     for i in range(len(text)):
-      self.glyphs.update(text.get(i)[0])
-      if url.get(i)[0]:
-        targ = " target='_blank'" * (not url.get(i)[0].startswith("#"))
-        self.add([f"<a href='{url.get(i)[0]}'{targ}>"], extend=True)
+      self.glyphs.update(text.get(i).v)
+      if url.get(i).v:
+        targ = " target='_blank'" * (not url.get(i).v.startswith("#"))
+        self.add([f"<a href='{url.get(i).v}'{targ}>"], extend=True)
       opacity = (
         []
         if len(text) == 1
         else self.attr_opacity(text, i=i, name="fill-opacity")
       )
       baseline = self.attr(
-        "dominant-baseline", [(vj[1], c) for vj, c in vjust], "central"
+        "dominant-baseline", Param(lambda vj: vj[1], vjust), "central"
       )
       # KiCad ignores a single trailing newline
-      t = text[i][0][:-1] if text[i][0].endswith("\n") else text[i][0]
+      t = text[i].v[:-1] if text[i].v.endswith("\n") else text[i].v
       # FIXME: render icon separately/accurately and handle multiple types
-      if icon.get(i)[0]:
+      if icon.get(i).v:
         t = f"📍{t}"  # FIXME: icons aren't supposed to affect justification...
       splittext = t.split("\n")
       for lineno, line in enumerate(splittext):
         yattr = (
           self.attr(
             "y",
-            [
-              (f"{(len(splittext) - 1) * (vj[0] - 1):g}em", c)
-              for vj, c in vjust
-            ],
+            vjust.map(
+              lambda vj, nlines: f"{(nlines - 1) * (vj[0] - 1):g}em",
+              len(splittext),
+            ),
             "-0em",
           )
           if len(splittext) > 1 and not lineno
@@ -1035,7 +968,7 @@ class Svg:
           ).hascontents(f"{Svg.encode(t or '') or '&#8203;'}</tspan>")
           charcount += Svg.calcwidth(t, 1, font=None)
           cursorpos = targetpos + Svg.calcwidth(t, 1)
-      if url.get(i)[0]:
+      if url.get(i).v:
         self.add("</a>", extend=True)
     self.add("</text>", extend=True)
     if needsgroup:
@@ -1055,39 +988,54 @@ class Svg:
       alternates = context[-1].get_alternates([], context)
       alternates = "\n".join(f"{n}={a}" for n, a in sorted(alternates.items()))
       alternates = f"{hash(alternates):x}"
-    lib = Param.ify(lib)
-    lib_id = Param.ify(lib_id)
-    unit = Param.ify(unit)
-    variant = Param.ify(variant)
-    name = [
-      (
+    lib = Param(lib)
+    lib_id = Param(lib_id)
+    unit = Param(unit)
+    variant = Param(variant)
+    mirror = Param(
+      lambda *mirrors: bool(sum(m[0] != m[1] for m in mirrors) % 2),
+      *self._mirrorstate,
+    )
+    rotate = Param(
+      # Y mirrors are just X mirrors rotated 180 degrees
+      lambda *rotmirrors: (
+        sum(
+          180 * (rm == (-1, 1)) if isinstance(rm, tuple) else rm or 0
+          for rm in rotmirrors
+        )
+        % 360
+      ),
+      *self._mirrorstate,
+      *self._rotatestate,
+    )
+    name = Param(
+      lambda lib, lib_id, unit, variant, rotate, mirror: (
         ":".join(
           (
             "symbol",
-            f"{lib.get(i)[0].sym_hash(lib_id.get(i)[0]):x}",
-            str(unit.get(i)[0]),
-            str(variant.get(i)[0]),
+            f"{lib.sym_hash(lib_id):x}",
+            str(unit),
+            str(variant),
             alternates,
-            str(self._rotate_state(i) // 90),
-            "m" * self._mirror_state(i),
+            str(rotate // 90),
+            "m" * mirror,
             f"{draw:x}",
           )
-        ),
-        Svg.classunion(lib.get(i), lib_id.get(i), unit.get(i), variant.get(i)),
-      )
-      for i in range(max(map(len, (lib_id, lib, unit, variant))))
-    ]
+        )
+      ),
+      *(lib, lib_id, unit, variant, rotate, mirror),
+    )
     for i in range(len(name)):
-      if name[i][0] in self.symbols:
+      if name[i].v in self.symbols:
         continue
-      params = name[i][0].split(":")
-      sym = lib.get(i)[0].hash_lookup(params[1])
+      params = name[i].v.split(":")
+      sym = lib.get(i).v.hash_lookup(params[1])
       assert sym is not None
       symsvg = Svg(
         self.bgcolor,
         header=False,
         auto_animate=False,
-        mirror_text=self._mirror_state(i),
+        mirror_text=mirror.get(i).v,
       )
       symsvg.push_invert_y()
       symsvg.colormap = self.colormap
@@ -1100,53 +1048,47 @@ class Svg:
         variant=int(params[3]),
       )
       symsvg.pop_invert_y()
-      self.symbols[name[i][0]] = symsvg
+      self.symbols[name[i].v] = symsvg
     return self._instantiate(name)
 
   def instantiate_worksheet(self, draw, context, worksheet=None):
     """Instantiates a worksheet, based on the context."""
     # FIXME: handle page size/variable/worksheet changes?
-    wks = Param.ify(worksheet or self.worksheet)
-    context = Param.ify(context)
-    name = [
-      (
-        None
-        if wks.get(i)[0] is None
-        else f"wks:{wks.get(i)[0].wks_hash(context.get(i)[0]):x}",
-        Svg.classunion(wks.get(i), context.get(i)),
-      )
-      for i in range(max(map(len, (wks, context))))
-    ]
+    wks = Param(worksheet or self.worksheet)
+    context = Param(context)
+    name = Param(
+      lambda wks, context: wks and f"wks:{wks.wks_hash(context):x}",
+      wks,
+      context,
+    )
     # keep the worksheet bounds separate
     orig_bounds, self._bounds = self._bounds, self._wks_bounds
     if draw & Drawable.DRAW_WKS:
       for i in range(len(name)):
-        if not name[i][0] or name[i][0] in self.symbols:
+        if not name[i].v or name[i].v in self.symbols:
           continue
         wkssvg = Svg(self.bgcolor, header=False, auto_animate=False)
         wkssvg.colormap = self.colormap
-        wks.get(i)[0].fillsvg(wkssvg, [], Drawable.DRAW_WKS, context.get(i)[0])
-        self.symbols[name[i][0]] = wkssvg
+        wks.get(i).v.fillsvg(wkssvg, [], Drawable.DRAW_WKS, context.get(i).v)
+        self.symbols[name[i].v] = wkssvg
       self._instantiate(name)
     if draw & Drawable.DRAW_WKS_PG:
       for i in range(len(name)):
-        if wks.get(i)[0]:
-          wks.get(i)[0].fillsvg(
-            self, [], Drawable.DRAW_WKS_PG, context.get(i)[0]
-          )
+        if wks.get(i).v:
+          wks.get(i).v.fillsvg(self, [], Drawable.DRAW_WKS_PG, context.get(i).v)
     self._wks_bounds, self._bounds = self._bounds, orig_bounds
 
   def _instantiate(self, name):
     bounds = None
     for i in range(len(name)):
-      symsvg = self.symbols.get(name[i][0])
+      symsvg = self.symbols.get(name[i].v)
       if not symsvg:
         if i == len(name) - 1:
           return False
         continue
       if symsvg.data:
         self.add(
-          ["<use", f'href="#{name[i][0]}"'] + self.attr_opacity(name, i=i)
+          ["<use", f'href="#{name[i].v}"'] + self.attr_opacity(name, i=i)
         ).nocontents()
         self.generic_text.extend(
           (self.metadata_context, t) for _, t in symsvg.generic_text
@@ -1160,23 +1102,6 @@ class Svg:
           (bounds[0], self.y(bounds[1])), (bounds[2], self.y(bounds[3]))
         )
     return bounds
-
-  def _mirror_state(self, i=0):
-    mirror_state = False
-    for mirror in self._mirrorstate:
-      if mirror.get(i)[0][0] != mirror.get(i)[0][1]:
-        mirror_state = not mirror_state
-    return mirror_state
-
-  def _rotate_state(self, i=0):
-    rotate_state = 0
-    for rotate in self._rotatestate:
-      rotate_state += rotate.get(i)[0] or 0
-    # Y mirrors are just X mirrors rotated 180 degrees
-    for mirror in self._mirrorstate:
-      if mirror.get(i)[0][1] != -1:
-        rotate_state += 180
-    return rotate_state % 360
 
   def _image(self, data):
     imagetype, imagedata, w, h = self.imagedata(data)
@@ -1214,63 +1139,31 @@ class Svg:
     """Processes a thickness parameter to deal with diffs and animation.
     Returns a Param of svg-compatible stroke widths.
     """
-    return Param.ify(
-      [
-        (Svg.THICKNESS.get("wire" if t is None else t, t), c)
-        for t, c in Param.ify(thickparam)
-      ]
-    )
-
-  @staticmethod
-  def _mirror(mirrorparam):
-    """Splits a mirror param into scale factors, including diffs.
-    Returns a Param of x,y scale tuples
-    """
-    return Param.ify(
-      [
-        ((-1 if m == "y" else 1, -1 if m == "x" else 1), c)
-        for m, c in Param.ify(mirrorparam)
-      ]
+    return Param(
+      lambda t: Svg.THICKNESS.get("wire" if t is None else t, t),
+      thickparam,
     )
 
   def _color(self, colorparam, default):
     """Processes a color parameter to deal with diffs and animation.
     Returns a tuple of Param of svg-compatible colors and Param of opacities.
     """
-    colors = []
-    opacities = []
-    for color, cl in Param.ify(colorparam):
-      color, opacity = self.color(color or default)
-      colors.append((color, cl))
-      opacities.append((opacity, cl))
-    return (Param.ify(colors), Param.ify(opacities))
+    return Param.multi(2, lambda c, d: self.color(c or d), colorparam, default)
 
   def _fill(self, fillparam, color, opacity):
     """Processes a fill parameter to deal with cases where the fill should equal
     the color, as well as diffs and animations.
     Returns a tuple of Param of svg-compatible colors and Param of opacities.
     """
-    fillparam = Param.ify(fillparam)
-    if len(fillparam) == 1 and len(color) > 1 and fillparam[0][0] is True:
-      fillparam = fillparam[0:1] * len(color)
-    colors = []
-    opacities = []
-    for i in range(len(fillparam)):
-      fill, c = fillparam[i]
-      if not fill:
-        colors.append(("none", c))
-        opacities.append((1, c))
-      elif fill == "outline":
-        color_i, color_c = color.get(i)
-        opacity_i, opacity_c = opacity.get(i)
-        assert color_c == opacity_c
-        colors.append((color_i, color_c))
-        opacities.append((opacity_i, opacity_c))
-      else:
-        color, opacity = self.color(fill)
-        colors.append((color, c))
-        opacities.append((opacity, c))
-    return (Param.ify(colors), Param.ify(opacities))
+    return Param.multi(
+      2,
+      lambda f, c, o: (
+        ("none", 1) if not f else (c, o) if f == "outline" else self.color(f)
+      ),
+      fillparam,
+      color,
+      opacity,
+    )
 
   @staticmethod
   def _tagattr(tag):
@@ -1401,27 +1294,16 @@ class Svg:
     raise AssertionError()  # regex is bad
 
   @staticmethod
-  def classunion(*classstrings):
-    # Used to combine diff ids together so that either diff will trigger
-    return " ".join(
-      sorted(
-        {
-          c
-          for cs in classstrings
-          for cl in ((cs if isinstance(cs, str) else cs[1]) or "").split(" ")
-          for c in cl
-          if c
-        }
-      )
-    )
-
-  @staticmethod
   def tomm(coord):
     return f"{coord:.4f}mm"
 
   @staticmethod
   def tounit(mm):
-    return mm if isinstance(mm, str) else str(round(mm * Svg.SCALE))
+    if isinstance(mm, str):
+      return mm
+    elif isinstance(mm, bool):
+      return "1" if mm else "0"
+    return str(round(mm * Svg.SCALE))
 
   def y(self, mm):
     return -mm if self._invert_y and self._invert_y[-1] else mm
@@ -1431,6 +1313,13 @@ class Svg:
 
   def pop_invert_y(self):
     return self._invert_y.pop()
+
+  @staticmethod
+  def getx(coord):
+    return coord[0]
+
+  def gety(self, coord):
+    return self.y(coord[1])
 
   @staticmethod
   def _get_placeholder():
