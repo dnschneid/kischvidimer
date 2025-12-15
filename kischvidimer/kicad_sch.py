@@ -514,6 +514,8 @@ class Table(Drawable):
       height = sum(heights)
       border_style = self["border"][0].svgargs(svg, context + (self,))
       sep_style = self["separators"][0].svgargs(svg, context + (self,))
+      border_style.setdefault("color", "notes")
+      sep_style.setdefault("color", "notes")
 
       # render external border. external border is under inner border in Z
       if self["border"][0]["external"][0][0] == "yes":
