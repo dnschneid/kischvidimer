@@ -13,6 +13,10 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
+import argparse
+import importlib
+import os
+import sys
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from copy import deepcopy
@@ -728,3 +732,73 @@ def conflicts_to_str(conflicts):
       for ours_conflicts, theirs_conflicts in conflicts
     )
   return "\n".join(f"CONFLICT: {c}" for c in conflicts)
+
+
+def main(argv):
+  """USAGE: diff.py a b
+  Reads files a and b and produces a 2-way diff.
+  Exits with code 0 if the files are the same, 1 if there are differences.
+  """
+
+  from .kicad_common import Drawable
+  from .sexp import parse
+  from .svg import Svg
+
+  parser = argparse.ArgumentParser(
+    prog="kischvidimer diff",
+    description="""Generates a diff""",
+  )
+  parser.add_argument(
+    "-q",
+    "--quiet",
+    action="store_true",
+    help="silences diff output",
+  )
+  parser.add_argument(
+    "-s",
+    "--svg",
+    action="store_true",
+    help="output an SVG rather than a diff list",
+  )
+  parser.add_argument(
+    "base",
+    help="base kicad file to compare",
+  )
+  parser.add_argument(
+    "target",
+    help="target kicad file to compare",
+  )
+  args = parser.parse_args(argv[1:])
+
+  files = []
+  invert_y = False
+  for path in args.base, args.target:
+    ext = os.path.splitext(path)[1]
+    if not ext:
+      raise ValueError(path)
+    if ext == ".kicad_sym":
+      invert_y = True
+    mod = importlib.import_module(ext, __package__)
+    with open(path) as f:
+      if ext[1:] in mod.__dict__:
+        files.append(mod.__dict__[ext[1:]](f, fname=path))
+      else:
+        files.append(parse(f.read())[0])
+  diffs = files[0].diff(files[1])
+  if args.svg:
+    s = Svg(theme="default")
+    s.push_invert_y(invert_y)
+    files[0].fillsvg(s, TargetDict(diffs), Drawable.DRAW_ALL, ())
+    print(str(s))
+  if not args.quiet:
+    difftext = f"Diffs from {args.base} to {args.target}:\n"
+    difftext += "\n".join(map(str, diffs))
+    if args.svg:
+      print(f"<!-- {difftext.replace('-->', '--&gt;')}\n-->")
+    else:
+      print(difftext)
+  return 1 if diffs else 0
+
+
+if __name__ == "__main__":
+  sys.exit(main(sys.argv))
