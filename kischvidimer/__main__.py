@@ -36,4 +36,11 @@ def main(argv=sys.argv):
 
 
 if __name__ == "__main__":
+  profile = "--profile" in sys.argv[1:2]
+  if profile:
+    sys.argv = sys.argv[:1] + sys.argv[2:]
+  if profile:
+    import cProfile
+
+    sys.exit(cProfile.run("main(sys.argv)", sort="cumulative"))
   sys.exit(main(sys.argv))
