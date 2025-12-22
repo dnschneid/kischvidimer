@@ -250,9 +250,10 @@ class Svg:
     else:
       self.data[-1] += ">"
     self._flush_animate()
-    if not isinstance(contents, str):
-      contents = " ".join(contents)
-    self.data[-1] += contents
+    if contents:
+      if not isinstance(contents, str):
+        contents = " ".join(contents)
+      self.data[-1] += contents
 
   def nocontents(self):
     """Ends and closes the last tag, flushing animations in the process.
