@@ -246,7 +246,7 @@ class DiffUI:
         netmap[i] = netmap.pop(instance)
 
       for s in ui_page.conflicts:
-        self.schematic_index["diffs"].setdefault(ui_page.id, []).append(
+        self.schematic_index["diffs"].setdefault(i, []).append(
           [
             [
               {"text": str(s3).partition(": ")[2], "id": s3.svgclass(), "c": 1}
@@ -257,7 +257,7 @@ class DiffUI:
         )
 
       for s in ui_page.safediffs:
-        self.schematic_index["diffs"].setdefault(ui_page.id, []).append(
+        self.schematic_index["diffs"].setdefault(i, []).append(
           [
             [
               {"text": str(s3).partition(": ")[2], "id": s3.svgclass()}

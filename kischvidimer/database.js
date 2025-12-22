@@ -412,8 +412,8 @@ function initDiffs() {
 export function forEachDiff(pageIndex, callback) {
   // callback => (diffPair, pageIndex)
   if (pageIndex === ALL) {
-    Object.entries(index.diffs).forEach((pageIndex, dps) =>
-      dps.forEach((dp, i, dps) => callback(dp, pageIndex, i, dps)),
+    Object.entries(index.diffs).forEach((pg_dps) =>
+      pg_dps[1].forEach((dp, i, dps) => callback(dp, pg_dps[0], i, dps)),
     );
   } else {
     if (pageIndex === CUR) {
