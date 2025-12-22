@@ -20,6 +20,11 @@ import sys
 from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
 
+DEFAULT_LICENSE_HEADER = (
+  "Proprietary to its author and all rights are reserved to that "
+  "author unless expressly stated otherwise in the rendered schematic"
+)
+
 
 class KicadPro(Comparable):
   """Kicad project file"""
@@ -121,10 +126,7 @@ class KicadPro(Comparable):
     for v in self.variables:
       if v.lower() == "license_header":
         return self.variables[v]
-    return (
-      "Proprietary to its author and all rights are reserved to that "
-      "author unless expressly stated otherwise in the rendered schematic"
-    )
+    return DEFAULT_LICENSE_HEADER
 
   def get_pages(self, projfile, rev, p):
     """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).

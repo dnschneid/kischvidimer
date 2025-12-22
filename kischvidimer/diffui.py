@@ -35,6 +35,7 @@ from io import BytesIO
 from . import diff as diff_mod
 from . import git, themes
 from .kicad_common import Drawable, Variables
+from .kicad_pro import DEFAULT_LICENSE_HEADER
 from .netlister import Netlister
 from .svg import Svg
 
@@ -578,7 +579,10 @@ class DiffUI:
       window_title += f" - {self.ver}"
 
     license_header = (
-      self._license_header or self._proj and self._proj.get_license_header()
+      self._license_header
+      or self._proj
+      and self._proj.get_license_header()
+      or DEFAULT_LICENSE_HEADER
     )
     license_header = license_header[0].lower() + license_header[1:]
     if "\n" not in license_header and license_header[-1] != ".":
