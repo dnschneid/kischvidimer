@@ -25,6 +25,7 @@ import time
 from uuid import uuid4
 
 from . import sexp
+from .diff import Param
 
 # hack for keyword testing
 if __name__ == "__main__":
@@ -113,14 +114,14 @@ def instancedata(field, diffs, context, default=None):
     elif c.type == "~project":
       project = c
   if path is None:
-    return default
+    return Param(default)
   uuid = path.uuid(sheet)
   for c in reversed(context):
     if "instances" in c:
       inst = c["instances"][0].paths(project).get(uuid)
       if inst and field in inst:
-        return inst[field][0][0]
-  return default
+        return Param(inst[field][0][0])
+  return Param(default)
 
 
 def draw_uc_at(svg, pos, color):
@@ -161,13 +162,16 @@ class Coord(sexp.SExp):
 
   def pos(self, diffs=None, relative=False):
     # FIXME: diffs
-    relativeto = not relative and self._find_ancestor_pos()
+    relativeto = not relative and self._find_ancestor_pos(diffs)
     assert not (relativeto and diffs), "can't do absolute locations with diffs"
     relativeto = relativeto or (0, 0)
-    return (
-      self._relpos[0] + relativeto[0],
-      self._relpos[1] + relativeto[1] if len(self._relpos) >= 2 else 0,
+    return self.param(diffs, "pos", self._relpos[:2]).map(
+      Coord.add_pos, relativeto
     )
+
+  def raw_pos(self, diffs=None):
+    """Useful for cases where an absolute location bubbles up to the parent."""
+    return self.param(diffs, "pos", self.data[:2])
 
   def rot(self, diffs=None, context=None):
     if len(self.data) < 3:
@@ -178,17 +182,18 @@ class Coord(sexp.SExp):
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
-    relativeto = self._find_ancestor_pos() or (0, 0)
+    relativeto = self._find_ancestor_pos()
+    relativeto = relativeto[0].v if relativeto else (0, 0)
     self._relpos = (self._sexp[1] - relativeto[0],)
     if len(self._sexp) >= 3:
       self._relpos += (self._sexp[2] - relativeto[1],)
 
-  def _find_ancestor_pos(self):
+  def _find_ancestor_pos(self, diffs=None):
     # The first thing with "at" in the parentage is a good pick.
     for parent in self.ancestry:
       # Table elements have their position as the first cell's.
       if parent.type == "cells":
-        return parent.get("table_cell").get("at").data[:2]
+        return parent.pos(diffs)
       # TODO: if we do this, rendering needs to be updated
       # # Arcs, rects, etc are relative to their start pos
       # if self.type in ("start", "mid", "end"):
@@ -198,7 +203,7 @@ class Coord(sexp.SExp):
       #   return parent["xy"][0].data[:2]
       at = parent.get("at")
       if at is not None and at is not self:
-        return at.pos()
+        return at.pos(diffs)
     return None
 
   @property
@@ -243,6 +248,12 @@ class Coord(sexp.SExp):
     if lendata > 2 and self.data[2:] != other.data[2:]:
       return False
     return self._relpos == other._relpos
+
+  @staticmethod
+  def add_pos(a, b):
+    if len(a) == 1:
+      return (a[0] + b[0], 0)
+    return (a[0] + b[0], a[1] + b[1])
 
   # def rotated(self, rot, diffs=None):
   #  pos = self.pos(diffs)
@@ -332,7 +343,7 @@ class Drawable(sexp.SExp):
       raise NotImplementedError(
         f"__str__ not defined for {self.__class__.__name__}"
       )
-    pos = at.pos()
+    pos = at.pos().v
     return f"{self.type} at ({pos[0]}, {pos[1]})"
 
   def fillsvg(self, svg, diffs, draw=DRAW_ALL, context=None):
@@ -389,7 +400,7 @@ class Effects(Modifier):
   """font effects"""
 
   @sexp.uses("font", "size")
-  def get_size(self, diffs):
+  def get_size(self, diffs=None):
     # FIXME: diffs
     if "font" in self and "size" in self["font"][0]:
       size = self["font"][0]["size"][0]
@@ -399,7 +410,7 @@ class Effects(Modifier):
     return None
 
   @sexp.uses("font", "color")
-  def get_color(self, diffs):
+  def get_color(self, diffs=None):
     # FIXME: diffs
     if "font" in self and "color" in self["font"][0]:
       color = self["font"][0]["color"][0]
@@ -408,7 +419,7 @@ class Effects(Modifier):
     return None
 
   @sexp.uses("font", "bold", "italic")
-  def get_style(self, diffs):
+  def get_style(self, diffs=None):
     # FIXME: diffs
     if "font" in self:
       bold = "bold" in self["font"][0]
@@ -417,7 +428,7 @@ class Effects(Modifier):
     return (False, False)
 
   @sexp.uses("justify", "left", "right", "top", "bottom")
-  def get_justify(self, diffs):
+  def get_justify(self, diffs=None):
     # FIXME: diffs
     lr = "middle"
     tb = "middle"
@@ -429,9 +440,8 @@ class Effects(Modifier):
     return (lr, tb)
 
   @sexp.uses("hide")
-  def get_hidden(self, diffs):
-    # FIXME: diffs
-    return self.has_yes("hide")
+  def get_hidden(self, diffs=None):
+    return self.has_yes("hide", diffs)
 
   @sexp.uses("href", "mirror")
   def svgargs(self, diffs, context):
@@ -549,13 +559,13 @@ class Polyline(Drawable):
   """Graphical polyline"""
 
   def __str__(self):
-    start = self["pts"][0]["xy"][0].pos()
+    start = self["pts"][0]["xy"][0].pos().v
     return f"{self.type} from ({start[0]}, {start[1]})"
 
   @sexp.uses("pts")
-  def pts(self, diffs):
+  def pts(self, diffs=None):
     # FIXME: diffs
-    return [(xy[0], xy[1]) for xy in self["pts"][0]["xy"]]
+    return Param.array(*((xy[0], xy[1]) for xy in self["pts"][0]["xy"]))
 
   def fillsvg(self, svg, diffs, draw, context, tag=None):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
@@ -614,7 +624,7 @@ class Arc(Drawable):
   """Graphical arc"""
 
   def __str__(self):
-    start = self["start"][0].pos()
+    start = self["start"][0].pos().v
     return f"{self.type} from ({start[0]}, {start[1]})"
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -644,7 +654,7 @@ class Circle(Drawable):
   """Graphical circle"""
 
   def __str__(self):
-    center = self["center"][0].pos()
+    center = self["center"][0].pos().v
     radius = self["radius"][0][0]
     descr = self.type
     if radius > 100:
@@ -674,8 +684,8 @@ class Rectangle(Drawable):
   """Graphical rectangle"""
 
   def __str__(self):
-    start = self["start"][0].pos()
-    end = self["end"][0].pos()
+    start = self["start"][0].pos().v
+    end = self["end"][0].pos().v
     descr = self.type
     if (start[0] - end[0]) ** 2 + (start[1] - end[1]) ** 2 > 100**2:
       descr = f"large {descr}"
@@ -724,15 +734,18 @@ class TextBox(Drawable):
   """Graphical text, but in a box!"""
 
   def __str__(self):
-    pos, size = self.pos_size()
+    pos, size = self.pos_size().v
     descr = self.type.replace("_", " ")
     if size[0] ** 2 + size[1] ** 2 > 100**2:
       descr = f"large {descr}"
     return f"{descr} at ({pos[0]}, {pos[1]})"
 
   @sexp.uses("pos", "size")
-  def pos_size(self, diffs, relative=False):
-    pos = self["at"][0].pos(diffs, relative=relative)
+  def pos_size(self, diffs, relative=False, raw_pos=False):
+    if not raw_pos:
+      pos = self["at"][0].pos(diffs, relative=relative)
+    else:
+      pos = self["at"][0].raw_pos(diffs)
     size = self["size"][0].data
     if size[0] < 0:
       pos = (pos[0] + size[0], pos[1])
@@ -837,7 +850,7 @@ class TableCell(TextBox):
   ORDERED = True
 
   def __str__(self):
-    pos = self["at"][0].pos(relative=True)
+    pos = self["at"][0].pos(relative=True).v
     rc = self.parent.to_row_col(pos, relative=True)
     return f"cell {unit_to_alpha(rc[1] + 1)}{rc[0] + 1}"
 
@@ -882,7 +895,7 @@ class Field(Drawable):
     is_pg = "${" in text or (prop.lower() in ("reference", "sheetname"))
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
-    show_name = self.has_yes("show_name")
+    show_name = self.has_yes("show_name", diffs).v
     url = None
     icon = None
     if prop == "Reference":

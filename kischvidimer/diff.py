@@ -79,6 +79,10 @@ class Comparable(ABC):
     """
     return False
 
+  def param(self, diffs, key, base):
+    """Convenience function to return a param even if no diffs are available."""
+    return TargetDict.param(diffs, self, key, base)
+
 
 class Param:
   """Tracks zero or more diffs as a single parameter."""
@@ -103,9 +107,13 @@ class Param:
       self._args = [func]
       self._func = None
     else:
-      assert not any(isinstance(a, list) for a in args), "ambiguous arg type"
-      assert not any(isinstance(a, Diff) for a in args), "arg not a Diff.Group"
-      self._args = args
+      if len(args) == 1 and isinstance(args[0], Param) and not args[0]._func:
+        # Copy-through
+        self._args = args[0]._args
+      else:
+        assert not any(isinstance(a, list) for a in args), "ambiguous arg type"
+        assert not any(isinstance(a, Diff) for a in args), "arg not Diff.Group"
+        self._args = args
       self._func = func
     self._lencache = 1
     for arg in self._args:
@@ -126,6 +134,13 @@ class Param:
     """
     intermediate = Param(func, *args)
     return tuple(intermediate.map(lambda x, i: x[i], i) for i in range(count))
+
+  @staticmethod
+  def array(*items, array=None):
+    """Constructs a Param that combines params into an array.
+    Long-term, this should be avoided since it conflates many diffs into one.
+    """
+    return Param(lambda *a: a, *(array or items))
 
   def __getitem__(self, i):
     """Indexes into the diffs and returns a DiffParam of (value, svgclassset).
@@ -162,6 +177,11 @@ class Param:
       )
     return self._evalcache[i]
 
+  @property
+  def v(self):
+    """Convenience getter for code that doesn't care about diffs."""
+    return self[0].v
+
   def get(self, i):
     """Clamps i to the last diff in the set."""
     return self.__getitem__(min(len(self) - 1, i))
@@ -185,7 +205,9 @@ class Param:
   @staticmethod
   def ify(param, default=None):
     """Ensures param is a Param-like object."""
-    return Param(default if param is None else param)
+    if param is None:
+      return Param(default)
+    return param.param() if hasattr(param) else Param(param)
 
 
 class Diff:
@@ -464,7 +486,7 @@ class TargetDict(dict):
     return super().get((id(target), key))
 
   def param(self, target, key, base):
-    diffs = self.get(target, key)
+    diffs = None if self is None else self.get(target, key)
     return Param(Diff.Group(base, *(diffs or ())))
 
 

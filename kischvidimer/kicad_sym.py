@@ -19,10 +19,12 @@ Also acts as a deduplifying library cache when used with schematic-embedded
 symbols
 """
 
+import operator
 import random
 import sys
 
 from . import sexp, svg
+from .diff import Param
 from .kicad_common import Drawable, rotated, translated
 
 
@@ -77,32 +79,40 @@ class PinDef(Drawable):
       + (self["at"] != other["at"])
     )
 
-  def name_num(self, diffs, context):
-    # FIXME: alternate from context
-    alternate = self.alternate(diffs, context)
-    return (alternate or self["name"][0][0], self["number"][0][0])
+  def name(self, diffs, context):
+    return Param(
+      operator.or_,
+      self.alternate(diffs, context),
+      self["name"][0].param(),
+    )
+
+  def num(self, diffs, context):
+    return self["number"][0].param()
 
   def get_type_style(self, diffs, context):
     # FIXME: diffs
     # FIXME: alternate can have diffs too
-    alternate = self.alternate(diffs, context)
+    alternate = self.alternate(diffs, context).v
+    target = self
     if alternate is not None:
       for alt in self["alternate"]:
         if alternate == alt[0]:
-          return (alt[1], alt[2])
+          target = alt
+          break
       # TODO: what to do when alternate is not found?
-    return (self[0], self[1])
+    return (target.param("type"), target.param("style"))
 
   @sexp.uses("alternate")
   def alternate(self, diffs, context):
+    # FIXME: diffs
     if "alternate" not in self:
-      return None
+      return Param(None)
     num = self["number"][0][0]
     for c in reversed(context):
       if hasattr(c, "get_alternates"):
         alternates = c.get_alternates(diffs, context)
-        return alternates.get(num)
-    return None
+        return alternates.map(lambda a, num: a.get(num), num)
+    return Param(None)
 
   @sexp.uses("at")
   def pts(self, diffs, context):
@@ -111,12 +121,11 @@ class PinDef(Drawable):
       if hasattr(c, "transform_pin"):
         pos = c.transform_pin(pos, diffs)
         break
-    return [pos]
+    return Param.array(pos)
 
   @sexp.uses("hide")
-  def hide(self, diffs):
-    # FIXME: diffs
-    return self.has_yes("hide")
+  def hide(self, diffs=None):
+    return self.has_yes("hide", diffs)
 
   def fillnetlist(self, netlister, diffs, context):
     self.netbus = netlister.add_sympin(context, self)
@@ -140,16 +149,15 @@ class PinDef(Drawable):
     # FIXME: unconnected circle
     # FIXME: defaults?
     # FIXME: metadata (electrical type)
-    if self.hide(diffs):
-      return  # FIXME: render invisible?
 
-    name_num = self.name_num(diffs, context)
+    name = self.name(diffs, context)
+    num = self.num(diffs, context)
     pos = self["at"][0].pos(diffs)
-    svg.gstart(pos=pos, path=name_num[1])
+    svg.gstart(pos=pos, path=num, hidden=self.hide(diffs))
 
     rot = self["at"][0].rot(diffs)
-    length = float(self.get("length", [0])[0])
-    mirror = 1 if rot in (0, 90) else -1
+    length = Param.ify(self.get("length", default=0))
+    mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
 
     # Compensate for mirror/rotation in instantiations
     inst_mirror = None
@@ -160,14 +168,20 @@ class PinDef(Drawable):
         break
 
     # Render line ending
-    flipy = 1
-    if (inst_mirror, inst_rot) in (
-      (None, 180),
-      (None, 270),
-      ("x", 0),
-      ("x", 270),
-    ):
-      flipy = -1
+    flipy = Param(
+      lambda m, r: -1
+      if (m, r)
+      in (
+        (None, 180),
+        (None, 270),
+        ("x", 0),
+        ("x", 270),
+      )
+      else 1,
+      inst_mirror,
+      inst_rot,
+    )
+
     typ, style = self.get_type_style(diffs, context)
     dot = "inverted" in style
     end = rotated(length - 1.27 * dot, rot)
@@ -258,9 +272,11 @@ class PinDef(Drawable):
 
     for is_name, part in enumerate(("number", "name")):
       # FIXME: save the metadata
-      text = name_num[not is_name]
-      if pin_config[part]["hide"] or text == "~":
-        text = ""
+      text = Param(
+        lambda t, h: "" if h or t == "~" else t,
+        name if is_name else num,
+        pin_config[part]["hide"],
+      )
       xoffset = rotated(pin_config[part]["xoffset"], rot)
       yoffset = rotated((0, pin_config[part]["yoffset"]), rot % 180)
       args = {
@@ -284,7 +300,7 @@ class PinDef(Drawable):
       if swap_side:
         svg.gend()
 
-    svg.gend()  # pin pos, path
+    svg.gend()  # pin pos, path, hide
 
 
 class PinSheet(PlaceholderHandler):
@@ -343,11 +359,11 @@ class SymbolDef(sexp.SExp):
     return f"libsymbol '{self[0]}'"
 
   def fillnetlist(self, netlister, diffs, context, unit, variant):
-    for body in self._get_bodies(diffs, context, unit, variant):
+    for body in self._get_bodies(diffs, context, unit, variant).v:
       body.fillnetlist(netlister, diffs, context + (self,))
 
   def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
-    for body in self._get_bodies(diffs, context, unit, variant):
+    for body in self._get_bodies(diffs, context, unit, variant).v:
       body.fillsvg(svg, diffs, draw, context + (self,))
     draw_props = draw & (Drawable.DRAW_PROPS | Drawable.DRAW_PROPS_PG)
     if draw_props:
@@ -369,25 +385,27 @@ class SymbolDef(sexp.SExp):
         self._get_pins_cache = {}
       for c in reversed(context):
         if hasattr(c, "refdes"):
-          cacheentry = c.refdes([], context)
+          cacheentry = c.refdes(None, context).v
           break
       if cacheentry in self._get_pins_cache:
         return self._get_pins_cache[cacheentry]
     pins = {}
-    for body in self._get_bodies(diffs, context, variant=variant):
+    for body in self._get_bodies(diffs, context, variant=variant).v:
       if "pin" not in body:
         continue
       for pin in body["pin"]:
         name, num = pin.name_num(diffs, context)
         pins.setdefault(name, []).append(num)
+    pins = Param(pins)
     if cacheentry is not None:
       self._get_pins_cache[cacheentry] = pins
     return pins
 
   def get_con_pin_coords(self, diffs, context, unit, variant=1):
-    # Returns a list of coordinates where unconnected markers can appear
+    # Returns a set of coordinates where unconnected markers can appear
+    # FIXME: diffs?
     pins = set()
-    for body in self._get_bodies(diffs, context, unit, variant):
+    for body in self._get_bodies(diffs, context, unit, variant).v:
       if "pin" not in body:
         continue
       for pin in body["pin"]:
@@ -395,25 +413,26 @@ class SymbolDef(sexp.SExp):
           not pin.hide(diffs)
           and pin.get_type_style(diffs, context)[0] != "no_connect"
         ):
-          pins.update(pin.pts(diffs, context))
+          pins.update(pin.pts(diffs, context).v)
     return pins
 
   def show_unit(self, diffs, context):
-    try:
-      return self.num_units(diffs, context) > 1
-    except KeyError:
-      return False
+    return self.num_units(diffs, context).map(lambda u: u > 1)
 
   def num_units(self, diffs, context):
-    sym = self._sym(diffs, context)
-    return max(b.unit for b in sym["symbol"])
+    return Param(
+      lambda s: max(b.unit for b in s["symbol"]) if "symbol" in s else 0,
+      self._sym(diffs, context),
+    )
 
   def num_variants(self, diffs, context):
-    sym = self._sym(diffs, context)
-    return max(b.variant for b in sym["symbol"])
+    return Param(
+      lambda s: max(b.variant for b in s["symbol"]) if "symbol" in s else 0,
+      self._sym(diffs, context),
+    )
 
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
-  def pin_config(self, diffs):
+  def pin_config(self, diffs=None):
     cfg = {
       "name": {
         "xoffset": 0.508,
@@ -427,48 +446,57 @@ class SymbolDef(sexp.SExp):
     if "pin_names" in self:
       if "offset" in self["pin_names"][0]:
         cfg["name"]["xoffset"] = float(self["pin_names"][0]["offset"][0][0])
-      if self["pin_names"][0].has_yes("hide"):
+      if self["pin_names"][0].has_yes("hide", diffs).v:
         cfg["name"]["hide"] = True
     if "pin_numbers" in self:
       assert "offset" not in self["pin_numbers"][0]
-      if self["pin_numbers"][0].has_yes("hide"):
+      if self["pin_numbers"][0].has_yes("hide", diffs).v:
         cfg["number"]["hide"] = True
     return cfg
 
   @sexp.uses("duplicate_pin_numbers_are_jumpers", "jumper_pin_groups")
-  def jumpers(self, diffs):
+  def jumpers(self, diffs=None):
     # Returns a tuple of (bool(dupes are jumpers), pin groups)
     # FIXME: diffs
-    return (
-      self.get("duplicate_pin_numbers_are_jumpers", [0])[0] == "yes",
-      self.get("jumper_pin_groups", []),
+    return Param(
+      (
+        self.get("duplicate_pin_numbers_are_jumpers", [0])[0] == "yes",
+        self.get("jumper_pin_groups", []),
+      )
     )
 
   @sexp.uses("extends")
   def _sym(self, diffs, context):
     # Returns the true symbol (e.g., if extending, returns that one)
+    # FIXME: diffs
     if "extends" in self:
       for c in reversed(context):
         if isinstance(c, SymLib):
-          return c.symbol(self["extends"][0][0])
+          return Param(c.symbol(self["extends"][0][0]))
       raise Exception("extended symbol with no library in context")
-    return self
+    return Param(self)
 
   @sexp.uses("symbol")
   def _get_bodies(self, diffs, context, unit=None, variant=None):
-    try:
-      bodies = self._sym(diffs, context)["symbol"]
-    except KeyError:
-      return []
+    bodies = self._sym(diffs, context)
+    return Param(SymbolDef._filter_bodies, bodies, unit, variant)
+
+  @staticmethod
+  def _filter_bodies(bodies, unit, variant):
+    # FIXME: diffs
+    if not isinstance(bodies, list):
+      try:
+        bodies = bodies["symbol"]
+      except KeyError:
+        bodies = ()
     if unit is None and variant is None:
-      return bodies.copy()
+      return bodies
     elif unit is None:
-      return [b for b in bodies if b.variant in (0, variant)]
+      return (b for b in bodies if b.variant in (0, variant))
     elif variant is None:
-      return [b for b in bodies if b.unit in (0, unit)]
-    else:
-      to_render = {(0, 0), (0, variant), (unit, 0), (unit, variant)}
-      return [b for b in bodies if (b.unit, b.variant) in to_render]
+      return (b for b in bodies if b.unit in (0, unit))
+    to_render = ((0, 0), (0, variant), (unit, 0), (unit, variant))
+    return (b for b in bodies if (b.unit, b.variant) in to_render)
 
 
 class SymbolInst(PlaceholderHandler):
@@ -557,12 +585,12 @@ def main(argv):
   params["unit"] = (
     int(argv[3])
     if len(argv) > 3
-    else random.randint(1, sym.num_units([], params["context"]))
+    else random.randint(1, sym.num_units(None, params["context"]).v)
   )
   params["variant"] = (
     int(argv[4])
     if len(argv) > 4
-    else random.randint(1, sym.num_variants([], params["context"]))
+    else random.randint(1, sym.num_variants(None, params["context"]).v)
   )
 
   sym.fillsvg(**params)

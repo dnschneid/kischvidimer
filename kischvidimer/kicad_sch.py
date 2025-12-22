@@ -17,6 +17,7 @@ import re
 import sys
 
 from . import kicad_sym, kicad_wks, sexp, svg
+from .diff import Param
 from .kicad_common import (
   Drawable,
   Field,
@@ -118,8 +119,8 @@ class Junction(HasUUID, Drawable):
     self.netbuses = netlister.add_junction(context, self)
 
   @sexp.uses("at")
-  def pts(self, diffs):
-    return [self["at"][0].pos(diffs)]
+  def pts(self, diffs=None):
+    return Param.array(self["at"][0].pos(diffs))
 
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
@@ -128,7 +129,7 @@ class Junction(HasUUID, Drawable):
     if not draw & Drawable.DRAW_FG_PG:
       return
     # FIXME: diffs
-    pos = self.pts(diffs)[0]
+    pos = self["at"][0].pos(diffs)
     diameter = sexp.Decimal(0.915)
     if "diameter" in self and self["diameter"][0][0]:
       diameter = self["diameter"][0][0]
@@ -154,22 +155,27 @@ class NoConnect(Drawable):
     self.netbuses = netlister.add_nc(context, self)
 
   @sexp.uses("at")
-  def pts(self, diffs):
-    return [self["at"][0].pos(diffs)]
+  def pts(self, diffs=None):
+    return Param.array(self["at"][0].pos(diffs))
 
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs
-    sz = sexp.Decimal(0.6350)
-    pos = self.pts(diffs)[0]
-    xys = [
-      (pos[0] - sz, pos[1] - sz),
-      (pos[0] + sz, pos[1] + sz),
-      pos,
-      (pos[0] + sz, pos[1] - sz),
-      (pos[0] - sz, pos[1] + sz),
-    ]
+    xys = (
+      self["at"][0]
+      .pos(diffs)
+      .map(
+        lambda p, sz: (
+          (p[0] - sz, p[1] - sz),
+          (p[0] + sz, p[1] + sz),
+          p,
+          (p[0] + sz, p[1] - sz),
+          (p[0] - sz, p[1] + sz),
+        ),
+        sexp.Decimal(0.6350),
+      )
+    )
     svg.polyline(xys, color="noconnect", tag=svg.getuid(self))
 
 
@@ -184,7 +190,7 @@ class Wire(HasUUID, Polyline):
   def fillsvg(self, svg, diffs, draw, context):
     super().fillsvg(svg, diffs, draw, context, tag=svg.getuid(self))
     if draw & Drawable.DRAW_FG_PG and self.type == "wire":
-      for pos in self.pts(diffs):
+      for pos in self.pts(diffs).v:
         if Netlister.n(context).get_node_count(context, pos) == 1:
           draw_uc_at(svg, pos, color="wire")  # FIXME: not the correct color?
 
@@ -215,7 +221,9 @@ class Label(HasUUID, Drawable):
     context += (self,)
     variables.define(context, "OP", "--")
     n = Netlister.n(context)
-    net = n.get_net(context, self.pts(diffs)[0], bool(self.bus(diffs, context)))
+    net = n.get_net(
+      context, self.pts(diffs).v[0], bool(self.bus(diffs, context))
+    )
     variables.define(context, "NET_NAME", net.name())
     short_name = self.net(diffs, context, display=False)  # {SLASH} is shown
     variables.define(context, "SHORT_NET_NAME", short_name)  # TODO: specificity
@@ -226,7 +234,7 @@ class Label(HasUUID, Drawable):
       variables.define(context, "INTERSHEET_REFS", refs)
 
   @sexp.uses("shape")
-  def shape(self, diffs):
+  def shape(self, diffs=None):
     if self.type == "pin":
       return self[1]
     elif "shape" in self:
@@ -234,13 +242,16 @@ class Label(HasUUID, Drawable):
     return None
 
   def net(self, diffs, context, display=False):
-    return self[0].replace("{slash}", "/") if display else self[0]
+    name = self.param(diffs)
+    if display:
+      return name.map(lambda n: n.replace("{slash}", "/"))
+    return name
 
   def bus(self, diffs, context):
-    return Label.BUS_RE.search(self.net(diffs, context))
+    return Param(Label.BUS_RE.search(self.net(diffs, context).v))
 
   def expand_bus(self, diffs, context):
-    bus = self.bus(diffs, context)
+    bus = self.bus(diffs, context).v
     if not bus:
       return []
     prefix, suffix = bus.string[: bus.start()], bus.string[bus.end() :]
@@ -266,8 +277,8 @@ class Label(HasUUID, Drawable):
     return [(prefix, m, f"{prefix}{m}{suffix}") for m in members]
 
   @sexp.uses("at")
-  def pts(self, diffs):
-    return (self["at"][0].pos(diffs),)
+  def pts(self, diffs=None):
+    return Param.array(self["at"][0].pos(diffs))
 
   def get_text_offset(self, diffs, context, is_field):
     if self.type == "label":
@@ -398,16 +409,20 @@ class BusEntry(Drawable):
     self.netbuses = netlister.add_busentry(context, self)
 
   @sexp.uses("at", "size")
-  def pts(self, diffs):
+  def pts(self, diffs=None):
     pos = self["at"][0].pos(diffs)
-    size = self["size"][0].data
-    return [pos, (pos[0] + size[0], pos[1] + size[1])]
+    size = self["size"][0].param(diffs)
+    return Param(
+      lambda p, s: (p, (p[0] + s[0], p[1] + s[1])),
+      pos,
+      size,
+    )
 
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     # FIXME: diffs!
-    pts = self.pts(diffs)
+    pts = self.pts(diffs).v
     args = {
       "p1": pts[0],
       "p2": pts[1],
@@ -432,15 +447,15 @@ class NetclassFlag(HasUUID, Drawable):
     pass
 
   @sexp.uses("shape")
-  def shape(self, diffs):
+  def shape(self, diffs=None):
     """ "dot" "rectangle" "round" "diamond" """
     if "shape" in self:
       return self["shape"][0][0]
     return "round"
 
   @sexp.uses("at")
-  def pts(self, diffs):
-    return (self["at"][0].pos(diffs),)
+  def pts(self, diffs=None):
+    return Param.array(self["at"][0].pos(diffs))
 
   @sexp.uses("length")
   def fillsvg(self, svg, diffs, draw, context):
@@ -569,9 +584,9 @@ class Cells(Drawable):
 
   UNIQUE = True
 
-  def pos(self, diffs):
+  def pos(self, diffs=None):
     """Return the top-left cell location."""
-    return self["table_cell"][0].pos_size(diffs)[0]
+    return self["table_cell"][0].pos_size(diffs, raw_pos=True)[0]
 
   def to_row_col(self, coord, relative=False):
     """Returns a tuple of row#, col# for a coordinate"""
@@ -622,19 +637,21 @@ class SymbolInst(HasUUID, Drawable):
     return self.get("lib_name", default=self.get("lib_id"))[0]
 
   def get_alternates(self, diffs, context):
+    # FIXME: diffs
     if not diffs and hasattr(self, "_get_alternates_cache"):
       return self._get_alternates_cache
     if "pin" not in self:
-      return {}
+      return Param({})
     context = context + (self,)
     alternates = {}
     for pin in self["pin"]:
       alternate = pin.get_alternate(diffs, context)
       if alternate is not None:
         alternates[pin.number] = alternate
+    alternates_param = Param(alternates)
     if not diffs:
-      self._get_alternates_cache = alternates
-    return alternates
+      self._get_alternates_cache = alternates_param
+    return alternates_param
 
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
@@ -651,29 +668,25 @@ class SymbolInst(HasUUID, Drawable):
       variant=variant,
     )
 
-  def transform_pin(self, pos, diffs):
+  def transform_pin(self, pos):
     # Reimplementation of what's done in Svg with gstart.
     # This is done to keep things as Decimals. It's also pretty simple.
     # 1. invert y (since symbols have inverted y)
     x, y = pos[0], -pos[1]
     # 2. rotate
-    rot = self.rot(diffs)
+    rot, mirror = self.rot_mirror().v
+    assert rot % 90 == 0
     if rot == 90:
       x, y = y, -x
     elif rot == 180:
       x, y = -x, -y
     elif rot == 270:
       x, y = -y, x
-    else:
-      assert not rot
     # 3. apply flip
-    mirror = self.mirror(diffs)
-    if mirror == "x":
+    if mirror:
       y = -y
-    elif mirror == "y":
-      x = -x
     # 4. apply translate
-    trans = self["at"][0].pos(diffs)
+    trans = self["at"][0].pos().v
     return (x + trans[0], y + trans[1])
 
   def fillsvg(self, svg, diffs, draw, context):
@@ -708,7 +721,8 @@ class SymbolInst(HasUUID, Drawable):
         # NOTE: context passed to sym (intentionally) does not include self, so
         #       returned pts will be untransformed
         for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
-          abs_pos = self.transform_pin(pos, diffs)
+          # FIXME: diffs
+          abs_pos = self.transform_pin(pos)
           if n.get_net(context, abs_pos).is_floating_sympin():
             svg.circle(
               pos=pos,
@@ -736,25 +750,24 @@ class SymbolInst(HasUUID, Drawable):
         return lib.symbol(lib_id).show_unit(diffs, context)
     return True
 
-  def rot(self, diffs):
+  def rot(self, diffs=None):
     return self["at"][0].rot(diffs)
 
   @sexp.uses("mirror")
-  def mirror(self, diffs):
+  def mirror(self, diffs=None):
     return self.get("mirror", default=[None])[0]
 
   @sexp.uses("x", "y")
-  def rot_mirror(self, diffs):
+  def rot_mirror(self, diffs=None):
     # Returns a simplified rot + mirror, where mirror is never "y"
-    mirror = self.mirror(diffs)
-    rot = self.rot(diffs)
-    if mirror == "y":
-      rot = (rot + 180) % 360
-      mirror = "x"
-    return (rot, mirror)
+    return Param(
+      lambda r, m: ((r + 180) % 360, "x") if m == "y" else (r, m),
+      self.rot(diffs),
+      self.mirror(diffs),
+    )
 
   @sexp.uses("dnp")
-  def dnp(self, diffs):
+  def dnp(self, diffs=None):
     return self.get("dnp", default=[False])[0] == "yes"
 
   def refdes(self, diffs, context):
@@ -775,11 +788,13 @@ class SymbolInst(HasUUID, Drawable):
     )
     if not as_alpha:
       return unit
-    return unit_to_alpha(unit)
+    return unit.map(unit_to_alpha)
 
   @sexp.uses("convert", "body_style")
   def variant(self, diffs, context):
-    return self.get("body_style", default=self.get("convert", default=[1]))[0]
+    return Param(
+      self.get("body_style", default=self.get("convert", default=[1]))[0]
+    )
 
   @sexp.uses("power")
   def power_net(self, diffs, context, netprefix="/"):
@@ -790,15 +805,17 @@ class SymbolInst(HasUUID, Drawable):
     power_type = sym.get("power", [None])
     power_type = power_type[0] if power_type.data else "global"
     if not power_type:
-      return None
+      return Param(None)
     netprefix = netprefix.rstrip("/") + "/" if power_type == "local" else ""
     # Power symbols use the Value as the net
     variables = Variables.v(context)
     if "property" in self:
       for prop in self["property"]:
         if prop.name == "Value":
-          return netprefix + variables.expand(context + (self,), prop.value)
-    return netprefix + lib_id.rpartition(":")[2]
+          return Param(
+            netprefix + variables.expand(context + (self,), prop.value)
+          )
+    return Param(netprefix + lib_id.rpartition(":")[2])
 
   def as_comp(self, context):
     # returns (refdes, {dict of properties})
@@ -808,10 +825,10 @@ class SymbolInst(HasUUID, Drawable):
     #   chr(3): dnp
     props = {
       chr(1): self.uuid(generate=True),
-      chr(2): self.lib_id([], context),
-      "Reference": self.refdes([], context),
+      chr(2): self.lib_id(None, context),
+      "Reference": self.refdes(None, context),
     }
-    if self.dnp([]):
+    if self.dnp().v:
       props[chr(3)] = True
     if "property" not in self:
       return props["Reference"], props
@@ -945,7 +962,7 @@ class Sheet(HasUUID, Drawable):
     svg.gend()  # path
 
   @sexp.uses("dnp")
-  def dnp(self, diffs):
+  def dnp(self, diffs=None):
     return self.get("dnp", default=[False])[0] == "yes"
 
   def paths(self, project=None):
@@ -1131,7 +1148,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
   #    if labtyp not in self:
   #      continue
   #    for label in self[labtyp]:
-  #      nets.add(label.net([], instance))
+  #      nets.add(label.net(None, instance).v)
   #  return nets
 
 
@@ -1176,8 +1193,8 @@ def main(argv):
   with open(path) if path else sys.stdin as f:
     data = kicad_sch(f, path)
   variables = Variables()
-  data.fillvars(variables, [], None)
-  data.fillsvg(s, [], Drawable.DRAW_ALL, variables.context())
+  data.fillvars(variables, None, None)
+  data.fillsvg(s, None, Drawable.DRAW_ALL, variables.context())
   print(str(s))
 
 

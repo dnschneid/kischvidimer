@@ -28,7 +28,7 @@ import sys
 from decimal import Decimal
 from string import whitespace
 
-from .diff import Comparable, Diff, difflists
+from .diff import Comparable, Diff, Param, TargetDict, difflists
 
 INT_DEC_ATOM_RE = re.compile(
   r"""
@@ -193,6 +193,33 @@ class SExp(Comparable):
   def __repr__(self):
     return dump(self)
 
+  def param(self, diffs, key=None, base=None):
+    """Convenience function to return a param even if no diffs are available.
+    If key isn't provided, uses the first key in LITERAL_MAP.
+    If base isn't provided, uses LITERAL_MAP to pull the data if no diffs.
+    """
+    if key is None:
+      key = next(k for k in self.LITERAL_MAP)
+    if base is None:
+      start_end = self.LITERAL_MAP[key]
+      if not isinstance(start_end, tuple):
+        # Don't include the type if start is 0
+        i = start_end + (not start_end and self._has_type)
+        if len(self._sexp) > i and not isinstance(self._sexp[i], SExp):
+          base = self._sexp[i]
+      else:
+        start, end = start_end
+        # Don't include the type if start is 0
+        start += not start and self._has_type
+        end = (
+          min(end, len(self._sexp) - 1) if end >= 0 else len(self._sexp) + end
+        )
+        while end >= start and isinstance(self._sexp[end], SExp):
+          end -= 1
+        if end >= start:
+          base = tuple(self._sexp[start : end + 1])
+    return TargetDict.param(diffs, self, key, base)
+
   def distance(self, other, fast, diffparam):
     """Enforces uniqueness by type; should be overridden for other purposes."""
     if self.type != other.type:
@@ -343,9 +370,10 @@ class SExp(Comparable):
       if isinstance(item, SExp):
         item.reparent(self)
 
-  def has_yes(self, atom):
+  def has_yes(self, atom, diffs=None):
+    # FIXME: diffs
     item = self.get(atom)
-    return item.yes if isinstance(item, SExp) else bool(item)
+    return Param(item.yes if isinstance(item, SExp) else bool(item))
 
   def enum(self, *atoms, start_i=0):
     for i, entry in enumerate(self._sexp):

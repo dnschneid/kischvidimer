@@ -389,7 +389,7 @@ class Svg:
     if prune or not transform:
       if (
         not prune
-        and len(opacity) == 1
+        and not opacity.reduce(any)
         and not path[0].v
         and not tag
         and not filt
@@ -707,12 +707,14 @@ class Svg:
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
     xys should be a list of tuples of coordinates, or a list of Params of tuples
-    of coordinates
+    of coordinates, or a Param of coordinates
     """
-    assert isinstance(xys, (tuple, list))
-    xys = [Param(xy) for xy in xys]
+    if not isinstance(xys, Param):
+      assert isinstance(xys, (tuple, list))
+      # FIXME: NO! handle this better so we don't conflate everything
+      xys = Param.array(*xys)
     d = Param(
-      lambda close, *pts: (
+      lambda close, pts: (
         " ".join(
           f"{ptfunc(i)}{Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
           for i, pt in enumerate(pts)
@@ -720,16 +722,16 @@ class Svg:
         + " Z" * close
       ),
       close,
-      *xys,
+      xys,
     )
     # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
-    for xy in xys:
+    for xy, _ in xys:
       for pt in xy:
-        self._update_bounds(pt.v, thick=thick[0].v)
+        self._update_bounds(pt, thick=thick[0].v)
     self.add(
       ["<path"]
       + self.attr("d", d)
@@ -985,7 +987,7 @@ class Svg:
     # FIXME: this is a terrible hack for alternates, and doesn't support diffs
     alternates = ""
     if context and hasattr(context[-1], "get_alternates"):
-      alternates = context[-1].get_alternates([], context)
+      alternates = context[-1].get_alternates(None, context).v
       alternates = "\n".join(f"{n}={a}" for n, a in sorted(alternates.items()))
       alternates = f"{hash(alternates):x}"
     lib = Param(lib)
@@ -1039,9 +1041,10 @@ class Svg:
       )
       symsvg.push_invert_y()
       symsvg.colormap = self.colormap
+      # FIXME: diffs
       sym.fillsvg(
         symsvg,
-        [],
+        None,
         draw,
         context or (),
         unit=int(params[2]),
@@ -1069,13 +1072,17 @@ class Svg:
           continue
         wkssvg = Svg(self.bgcolor, header=False, auto_animate=False)
         wkssvg.colormap = self.colormap
-        wks.get(i).v.fillsvg(wkssvg, [], Drawable.DRAW_WKS, context.get(i).v)
+        # FIXME: diffs
+        wks.get(i).v.fillsvg(wkssvg, None, Drawable.DRAW_WKS, context.get(i).v)
         self.symbols[name[i].v] = wkssvg
       self._instantiate(name)
     if draw & Drawable.DRAW_WKS_PG:
       for i in range(len(name)):
         if wks.get(i).v:
-          wks.get(i).v.fillsvg(self, [], Drawable.DRAW_WKS_PG, context.get(i).v)
+          # FIXME: diffs
+          wks.get(i).v.fillsvg(
+            self, None, Drawable.DRAW_WKS_PG, context.get(i).v
+          )
     self._wks_bounds, self._bounds = self._bounds, orig_bounds
 
   def _instantiate(self, name):

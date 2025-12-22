@@ -150,8 +150,8 @@ class Schematic:
     variables.define(variables.GLOBAL, "VCSHASH", vcshash)
     variables.define(variables.GLOBAL, "VCSSHORTHASH", vcshash[:8])
     for pageset in pagesets:
-      projs[0].fillnetlist(netlister, [], pageset, p=p)
-      projs[0].fillvars(variables, [], pageset, netlister=netlister, p=p)
+      projs[0].fillnetlist(netlister, None, pageset, p=p)
+      projs[0].fillvars(variables, None, pageset, netlister=netlister, p=p)
 
     ver = git.get_version(projdir, self._revs[0])
     ver += time.strftime(" (%Y-%m-%d %H:%M)")

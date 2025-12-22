@@ -346,7 +346,7 @@ class InstCoord(namedtuple("InstCoord", ["instance", "x", "y", "is_bus"])):
   def __new__(cls, context, item, is_bus):
     inst = Instance(context)
     # FIXME: probably no diffs
-    x, y = item if isinstance(item, tuple) else item.pts([])[0]
+    x, y = item if isinstance(item, tuple) else item.pts().v[0]
     return super().__new__(cls, instance=inst, x=x, y=y, is_bus=is_bus)
 
 
@@ -354,7 +354,7 @@ class InstLabel(namedtuple("InstLabel", ["instance", "text"])):
   def __new__(cls, context, item, is_global, include_uuid=False):
     inst = None if is_global else Instance(context, include_uuid=include_uuid)
     # FIXME: probably no diffs
-    text = item if isinstance(item, str) else item.net([], context)
+    text = item if isinstance(item, str) else item.net(None, context).v
     return super().__new__(cls, instance=inst, text=text)
 
 
@@ -364,7 +364,7 @@ class NetObj(namedtuple("NetObj", ["xys", "is_bus"])):
   UNKNOWN = -1
 
   def __new__(cls, obj, is_bus=UNKNOWN):
-    return super().__new__(cls, xys=obj.pts([]), is_bus=is_bus)
+    return super().__new__(cls, xys=obj.pts().v, is_bus=is_bus)
 
   def test(self, other):
     if len(other.xys) > len(self.xys):
@@ -488,7 +488,7 @@ class Netlister:
     return netbus
 
   def add_label(self, context, label):
-    bus = label.bus([], context)
+    bus = label.bus(None, context).v
     is_global = label.type == "global_label"
     ic = InstCoord(context, label, bool(bus))
     il = InstLabel(context, label, is_global)
@@ -500,7 +500,7 @@ class Netlister:
     )
     if not bus:
       return netbus
-    for _prefix, member, netname in label.expand_bus([], context):
+    for _prefix, member, netname in label.expand_bus(None, context):
       il = InstLabel(context, netname, is_global)
       busnet = self._by_instlabel.getrep(il, Net())
       busnet = netbus.add_member(member, busnet)
@@ -511,7 +511,7 @@ class Netlister:
     return netbus
 
   def add_sheetpin(self, context, pin):
-    bus = pin.bus([], context)
+    bus = pin.bus(None, context).v
     ic = InstCoord(context, pin, bool(bus))
     # Sheetpins do not cause wire breaks, so need to use _add_node
     netbus = self._add_node(ic, pin)
@@ -528,7 +528,7 @@ class Netlister:
           member,
           f"{self.netprefix.rstrip('/')}/{netname}",
         )
-        for _, member, netname in pin.expand_bus([], context)
+        for _, member, netname in pin.expand_bus(None, context)
       ]
       return netbus.add_sheetpin(subsheet_bus, local_labels)
     return self._by_instlabel.setrep(il, netbus)
@@ -549,22 +549,22 @@ class Netlister:
         unit = unit_to_alpha(c.unit)
       elif isinstance(c, SymbolDef):
         symbol_def = c
-        jumper_dupe_pins, jumper_pin_groups = symbol_def.jumpers([])
+        jumper_dupe_pins, jumper_pin_groups = symbol_def.jumpers().v
       elif hasattr(c, "refdes"):
         sym_context = context[: -i - 1]
         symuuid = c.uuid(generate=True)
-        ref = c.refdes([], sym_context)
-        show_unit = c.show_unit([], sym_context)
-        variant = c.variant([], sym_context)
-        power_net = c.power_net([], sym_context, self.netprefix)
-        pins = symbol_def.get_pins([], context, variant=variant)
+        ref = c.refdes(None, sym_context).v
+        show_unit = c.show_unit(None, sym_context).v
+        variant = c.variant(None, sym_context).v
+        power_net = c.power_net(None, sym_context, self.netprefix).v
+        pins = symbol_def.get_pins(None, context, variant=variant).v
         break
-    name, number = pin.name_num([], context)
-    pintype = pin.get_type_style([], context)[0]
+    name, number = pin.name_num(None, context).v
+    pintype = pin.get_type_style(None, context).v[0]
     is_unique = len(pins[name]) == 1
     # FIXME: alternates can cause electrical type of hidden pin to be power
     # input (or not). does that still make it a power net?
-    is_pwr = pin.hide([]) and pintype == "power_in"
+    is_pwr = pin.hide().v and pintype == "power_in"
     is_nc = pintype == "no_connect"
     # If name is not empty, include unit letter if there's more than one
     if ref and show_unit and name and name != "~":
@@ -578,7 +578,7 @@ class Netlister:
     )
     netbus = Net()
     # Pins cause wire breaks in the editor, so can do point checks
-    ic = InstCoord(context, pin.pts([], context)[0], False)
+    ic = InstCoord(context, pin.pts(None, context).v[0], False)
     self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
     if is_pwr:
       il = InstLabel(context, pinnet, not pinnet.startswith("/"))
@@ -619,7 +619,7 @@ class Netlister:
     is_bus = wire.type == "bus"
     ic = Instance(context)
     netbus = self._add_wire(ic, NetObj(wire, is_bus))
-    for xy in wire.pts([]):
+    for xy in wire.pts().v:
       ic = InstCoord(context, xy, is_bus)
       self._instcoord_count[ic] = self._instcoord_count.get(ic, 0) + 1
       if netbus is None:
@@ -632,7 +632,7 @@ class Netlister:
 
   def add_busentry(self, context, busentry):
     nbs = []
-    pts = busentry.pts([])
+    pts = busentry.pts().v
     ic = None
     for is_bus in False, True:
       for pt in pts:
