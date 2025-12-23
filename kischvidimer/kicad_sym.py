@@ -153,11 +153,12 @@ class PinDef(Drawable):
     name = self.name(diffs, context)
     num = self.num(diffs, context)
     pos = self["at"][0].pos(diffs)
-    svg.gstart(pos=pos, path=num, hidden=self.hide(diffs))
-
     rot = self["at"][0].rot(diffs)
-    length = Param.ify(self.get("length", default=0))
+    semiunrot = Param(lambda r: rot % 180 - rot, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
+    length = Param.ify(self.get("length"), 0)
+
+    svg.gstart(pos=pos, rotate=rot, path=num, hidden=self.hide(diffs))
 
     # Compensate for mirror/rotation in instantiations
     inst_mirror = None
@@ -183,20 +184,26 @@ class PinDef(Drawable):
     )
 
     typ, style = self.get_type_style(diffs, context)
-    dot = "inverted" in style
-    end = rotated(length - 1.27 * dot, rot)
-    xys = [(0, 0), end]
-    if "clock" in style:
+    # no_connect type supersedes all styles
+    nc = typ == "no_connect"
+    if not nc and "clock" in style:
       # draw clk carrot
       svg.polyline(
         xys=[
-          translated(end, rotated((1.27 * dot, 0.635), rot)),
-          translated(end, rotated(1.27 * dot + 0.635, rot)),
-          translated(end, rotated((1.27 * dot, -0.635), rot)),
+          (length, 0.635),
+          (length + 0.635, 0),
+          (length, -0.635),
         ],
         color="device",
       )
-    elif typ == "no_connect":
+    if not nc and "inverted" in style:
+      # draw dot
+      svg.circle(
+        pos=(length - 0.635, 0),
+        radius=0.635,
+        color="device",
+      )
+    if nc:
       # draw X at pin (supersedes non_logic style)
       xys = [
         (-0.381, -0.381),
@@ -204,35 +211,41 @@ class PinDef(Drawable):
         (0, 0),
         (0.381, -0.381),
         (-0.381, 0.381),
-      ] + xys
+        (0, 0),
+        (length, 0),
+      ]
     elif style == "non_logic":
       # draw X at end of line (not pin)
-      xys += [
-        (end[0] - 0.635, end[1] - 0.635),
-        (end[0] + 0.635, end[1] + 0.635),
-        end,
-        (end[0] + 0.635, end[1] - 0.635),
-        (end[0] - 0.635, end[1] + 0.635),
+      xys = [
+        (0, 0),
+        (length, 0),
+        (length - 0.635, -0.635),
+        (length + 0.635, 0.635),
+        (length, 0),
+        (length + 0.635, -0.635),
+        (length - 0.635, 0.635),
       ]
-    if style.startswith("inverted"):
-      # draw dot
-      svg.circle(
-        pos=translated(end, rotated(0.635, rot)),
-        radius=0.635,
-        color="device",
-      )
     elif style in ("input_low", "clock_low", "edge_clock_high"):
       # draw input-low
-      xys += [
-        translated(end, rotated((-1.27 * mirror, 1.27 * flipy), rot % 180)),
-        translated(end, rotated(-1.27 * mirror, rot % 180)),
+      end = (length, 0)
+      xys = [
+        (0, 0),
+        end,
+        translated(end, rotated((-1.27 * mirror, 1.27 * flipy), semiunrot)),
+        translated(end, rotated(-1.27 * mirror, semiunrot)),
       ]
     elif style == "output_low":
       # draw output-low
-      xys += [
-        translated(end, rotated(-1.27 * mirror, rot % 180)),
-        translated(end, rotated((0, 1.27 * flipy), rot % 180)),
+      end = (length, 0)
+      xys = [
+        (0, 0),
+        end,
+        translated(end, rotated(-1.27 * mirror, semiunrot)),
+        translated(end, rotated((0, 1.27 * flipy), semiunrot)),
       ]
+    else:
+      dot = not nc and "inverted" in style
+      xys = [(0, 0), (length - 1.27 * dot, 0)]
     # Render main line
     svg.polyline(xys=xys, color="device")
 
@@ -277,17 +290,17 @@ class PinDef(Drawable):
         name if is_name else num,
         pin_config[part]["hide"],
       )
-      xoffset = rotated(pin_config[part]["xoffset"], rot)
-      yoffset = rotated((0, pin_config[part]["yoffset"]), rot % 180)
+      xoffset = (pin_config[part]["xoffset"], 0)
+      yoffset = rotated((0, pin_config[part]["yoffset"]), semiunrot)
       args = {
         "justify": pin_config[part]["justify"],
         "vjustify": pin_config[part]["vjustify"],
-        "rotate": rot % 180,
+        "rotate": semiunrot,
         "textcolor": f"pin{part[:3]}",
         "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
       }
+      svg.gstart(pos=xoffset if swap_side else (0, 0), rotate=180 * swap_side)
       if swap_side:
-        svg.gstart(pos=xoffset, rotate=180)
         if args["justify"] != "middle":
           args["justify"] = (args["justify"] + 180) % 360
         args["pos"] = yoffset
@@ -297,10 +310,9 @@ class PinDef(Drawable):
         Drawable.svgargs(self[part][0], diffs)
       )  # , context + (self,)))
       svg.text(text, **args)
-      if swap_side:
-        svg.gend()
+      svg.gend()
 
-    svg.gend()  # pin pos, path, hide
+    svg.gend()  # pin pos, rot, path, hide
 
 
 class PinSheet(PlaceholderHandler):
