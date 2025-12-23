@@ -785,6 +785,10 @@ def main(argv):
     help="output an SVG rather than a diff list",
   )
   parser.add_argument(
+    "--selector",
+    help="only diff on a subset of the file",
+  )
+  parser.add_argument(
     "base",
     help="base kicad file to compare",
   )
@@ -793,6 +797,7 @@ def main(argv):
     help="target kicad file to compare",
   )
   args = parser.parse_args(argv[1:])
+  sels = args.selector.split(":") if args.selector else []
 
   files = []
   invert_y = False
@@ -805,14 +810,25 @@ def main(argv):
     mod = importlib.import_module(ext, __package__)
     with open(path) as f:
       if ext[1:] in mod.__dict__:
-        files.append(mod.__dict__[ext[1:]](f, fname=path))
+        parsed = mod.__dict__[ext[1:]](f, fname=path)
       else:
-        files.append(parse(f.read())[0])
+        parsed = parse(f.read())[0]
+      if sels and "(" in sels[0]:
+        parsed = eval(f"parsed.{sels[0]}")
+      elif sels and sels[0].startswith("["):
+        parsed = eval(f"parsed{sels[0]}")
+      files.append(parsed)
   diffs = files[0].diff(files[1])
   if args.svg:
     s = Svg(theme="default")
     s.push_invert_y(invert_y)
-    files[0].fillsvg(s, TargetDict(diffs), Drawable.DRAW_ALL, ())
+    files[0].fillsvg(
+      s,
+      TargetDict(diffs),
+      Drawable.DRAW_ALL,
+      (),
+      **dict(s.partition("=")[::2] for s in sels if "=" in s and "(" not in s),
+    )
     print(str(s))
   if not args.quiet:
     difftext = f"Diffs from {args.base} to {args.target}:\n"
