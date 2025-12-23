@@ -19,7 +19,6 @@ Also acts as a deduplifying library cache when used with schematic-embedded
 symbols
 """
 
-import operator
 import random
 import sys
 
@@ -81,26 +80,26 @@ class PinDef(Drawable):
 
   def name(self, diffs, context):
     return Param(
-      operator.or_,
+      lambda a, n: a or n,
       self.alternate(diffs, context),
-      self["name"][0].param(),
+      self["name"][0].param(diffs),
     )
 
   def num(self, diffs, context):
-    return self["number"][0].param()
+    return self["number"][0].param(diffs)
 
   def get_type_style(self, diffs, context):
     # FIXME: diffs
+    target = self
     # FIXME: alternate can have diffs too
     alternate = self.alternate(diffs, context).v
-    target = self
     if alternate is not None:
       for alt in self["alternate"]:
         if alternate == alt[0]:
           target = alt
           break
       # TODO: what to do when alternate is not found?
-    return (target.param("type"), target.param("style"))
+    return (target.param(diffs, "type"), target.param(diffs, "style"))
 
   @sexp.uses("alternate")
   def alternate(self, diffs, context):
@@ -156,132 +155,156 @@ class PinDef(Drawable):
     rot = self["at"][0].rot(diffs)
     semiunrot = Param(lambda r: rot % 180 - rot, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
-    length = Param.ify(self.get("length"), 0)
+    length = Param(float, Param.ify(self.get("length"), 0, diffs))
 
     svg.gstart(pos=pos, rotate=rot, path=num, hidden=self.hide(diffs))
 
     # Compensate for mirror/rotation in instantiations
-    inst_mirror = None
-    inst_rot = 0
+    inst_rot_mirror = (0, None)
     for c in context:
       if c.type == "symbol" and "lib_id" in c:
-        inst_rot, inst_mirror = c.rot_mirror(diffs)
+        # NOTE: since we wrap this in <use>, we should ignore instance diffs
+        inst_rot_mirror = c.rot_mirror(diffs=None)
         break
 
     # Render line ending
     flipy = Param(
-      lambda m, r: -1
-      if (m, r)
+      lambda rm: -1
+      if rm
       in (
-        (None, 180),
-        (None, 270),
-        ("x", 0),
-        ("x", 270),
+        (180, None),
+        (270, None),
+        (0, "x"),
+        (270, "x"),
       )
       else 1,
-      inst_mirror,
-      inst_rot,
+      inst_rot_mirror,
     )
 
     typ, style = self.get_type_style(diffs, context)
     # no_connect type supersedes all styles
-    nc = typ == "no_connect"
-    if not nc and "clock" in style:
-      # draw clk carrot
-      svg.polyline(
-        xys=[
-          (length, 0.635),
-          (length + 0.635, 0),
-          (length, -0.635),
-        ],
-        color="device",
-      )
-    if not nc and "inverted" in style:
-      # draw dot
-      svg.circle(
-        pos=(length - 0.635, 0),
-        radius=0.635,
-        color="device",
-      )
-    if nc:
-      # draw X at pin (supersedes non_logic style)
-      xys = [
-        (-0.381, -0.381),
-        (0.381, 0.381),
-        (0, 0),
-        (0.381, -0.381),
-        (-0.381, 0.381),
-        (0, 0),
-        (length, 0),
-      ]
-    elif style == "non_logic":
-      # draw X at end of line (not pin)
-      xys = [
-        (0, 0),
-        (length, 0),
-        (length - 0.635, -0.635),
-        (length + 0.635, 0.635),
-        (length, 0),
-        (length + 0.635, -0.635),
-        (length - 0.635, 0.635),
-      ]
-    elif style in ("input_low", "clock_low", "edge_clock_high"):
-      # draw input-low
-      end = (length, 0)
-      xys = [
-        (0, 0),
-        end,
-        translated(end, rotated((-1.27 * mirror, 1.27 * flipy), semiunrot)),
-        translated(end, rotated(-1.27 * mirror, semiunrot)),
-      ]
-    elif style == "output_low":
-      # draw output-low
-      end = (length, 0)
-      xys = [
-        (0, 0),
-        end,
-        translated(end, rotated(-1.27 * mirror, semiunrot)),
-        translated(end, rotated((0, 1.27 * flipy), semiunrot)),
-      ]
-    else:
-      dot = not nc and "inverted" in style
-      xys = [(0, 0), (length - 1.27 * dot, 0)]
+    nc = Param(lambda t: t == "no_connect", typ)
+
+    # draw clk carrot
+    svg.gstart(hidden=Param(lambda nc, s: nc or "clock" not in s, nc, style))
+    svg.polyline(
+      xys=Param(lambda x: ((x, 0.635), (x + 0.635, 0), (x, -0.635)), length),
+      color="device",
+    )
+    svg.gend()  # clock carrot
+
+    # draw inversion circle
+    svg.gstart(hidden=Param(lambda nc, s: nc or "inverted" not in s, nc, style))
+    svg.circle(
+      pos=Param(lambda x: (x - 0.635, 0), length), radius=0.635, color="device"
+    )
+    svg.gend()  # inversion circle
+
     # Render main line
-    svg.polyline(xys=xys, color="device")
+    svg.polyline(
+      xys=Param(
+        lambda nc, style, length, mirror, flipy, semiunrot: (
+          # draw X at pin (supersedes non_logic style)
+          (
+            (-0.381, -0.381),
+            (0.381, 0.381),
+            (0, 0),
+            (0.381, -0.381),
+            (-0.381, 0.381),
+            (0, 0),
+            (length, 0),
+          )
+          if nc
+          # draw X at end of line (not pin)
+          else (
+            (0, 0),
+            (length, 0),
+            (length - 0.635, -0.635),
+            (length + 0.635, 0.635),
+            (length, 0),
+            (length + 0.635, -0.635),
+            (length - 0.635, 0.635),
+          )
+          if style == "non_logic"
+          # draw input-low
+          else (
+            (0, 0),
+            (length, 0),
+            translated(
+              (length, 0), rotated((-1.27 * mirror, 1.27 * flipy), semiunrot)
+            ),
+            translated((length, 0), rotated(-1.27 * mirror, semiunrot)),
+          )
+          if style in ("input_low", "clock_low", "edge_clock_high")
+          # draw output-low
+          else (
+            (0, 0),
+            (length, 0),
+            translated((length, 0), rotated(-1.27 * mirror, semiunrot)),
+            translated((length, 0), rotated((0, 1.27 * flipy), semiunrot)),
+          )
+          if style == "output_low"
+          # draw standard line
+          else ((0, 0), (length - 1.27 * (not nc and "inverted" in style), 0))
+        ),
+        *(nc, style, length, mirror, flipy, semiunrot),
+      ),
+      color="device",
+    )
 
     # Render name and number
     pin_config = next(
       c.pin_config(diffs) for c in reversed(context) if isinstance(c, SymbolDef)
     )
     yoffset = -0.1016 - svg.THICKNESS["wire"]
-    pin_config["number"]["xoffset"] = length / 2
+    pin_config["number"]["xoffset"] = Param(lambda x: x / 2, length)
     pin_config["number"]["yoffset"] = yoffset
     pin_config["number"]["justify"] = "middle"
-    if pin_config["name"]["hide"] or pin_config["name"]["xoffset"]:
-      pin_config["name"]["xoffset"] = length + pin_config["name"]["xoffset"]
-      pin_config["name"]["yoffset"] = 0
-      pin_config["name"]["justify"] = rot
-      pin_config["name"]["vjustify"] = "middle"
-      pin_config["number"]["vjustify"] = "bottom"
-    else:
-      # pin number below line
-      pin_config["name"]["xoffset"] = length / 2
-      pin_config["name"]["yoffset"] = yoffset
-      pin_config["name"]["vjustify"] = "bottom"
-      pin_config["name"]["justify"] = "middle"
-      pin_config["number"]["vjustify"] = "top"
+    # Adjust locations based on whether the pin name is visible
+    # as of kicad#19649, a blank name also results in the pin being on top
+    pin_on_top = Param(
+      lambda h, x, n: h or x or not n or n == "~",
+      pin_config["name"]["hide"],
+      pin_config["name"]["xoffset"],
+      name,
+    )
+    pin_config["name"]["xoffset"] = Param(
+      lambda length, x, pot: length + x if pot else length / 2,
+      *(length, pin_config["name"]["xoffset"], pin_on_top),
+    )
+    pin_config["name"]["yoffset"] = Param(
+      lambda y, pot: y * (not pot),
+      yoffset,
+      pin_on_top,
+    )
+    pin_config["name"]["justify"] = Param(
+      lambda rot, pot: rot if pot else "middle",
+      rot,
+      pin_on_top,
+    )
+    pin_config["name"]["vjustify"] = Param(
+      lambda pot: "middle" if pot else "bottom",
+      pin_on_top,
+    )
+    pin_config["number"]["vjustify"] = Param(
+      lambda pot: "bottom" if pot else "top",
+      pin_on_top,
+    )
     # pin name should always be top/left, pin number below/right.
     # text should always be facing up/left
-    swap_side = False
-    if (
-      rot in (0, 180)
-      and inst_rot in (180, 270)
-      or rot in (90, 270)
-      and inst_rot in (90, 180)
-    ):
-      swap_side = True
-    if inst_mirror and not (rot + inst_rot) % 180:
-      swap_side = not swap_side
+    swap_side = Param(
+      lambda rot, rm: (
+        (
+          rot in (0, 180)
+          and rm[0] in (180, 270)
+          or rot in (90, 270)
+          and rm[0] in (90, 180)
+        )
+        != (bool(rm[1]) and not (rot + rm[0]) % 180)
+      ),
+      rot,
+      inst_rot_mirror,
+    )
 
     for is_name, part in enumerate(("number", "name")):
       # FIXME: save the metadata
@@ -290,8 +313,12 @@ class PinDef(Drawable):
         name if is_name else num,
         pin_config[part]["hide"],
       )
-      xoffset = (pin_config[part]["xoffset"], 0)
-      yoffset = rotated((0, pin_config[part]["yoffset"]), semiunrot)
+      xoffset = Param(lambda x: (x, 0), pin_config[part]["xoffset"])
+      yoffset = Param(
+        lambda y, semiunrot: rotated((0, y), semiunrot),
+        pin_config[part]["yoffset"],
+        semiunrot,
+      )
       args = {
         "justify": pin_config[part]["justify"],
         "vjustify": pin_config[part]["vjustify"],
@@ -299,13 +326,22 @@ class PinDef(Drawable):
         "textcolor": f"pin{part[:3]}",
         "prop": svg.PROP_PIN_NAME if is_name else svg.PROP_PIN_NUMBER,
       }
-      svg.gstart(pos=xoffset if swap_side else (0, 0), rotate=180 * swap_side)
-      if swap_side:
-        if args["justify"] != "middle":
-          args["justify"] = (args["justify"] + 180) % 360
-        args["pos"] = yoffset
-      else:
-        args["pos"] = translated(xoffset, yoffset)
+      # Handle side swap (to ensure text is always at 0 or 90)
+      svg.gstart(
+        pos=Param(lambda x, s: x if s else (0, 0), xoffset, swap_side),
+        rotate=Param(lambda s: 180 * s, swap_side),
+      )
+      args["justify"] = Param(
+        lambda j, s: (j + 180) % 360 if s and j != "middle" else j,
+        args["justify"],
+        swap_side,
+      )
+      args["pos"] = Param(
+        lambda x, y, s: y if s else translated(x, y),
+        xoffset,
+        yoffset,
+        swap_side,
+      )
       args.update(
         Drawable.svgargs(self[part][0], diffs)
       )  # , context + (self,)))
@@ -379,7 +415,8 @@ class SymbolDef(sexp.SExp):
       body.fillsvg(svg, diffs, draw, context + (self,))
     draw_props = draw & (Drawable.DRAW_PROPS | Drawable.DRAW_PROPS_PG)
     if draw_props:
-      sym = self._sym(diffs, context)
+      # FIXME: diffs
+      sym = self._sym(diffs, context).v
       properties = {p.name: p for p in sym["property"]}
       if sym is not self:
         properties.update((p.name, p) for p in self["property"])
@@ -445,9 +482,10 @@ class SymbolDef(sexp.SExp):
 
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs=None):
+    defx = 0.508
     cfg = {
       "name": {
-        "xoffset": 0.508,
+        "xoffset": defx,
         "hide": False,
       },
       "number": {
@@ -456,14 +494,13 @@ class SymbolDef(sexp.SExp):
       },
     }
     if "pin_names" in self:
-      if "offset" in self["pin_names"][0]:
-        cfg["name"]["xoffset"] = float(self["pin_names"][0]["offset"][0][0])
-      if self["pin_names"][0].has_yes("hide", diffs).v:
-        cfg["name"]["hide"] = True
+      cfg["name"]["xoffset"] = Param.ify(
+        self["pin_names"][0].get("offset"), defx, diffs
+      )
+      cfg["name"]["hide"] = self["pin_names"][0].has_yes("hide", diffs)
     if "pin_numbers" in self:
-      assert "offset" not in self["pin_numbers"][0]
-      if self["pin_numbers"][0].has_yes("hide", diffs).v:
-        cfg["number"]["hide"] = True
+      assert "xoffset" not in self["pin_numbers"][0]
+      cfg["number"]["hide"] = self["pin_numbers"][0].has_yes("hide", diffs)
     return cfg
 
   @sexp.uses("duplicate_pin_numbers_are_jumpers", "jumper_pin_groups")
@@ -586,7 +623,7 @@ def main(argv):
     data = sexp.parse(f.read())
   params = {
     "svg": s,
-    "diffs": [],
+    "diffs": None,
     "draw": Drawable.DRAW_ALL,
     "context": (data[0],),
   }

@@ -203,11 +203,13 @@ class Param:
     return func(x.v for x in self)
 
   @staticmethod
-  def ify(param, default=None):
+  def ify(param, default=None, diffs=None, key=None):
     """Ensures param is a Param-like object."""
     if param is None:
       return Param(default)
-    return param.param() if hasattr(param) else Param(param)
+    if hasattr(param, "param"):
+      return param.param(diffs=diffs, key=key)
+    return Param(param)
 
 
 class Diff:
@@ -225,7 +227,7 @@ class Diff:
     def __init__(self, *entries):
       if len(entries) == 1 and isinstance(entries[0], Diff):
         entries = (entries[0]._data[0], entries[0])
-      assert all(isinstance(e, Diff) for e in entries[1:])
+      assert all(isinstance(e, Diff) for e in entries[1:]), entries
       super().__init__(entries)
 
   # datatypes:

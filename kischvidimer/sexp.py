@@ -136,10 +136,13 @@ class SExp(Comparable):
   # Contains a mapping of friendly names to ranges of literals/atoms, INCLUSIVE.
   # Index is based on sexp; subclasses should start from 1.
   # Negative range indices are relative to the index of the first sub-sexp.
-  # Subclasses should override this. Default: all literals are treated as one.
+  # Subclasses should override this. Default tries to cover everything.
   # Literals/atoms not covered by any range in the map raises an error.
-  # TODO: simplify if the range feature isn't used except by the default case.
-  LITERAL_MAP: dict[str, int | tuple[int, int]] = {"data": (0, -1)}
+  LITERAL_MAP: dict[str, int | tuple[int, int]] = {
+    "value": 1,
+    "first": (0, 0),
+    "data": (2, -1),
+  }
 
   @classmethod
   def init(cls, data):

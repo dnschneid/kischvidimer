@@ -891,7 +891,7 @@ class Field(Drawable):
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs...
     prop = self.name
-    text = self.value
+    text = Param(self.value)
     is_pg = "${" in text or (prop.lower() in ("reference", "sheetname"))
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
@@ -900,9 +900,12 @@ class Field(Drawable):
     icon = None
     if prop == "Reference":
       textcolor = "referencepart"
-      text = instancedata("reference", diffs, context, text)
-      if context[-1].show_unit(diffs, context):
-        text += unit_to_alpha(instancedata("unit", diffs, context, 0))
+      text = Param(
+        lambda r, u, s: r + unit_to_alpha(u) if s else r,
+        instancedata("reference", diffs, context, text),
+        instancedata("unit", diffs, context, 0),
+        context[-1].show_unit(diffs, context),
+      )
     elif prop == "Value":
       textcolor = "valuepart"
       for i, c in enumerate(reversed(context)):
@@ -934,8 +937,8 @@ class Field(Drawable):
         pos, context[-1].get_text_offset(diffs, context, is_field=True)
       )
     text = Variables.v(context).expand(context + (self,), text)
-    if not url and text.startswith(("http://", "https://")):
-      url = text.partition(" ")[0]
+    if not url and text.v.startswith(("http://", "https://")):
+      url = text.v.partition(" ")[0]
     args = {
       "text": text,
       "prop": prop,
