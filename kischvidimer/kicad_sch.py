@@ -27,6 +27,7 @@ from .kicad_common import (
   draw_uc_at,
   instancedata,
   rotated,
+  transformed,
   unit_to_alpha,
 )
 from .netlister import Netlister
@@ -669,25 +670,11 @@ class SymbolInst(HasUUID, Drawable):
     )
 
   def transform_pin(self, pos):
-    # Reimplementation of what's done in Svg with gstart.
-    # This is done to keep things as Decimals. It's also pretty simple.
-    # 1. invert y (since symbols have inverted y)
-    x, y = pos[0], -pos[1]
-    # 2. rotate
+    # Matches what's done in Svg with gstart.
+    # y and rot are negative since symbols have inverted y
     rot, mirror = self.rot_mirror().v
-    assert rot % 90 == 0
-    if rot == 90:
-      x, y = y, -x
-    elif rot == 180:
-      x, y = -x, -y
-    elif rot == 270:
-      x, y = -y, x
-    # 3. apply flip
-    if mirror:
-      y = -y
-    # 4. apply translate
     trans = self["at"][0].pos().v
-    return (x + trans[0], y + trans[1])
+    return transformed((pos[0], -pos[1]), -rot, mirror, trans)
 
   def fillsvg(self, svg, diffs, draw, context):
     # Decide what to draw

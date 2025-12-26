@@ -126,11 +126,14 @@ def instancedata(field, diffs, context, default=None):
 
 def draw_uc_at(svg, pos, color):
   # FIXME: handle diffs
-  sz = 0.3  # FIXME: number?
+  sz = 0.6  # FIXME: number?
+  pos = Param(
+    lambda p, sz: (float(pos[0]) - sz / 2, float(pos[1]) - sz / 2), pos, sz
+  )
   svg.rect(
-    pos=(float(pos[0]) - sz, float(pos[1]) - sz),
-    width=sz * 2,
-    height=sz * 2,
+    pos=pos,
+    width=sz,
+    height=sz,
     color=color,
     thick="ui",
   )
@@ -138,20 +141,55 @@ def draw_uc_at(svg, pos, color):
 
 def translated(pos, offset):
   if not isinstance(offset, tuple):
-    offset = (offset, 0)
+    offset = (offset or 0, 0)
   return (float(pos[0]) + float(offset[0]), float(pos[1]) + float(offset[1]))
 
 
-def rotated(pos, deg=None, rad=None):
-  if not isinstance(pos, tuple):
-    pos = (float(pos), 0)
+def rotated(pos, deg):
+  if isinstance(pos, tuple):
+    x, y = pos
   else:
-    pos = (float(pos[0]), float(pos[1]))
-  if rad is None:
-    rad = math.radians(deg)
+    x, y = pos, 0
+  deg = (deg or 0) % 360
+  if not deg:
+    return pos
+  elif deg == 90:
+    return (-y, x)
+  elif deg == 180:
+    return (-x, -y)
+  elif deg == 270:
+    return (y, -x)
+  x = float(x)
+  y = float(y)
+  rad = math.radians(deg)
   cos = math.cos(rad)
   sin = math.sin(rad)
-  return (pos[0] * cos - pos[1] * sin, pos[1] * cos + pos[0] * sin)
+  return (x * cos - y * sin, y * cos + x * sin)
+
+
+def mirrored(pos, mirror):
+  if isinstance(pos, tuple):
+    x, y = pos
+  else:
+    x, y = pos, 0
+  if mirror == "y":
+    return (-x, y)
+  elif mirror:
+    return (x, -y)
+  return (x, y)
+
+
+def transform(pos, rot=0, mirror=False, translate=None):
+  if any(isinstance(x, Param) for x in (pos, rot, mirror, translate)):
+    return Param(transform, pos, rot, mirror, translate)
+  return translated(mirrored(rotated(pos, rot), mirror), translate)
+
+
+@sexp.handler("size")
+class Size(sexp.SExp):
+  """A size property, usually two-dimensional but sometimes 1-dimensional."""
+
+  LITERAL_MAP = {"size": (1, -1)}
 
 
 @sexp.handler("at")
@@ -565,7 +603,7 @@ class Polyline(Drawable):
   @sexp.uses("pts")
   def pts(self, diffs=None):
     # FIXME: diffs
-    return Param.array(*((xy[0], xy[1]) for xy in self["pts"][0]["xy"]))
+    return Param.array(*(xy.pos(diffs) for xy in self["pts"][0]["xy"]))
 
   def fillsvg(self, svg, diffs, draw, context, tag=None):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
@@ -667,7 +705,7 @@ class Circle(Drawable):
       return
     args = {
       "pos": self["center"][0].pos(diffs),
-      "radius": self["radius"][0][0],
+      "radius": self["radius"][0].param(diffs),
       "color": "device" if context[-1].type == "symbol" else "notes",
     }
     args["fill"] = f"{args['color']}_background"
@@ -716,11 +754,15 @@ class Text(Drawable):
 
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
-    is_pg = "${" in self[0]
+    subcontext = context + (self,)
+    variables = Variables.v(context)
+    raw_text = self.param(diffs)
+    text = Param(lambda t: variables.expand(subcontext, t), raw_text)
+    is_pg = raw_text.reduce(lambda ts: any("${" in t for t in ts))
     if not draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       return
     args = {
-      "text": Variables.v(context).expand(context + (self,), self[0]),
+      "text": text,
       "pos": self["at"][0].pos(diffs),
       "rotate": None,
       "textcolor": "device" if context[-1].type == "symbol" else "notes",
@@ -746,20 +788,25 @@ class TextBox(Drawable):
       pos = self["at"][0].pos(diffs, relative=relative)
     else:
       pos = self["at"][0].raw_pos(diffs)
-    size = self["size"][0].data
-    if size[0] < 0:
-      pos = (pos[0] + size[0], pos[1])
-      size = (-size[0], size[1])
-    if size[1] < 0:
-      pos = (pos[0], pos[1] + size[1])
-      size = (size[0], -size[1])
-    return pos, size
+    size = self["size"][0].param(diffs)
+    return Param.multi(
+      2,
+      lambda p, s: (
+        (p[0] + s[0] if s[0] < 0 else p[0], p[1] + s[1] if s[1] < 0 else p[1]),
+        (abs(s[0]), abs(s[1])),
+      ),
+      pos,
+      size,
+    )
 
   @sexp.uses("margins")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
+    subcontext = context + (self,)
+    variables = Variables.v(context)
+    raw_text = self.param(diffs)
+    is_pg = raw_text.reduce(lambda ts: any("${" in t for t in ts))
     is_symbol = any(c.type == "symbol" for c in context)
-    is_pg = "${" in self[0]
     args = {
       "rotate": None,
       "color": "device" if is_symbol else "notes",
@@ -784,7 +831,7 @@ class TextBox(Drawable):
         x: args[x] for x in ("color", "fill", "thick", "pattern") if x in args
       }
       rargs["pos"] = pos
-      rargs["width"], rargs["height"] = size
+      rargs["width"], rargs["height"] = Param.multi(2, size)
       # stroke of <0 means no border. stroke of 0 means default
       if not isinstance(rargs["thick"], str) and rargs["thick"] < 0:
         rargs["thick"] = 0
@@ -795,54 +842,68 @@ class TextBox(Drawable):
       svg.rect(**rargs)
     if draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       # halve the right margin to account for character spacing
-      wrapwidth = size[0] - margins[0] - margins[2] / 2
-      text = Variables.v(context).expand(context + (self,), self[0])
-      lines = []
-      # wrap rules: only wrap on space and don't split words.
-      # sequential spaces can cause additional wraps.
-      # wrapped lines are trimmed to the first non-space.
-      for src in text.split("\n"):
-        trim = False
-        words = src.split(" ")
-        line = words[0]
-        for word in words[1:]:
-          if svg.calcwidth(f"{line} {word}", args["size"]) > wrapwidth:
-            lines.append(line)
-            line = word
-            trim = True
-          elif word and trim:
-            line = f"{line} {word}".lstrip(" ")
-          else:
-            line = f"{line} {word}"
-        lines.append(line)
-      args["text"] = text = "\n".join(lines)
-      tpos = (pos[0] + size[0] / 2, pos[1] + size[1] / 2)
-      if args.get("justify") == "left":
-        tpos = (pos[0] + margins[0], tpos[1])
-      elif args.get("justify") == "right":
-        tpos = (pos[0] + size[0] - margins[2], tpos[1])
+      wrapwidth = Param(lambda s, m: s[0] - m[0] - m[2] / 2, size, margins)
+      unwrapped = Param(lambda t: variables.expand(subcontext, t), raw_text)
+      args["text"] = Param(TextBox.wrap_text, svg, unwrapped, size, wrapwidth)
       # symbols have Y inverted, so compensate by swapping the vjust calcs.
       # svg will handle the rest
       vjust = ("bottom", "top") if is_symbol else ("top", "bottom")
-      if args.get("vjustify") == vjust[0]:
-        tpos = (tpos[0], pos[1] + margins[1])
-      elif args.get("vjustify") == vjust[1]:
-        tpos = (tpos[0], pos[1] + size[1] - margins[3])
-      targs = {
-        x: args[x]
-        for x in (
-          "text",
-          "size",
-          "textcolor",
-          "justify",
-          "vjustify",
-          "rotate",
-          "hidden",
-        )
-        if x in args
-      }
-      targs["pos"] = tpos
-      svg.text(**targs)
+      args["pos"] = Param(
+        lambda p, s, m, j, vj: (
+          p[0]
+          + (
+            m[0] if j == "left" else s[0] - m[2] if j == "right" else s[0] / 2
+          ),
+          p[1]
+          + (
+            m[1]
+            if j == vjust[0]
+            else s[1] - m[3]
+            if j == vjust[1]
+            else s[1] / 2
+          ),
+        ),
+        *(pos, size, margins, args.get("justify"), args.get("vjustify")),
+      )
+      svg.text(
+        **{
+          x: args[x]
+          for x in (
+            "text",
+            "size",
+            "textcolor",
+            "justify",
+            "vjustify",
+            "rotate",
+            "hidden",
+          )
+          if x in args
+        }
+      )
+
+  @staticmethod
+  def wrap_text(svg, text, size, wrapwidth):
+    """Adds newlines to text based on the size and width available."""
+    lines = []
+    # wrap rules: only wrap on space and don't split words.
+    # sequential spaces can cause additional wraps.
+    # wrapped lines are trimmed to the first non-space.
+    for src in text.split("\n"):
+      trim = False
+      words = src.split(" ")
+      line = words[0]
+      # TODO: obvious optimization opportunities here; profile to see if needed
+      for word in words[1:]:
+        if svg.calcwidth(f"{line} {word}", size) > wrapwidth:
+          lines.append(line)
+          line = word
+          trim = True
+        elif word and trim:
+          line = f"{line} {word}".lstrip(" ")
+        else:
+          line = f"{line} {word}"
+      lines.append(line)
+    return "\n".join(lines)
 
 
 @sexp.handler("table_cell")
@@ -883,6 +944,12 @@ class Field(Drawable):
   def value(self):
     return self[1]
 
+  def distance(self, other, fast, diffparam):
+    if self.type != other.type:
+      return None
+    # Changing field names is not supported, since many fields are special.
+    return 0 if self.name == other.name else None
+
   def fillvars(self, variables, diffs, context):
     variables.define(context + (self,), self.name, self.value)
     super().fillvars(variables, diffs, context)
@@ -890,19 +957,22 @@ class Field(Drawable):
   @sexp.uses("show_name", "hide")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs...
-    prop = self.name
-    text = Param(self.value)
-    is_pg = "${" in text or (prop.lower() in ("reference", "sheetname"))
+    prop = self.name  # changing field names is not supported
+    raw_text = self.param(diffs, "value")
+    is_pg = raw_text.reduce(
+      lambda ts: any("${" in t for t in ts)
+    ) or prop.lower() in ("reference", "sheetname")
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
-    show_name = self.has_yes("show_name", diffs).v
+    variables = Variables.v(context)
+    show_name = self.has_yes("show_name", diffs)
     url = None
     icon = None
     if prop == "Reference":
       textcolor = "referencepart"
-      text = Param(
+      raw_text = Param(
         lambda r, u, s: r + unit_to_alpha(u) if s else r,
-        instancedata("reference", diffs, context, text),
+        instancedata("reference", diffs, context, raw_text),
         instancedata("unit", diffs, context, 0),
         context[-1].show_unit(diffs, context),
       )
@@ -917,26 +987,31 @@ class Field(Drawable):
       textcolor = "intersheet_refs"
     elif prop == "Sheetname":
       textcolor = "sheetname"
-      url = Variables.v(context).resolve(context, "SHEETPATH")
+      url = variables.resolve(context, "SHEETPATH")
       if url:
         url = "#" + url.rstrip("/")
     elif prop == "Sheetfile":
       textcolor = "sheetfilename"
-      if not show_name:
-        text = f"File: {text}"
+      raw_text = Param(
+        lambda t, s: t if s else f"File: {t}", raw_text, show_name
+      )
     elif all(c.type != "symbol" for c in context):
       textcolor = "sheetfields"
     else:
       textcolor = "fields"
-    if show_name:
-      text = f"{prop}: {text}"
+    text = Param(
+      lambda t, s: f"{prop}: " * s + variables.expand(context + (self,), t),
+      raw_text,
+      show_name,
+    )
     pos = self["at"][0].pos(diffs, relative=True)
     # Properties of labels are rendered with offsets defined by the label type
     if hasattr(context[-1], "get_text_offset"):
-      pos = translated(
-        pos, context[-1].get_text_offset(diffs, context, is_field=True)
+      pos = Param(
+        translated,
+        pos,
+        context[-1].get_text_offset(diffs, context, is_field=True),
       )
-    text = Variables.v(context).expand(context + (self,), text)
     if not url and text.v.startswith(("http://", "https://")):
       url = text.v.partition(" ")[0]
     args = {
@@ -962,6 +1037,16 @@ class Field(Drawable):
     return default
 
 
+@sexp.handler("data")
+class Data(sexp.SExp):
+  """Raw data."""
+
+  LITERAL_MAP = {"data": (1, -1)}
+
+  def b64(self, diffs):
+    return self.param(diffs).map("".join)
+
+
 @sexp.handler("image")
 class Image(Drawable):
   """An image!"""
@@ -971,10 +1056,11 @@ class Image(Drawable):
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_IMG:
       return
-    pos = self["at"][0].pos(diffs)
-    scale = self.get("scale", default=[1])[0]
-    data = "".join(self["data"][0].data)
-    svg.image(data, pos, scale)
+    svg.image(
+      data=self["data"][0].b64(diffs),
+      pos=self["at"][0].pos(diffs),
+      scale=Param.ify(self.get("scale"), 1, diffs),
+    )
 
 
 class Variables:
