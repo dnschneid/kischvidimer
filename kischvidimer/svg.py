@@ -714,6 +714,10 @@ class Svg:
       assert isinstance(xys, (tuple, list))
       # FIXME: NO! handle this better so we don't conflate everything
       xys = Param.array(*xys)
+    if len(xys) > 1:
+      # Match the number of points in all versions of XYs so animations work
+      maxpts = xys.reduce(lambda diffs: max(len(xys) for xys in diffs))
+      xys = Param(lambda xys: xys + xys[-1:] * (maxpts - len(xys)), xys)
     d = Param(
       lambda close, pts: (
         " ".join(
