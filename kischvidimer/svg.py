@@ -113,6 +113,7 @@ class Svg:
     self.uidtable = None
     self.prune = True
     self.glyphs = set()
+    self._extend_current_line = 0
     self._invert_y = []
     self._mirror_text = mirror_text
     self._bounds = None
@@ -202,7 +203,7 @@ class Svg:
       t[0][0] == "hide" for t in self._transforms if t
     )
 
-  def add(self, line, extend=False):
+  def add(self, line):
     """Adds one line to the SVG. Lists are combined with spaces.
     Returns self so you can chain with hascontents or nocontents if desired.
     """
@@ -210,7 +211,7 @@ class Svg:
       return self
     if not isinstance(line, str):
       line = " ".join(line)
-    if extend:
+    if self._extend_current_line:
       self.data[-1] += line
     else:
       self.data.append(line)
@@ -220,7 +221,7 @@ class Svg:
     """Generates an opacity attribute, if len(cnt) > 1"""
     if len(cnt) == 1:
       return []
-    c = cnt[i][1] if i else " ".join((c for _, c in cnt[1:] if c))
+    c = cnt[i].c if i else set().union(*(c.c for c in cnt[1:]))
     return self.attr(name, [DiffParam(i == 0, None), DiffParam(i > 0, c)], True)
 
   def attr(self, name, value=None, default="", i=0, convert=True):
@@ -240,7 +241,7 @@ class Svg:
           conv_orig_v = Svg.tounit(orig_v)
           new_v = Svg.tounit(new_v)
         self._animate.append((name, conv_orig_v, new_v, c))
-    val = Param(value).get(i).v
+    val = (value.get(i) if isinstance(value, Param) else value[i]).v
     if name in Svg.TRANSFORM_TYPES:
       if not isinstance(val, (tuple, list)):
         val = (val,)
@@ -354,7 +355,7 @@ class Svg:
           "translate",
           Param(lambda p: (Svg.tounit(p[0]), Svg.tounit(self.y(p[1]))), pos),
         )
-        + self.attr("opacity", opacity, 1)
+        + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
@@ -367,7 +368,7 @@ class Svg:
         + Svg._tagattr(tag)
         + self.attr("p", path, "")
         + self.attr("scale", mirror)
-        + self.attr("opacity", opacity, 1)
+        + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
@@ -380,7 +381,7 @@ class Svg:
         + Svg._tagattr(tag)
         + self.attr("p", path, "")
         + self.attr("rotate", Param(op.neg, rotate))
-        + self.attr("opacity", opacity, 1)
+        + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
       ).hascontents()
       path = Param.ify("")
@@ -401,7 +402,7 @@ class Svg:
           + Svg._tagattr(tag)
           + prune
           + self.attr("p", path, "")
-          + self.attr("opacity", opacity, 1)
+          + self.attr("opacity", opacity, True)
           + self.attr("filter", filt)
         ).hascontents()
     self._rotatestate.append(rotate)
@@ -873,8 +874,6 @@ class Svg:
         anchor,
       )
       xpos_factor = -1
-    # It is critical that no extraneous newlines exist within <text>, otherwise
-    # textContent will be inaccurate. Use extend=True on all calls to Svg.add
     self.add(
       ["<text", 'stroke="none"']
       + self.attr("x", pos.map(lambda p: p[0] * xpos_factor), 0)
@@ -889,6 +888,9 @@ class Svg:
       + Svg._tagattr(tag)
       + ([f'prop="{prop}"'] if prop and isinstance(prop, str) else [])
     ).hascontents()
+    # It is critical that no extraneous newlines exist within <text>, otherwise
+    # textContent will be inaccurate.
+    self._extend_current_line = True
     # FIXME: clean up this janky way of collecting pin names/numbers
     if prop and isinstance(prop, int) and prop < Svg.PROP_LABEL:
       pintext = "\n".join(t.v for t in text)
@@ -914,12 +916,8 @@ class Svg:
       self.glyphs.update(text.get(i).v)
       if url.get(i).v:
         targ = " target='_blank'" * (not url.get(i).v.startswith("#"))
-        self.add([f"<a href='{url.get(i).v}'{targ}>"], extend=True)
-      opacity = (
-        []
-        if len(text) == 1
-        else self.attr_opacity(text, i=i, name="fill-opacity")
-      )
+        self.add([f"<a href='{url.get(i).v}'{targ}>"])
+      opacity = self.attr_opacity(text, i=i, name="fill-opacity")
       baseline = self.attr(
         "dominant-baseline", Param(lambda vj: vj[1], vjust), "central"
       )
@@ -959,20 +957,22 @@ class Svg:
               charcount += 4
               targetpos += 4
           gap_em = (targetpos - cursorpos) / Svg.FONT_HEIGHT
+          # stray whitespace in <text> causes misalignment
           self.add(
             ["<tspan"]
             + yattr * (colno == 0)
-            + ['x="0"', 'dy="1em"'] * (lineno > 0) * (colno == 0)
+            + ['x="0"'] * (lineno > 0 or i) * (colno == 0)
+            + ['dy="1em"'] * (lineno > 0) * (colno == 0)
             + [f'dx="{gap_em:.4g}em"'] * (colno > 0)
             + baseline
             + opacity,
-            extend=True,  # stray whitespace in <text> causes misalignment
           ).hascontents(f"{Svg.encode(t or '') or '&#8203;'}</tspan>")
           charcount += Svg.calcwidth(t, 1, font=None)
           cursorpos = targetpos + Svg.calcwidth(t, 1)
       if url.get(i).v:
-        self.add("</a>", extend=True)
-    self.add("</text>", extend=True)
+        self.add("</a>")
+    self.add("</text>")
+    self._extend_current_line = False
     if needsgroup:
       self.gend()
 
