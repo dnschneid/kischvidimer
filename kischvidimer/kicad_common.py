@@ -212,11 +212,11 @@ class Coord(sexp.SExp):
     return self.param(diffs, "pos", self.data[:2])
 
   def rot(self, diffs=None, context=None):
-    if len(self.data) < 3:
-      return 0
-    rot = self.data[2]
     # see SCH_IO_KICAD_SEXPR_PARSER::parseText()
-    return rot if rot < 360 else rot / 10
+    return Param(
+      lambda r: r or 0 if (r or 0) < 360 else r / 10,
+      self.param(diffs, "rot"),
+    )
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
@@ -410,6 +410,8 @@ class Drawable(sexp.SExp):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
+    # FIXME: need to be able to generate defaults somehow
+    # added, removed = self.added_and_removed(diffs, Modifier)
     args = {}
     for item in self.data:
       if isinstance(item, Modifier):
@@ -417,6 +419,7 @@ class Drawable(sexp.SExp):
     return args
 
   def fillvars(self, variables, diffs, context=None):
+    # FIXME: should we punt on diffs?
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
@@ -425,6 +428,7 @@ class Drawable(sexp.SExp):
         item.fillvars(variables, diffs, context)
 
   def fillnetlist(self, netlister, diffs, context=None):
+    # FIXME: should we punt on diffs?
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
@@ -542,7 +546,7 @@ class Effects(Modifier):
         if c["mirror"][0][0] == "y":
           flipx = not flipx
       if "at" in c and "label" not in c.type and c.type != "netclass_flag":
-        rot += c["at"][0].rot(diffs, context) * (-1 if flipy != flipx else 1)
+        rot += c["at"][0].rot(diffs, context).v * (-1 if flipy != flipx else 1)
     rot = rot % 360
     spin = False
     if (

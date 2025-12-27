@@ -153,7 +153,7 @@ class PinDef(Drawable):
     num = self.num(diffs, context)
     pos = self["at"][0].pos(diffs)
     rot = self["at"][0].rot(diffs)
-    semiunrot = Param(lambda r: rot % 180 - rot, rot)  # restricts to 0 or 90
+    semiunrot = Param(lambda r: r % 180 - r, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
     length = Param(float, Param.ify(self.get("length"), 0, diffs))
 

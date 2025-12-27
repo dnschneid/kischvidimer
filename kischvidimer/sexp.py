@@ -280,8 +280,8 @@ class SExp(Comparable):
       that_chunk = that[start : that_end + 1]
       if this_chunk != that_chunk:
         if not is_tuple:
-          this_chunk = this_chunk[0]
-          that_chunk = that_chunk[0]
+          this_chunk = this_chunk[0] if this_chunk else None
+          that_chunk = that_chunk[0] if that_chunk else None
         diffs.append(Diff((self, SExp), key, old=this_chunk, new=that_chunk))
     # Sanity-check that we didn't miss anything (not checking for gaps)
     assert max_end + 1 >= max(this_sexp_i, that_sexp_i), "unexpected data found"
