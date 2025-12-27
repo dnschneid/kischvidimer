@@ -396,6 +396,8 @@ class Drawable(sexp.SExp):
       context = () if context is None else (context,)
     context = context + (self,)
     # FIXME: need to be able to generate defaults somehow
+    # And need to make sure to handle add-add and mod-remove conflicts,
+    # especially when a whole tree is removed
     # added, removed = self.added_and_removed(diffs, Modifier)
     args = {}
     for item in self.data:
