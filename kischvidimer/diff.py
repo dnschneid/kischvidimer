@@ -87,11 +87,12 @@ class Comparable(ABC):
 class Param:
   """Tracks zero or more diffs as a single parameter."""
 
-  def __init__(self, func, *args):
+  def __init__(self, func, *args, default=None):
     """Tracks a lazy-eval parameter, based on constants, diffs, or other Params.
     func  -- a function to lazy-apply to args, or a constant value for the Param
     *args -- one or more arguments, Params, or list[Diff]s.
              The resulting svg class is a union of any diffs included.
+    default -- returned whenever there is no value or a function returns None
     """
     assert callable(func) == bool(args), "missing either function or args"
     if isinstance(func, Param):
@@ -101,6 +102,7 @@ class Param:
       self._func = func._func
       self._lencache = func._lencache
       self._evalcache = func._evalcache
+      self._default = func._default if default is None else default
       return
     if not args:
       assert not isinstance(func, Diff)
@@ -115,6 +117,7 @@ class Param:
         assert not any(isinstance(a, Diff) for a in args), "arg not Diff.Group"
         self._args = args
       self._func = func
+    self._default = default
     self._lencache = 1
     for arg in self._args:
       if isinstance(arg, (Param, Diff.Group)):
@@ -171,11 +174,13 @@ class Param:
         else:
           args.append(arg)
       assert self._func or len(args) == 1
-      self._evalcache[i] = DiffParam(
+      self._evalcache[i] = ret = DiffParam(
         v=self._func(*args) if self._func else args[0],
         c=svgclasses,
       )
-    return self._evalcache[i]
+    else:
+      ret = self._evalcache[i]
+    return self._default if ret is None else ret
 
   @property
   def v(self):
@@ -208,8 +213,8 @@ class Param:
     if param is None:
       return Param(default)
     if hasattr(param, "param"):
-      return param.param(diffs=diffs, key=key)
-    return Param(param)
+      return param.param(diffs=diffs, key=key, default=default)
+    return Param(param, default=default)
 
 
 class Diff:
@@ -526,9 +531,9 @@ class TargetDict(dict):
   def get(self, target, key, default=None):
     return super().get((id(target), key), default)
 
-  def param(self, target, key, base):
+  def param(self, target, key, base, default=None):
     diffs = None if self is None else self.get(target, key)
-    return Param(Diff.Group(base, *(diffs or ())))
+    return Param(Diff.Group(base, *(diffs or ())), default=default)
 
 
 def matchlists(base, other, data=None):

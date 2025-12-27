@@ -300,12 +300,7 @@ class GravCoord(Coord):
   LITERAL_MAP = {"pos": (1, 2), "gravity": 3}
 
   def gravity(self, diffs=None):
-    # FIXME: diffs
-    return (
-      self.data[2]
-      if len(self.data) > 2 and sexp.is_atom(self.data[2])
-      else "rbcorner"
-    )
+    return self.param(diffs, "gravity", default="rbcorner")
 
   def rot(self, diffs=None, context=None):
     raise Exception("rot() not valid on GravCoord")

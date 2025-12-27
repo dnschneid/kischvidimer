@@ -196,7 +196,7 @@ class SExp(Comparable):
   def __repr__(self):
     return dump(self)
 
-  def param(self, diffs, key=None, base=None):
+  def param(self, diffs, key=None, base=None, default=None):
     """Convenience function to return a param even if no diffs are available.
     If key isn't provided, uses the first key in LITERAL_MAP.
     If base isn't provided, uses LITERAL_MAP to pull the data if no diffs.
@@ -221,7 +221,7 @@ class SExp(Comparable):
           end -= 1
         if end >= start:
           base = tuple(self._sexp[start : end + 1])
-    return TargetDict.param(diffs, self, key, base)
+    return TargetDict.param(diffs, self, key, base, default=default)
 
   def distance(self, other, fast, diffparam):
     """Enforces uniqueness by type; should be overridden for other purposes."""
