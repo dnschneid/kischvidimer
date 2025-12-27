@@ -343,7 +343,7 @@ class Svg:
       mirror,
     )
     filt = Param(lambda f: f"url(#{f})" if f else "", filt)
-    if not prune and (len(pos) > 1 or pos[0].v != (0, 0)):
+    if not prune and pos.reduce(lambda pos: any(p != (0, 0) for p in pos)):
       transform.append(
         ("translate", float(pos[0].v[0]), float(self.y(pos[0].v[1])))
       )
@@ -361,7 +361,7 @@ class Svg:
       path = Param("")
       opacity = Param(True)
       filt = Param("")
-    if not prune and (len(mirror) > 1 or mirror[0].v != (1, 1)):
+    if not prune and mirror.reduce(lambda mrr: any(m != (1, 1) for m in mrr)):
       transform.append(("scale",) + mirror[0].v)
       self.add(
         ["<g"]
@@ -374,7 +374,7 @@ class Svg:
       path = Param.ify("")
       opacity = Param.ify(1)
       filt = Param.ify("")
-    if not prune and (len(rotate) > 1 or rotate[0].v):
+    if not prune and rotate.reduce(any):
       transform.append(("rotate", -rotate[0].v))
       self.add(
         ["<g"]
@@ -390,10 +390,10 @@ class Svg:
     if prune or not transform:
       if (
         not prune
-        and not opacity.reduce(any)
-        and not path[0].v
+        and opacity.reduce(all)
+        and not path.reduce(any)
         and not tag
-        and not filt
+        and not filt.reduce(any)
       ):
         transform.append(("noop",))
       else:
