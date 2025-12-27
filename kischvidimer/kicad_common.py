@@ -125,7 +125,6 @@ def instancedata(field, diffs, context, default=None):
 
 
 def draw_uc_at(svg, pos, color):
-  # FIXME: handle diffs
   sz = 0.6  # FIXME: number?
   pos = Param(
     lambda p, sz: (float(pos[0]) - sz / 2, float(pos[1]) - sz / 2), pos, sz
@@ -292,15 +291,6 @@ class Coord(sexp.SExp):
     if len(a) == 1:
       return (a[0] + b[0], 0)
     return (a[0] + b[0], a[1] + b[1])
-
-  # def rotated(self, rot, diffs=None):
-  #  pos = self.pos(diffs)
-  #  cos = math.cos(math.radians(rot))
-  #  sin = math.sin(math.radians(rot))
-  #  rotated = (pos[0]*cos - pos[1]*sin, pos[1]*cos + pos[0]*sin)
-  #  #if flip:
-  #  #  rotated = (-rotated[0], rotated[1])
-  #  return rotated
 
 
 @sexp.handler("pos", "center", "start", "mid", "end", "offset")

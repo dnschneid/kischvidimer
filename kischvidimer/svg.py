@@ -329,7 +329,7 @@ class Svg:
       transform.append(("hide",))
       # If pruning is off, simplify the g tag.
       prune = ["hidden"]
-      opacity = Param(1)
+      opacity = Param(True)
     else:
       prune = []
       opacity = hidden.map(op.not_)
@@ -358,9 +358,9 @@ class Svg:
         + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
       ).hascontents()
-      path = Param.ify("")
-      opacity = Param.ify(1)
-      filt = Param.ify("")
+      path = Param("")
+      opacity = Param(True)
+      filt = Param("")
     if not prune and (len(mirror) > 1 or mirror[0].v != (1, 1)):
       transform.append(("scale",) + mirror[0].v)
       self.add(
