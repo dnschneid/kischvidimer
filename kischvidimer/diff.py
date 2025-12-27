@@ -284,11 +284,37 @@ class Diff:
     else:
       self._data = None
       self._description = "changed"
+    self._oid = None if old is None else id(old)
     self._svgclass = f"diff{id(self):X}"
     self._parent = None
     self._redundant = False
     self._rendered = False
     self._unimportant = False
+
+  @property
+  def is_add(self):
+    return isinstance(self._data, tuple) and self._data[0] is None
+
+  @property
+  def is_rm(self):
+    return isinstance(self._data, tuple) and self._data[1] is None
+
+  @property
+  def old_id(self):
+    """The id of the original object being modified.
+    Useful for finding it in some container.
+    """
+    return self._oid
+
+  def is_instance(self, cls):
+    """Checks if either the old or new objects are an instance of a class.
+    Does not flag the diff as rendered.
+    """
+    return isinstance(self._data, tuple) and (
+      cls is None
+      or isinstance(self._data[0], cls)
+      or isinstance(self._data[1], cls)
+    )
 
   def is_unimportant(self, applymode=0):
     """Returns True if the change is unimportant, or if it exists of changes
@@ -428,6 +454,19 @@ class Diff:
     )
 
 
+class FakeDiff(Diff):
+  """Fakes a diff for various useful purposes.
+  One common use is if you want a custom param with a specific class.
+  """
+
+  def __init__(self, cls, *args, **kargs):
+    super().__init__(None, None, *args, **kargs)
+    self._svgclass = cls
+
+  def param(self):
+    return Param(Diff.Group(self))
+
+
 def data_to_str(x):
   if isinstance(x, (list, tuple)):
     if len(x) > 1:
@@ -484,8 +523,8 @@ class TargetDict(dict):
   def __deepcopy__(self, _):
     raise Exception("Deepcopy not possible")
 
-  def get(self, target, key):
-    return super().get((id(target), key))
+  def get(self, target, key, default=None):
+    return super().get((id(target), key), default)
 
   def param(self, target, key, base):
     diffs = None if self is None else self.get(target, key)

@@ -25,7 +25,7 @@ import time
 from uuid import uuid4
 
 from . import sexp
-from .diff import Param
+from .diff import FakeDiff, Param
 
 # hack for keyword testing
 if __name__ == "__main__":
@@ -388,11 +388,23 @@ class Drawable(sexp.SExp):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
+    added, removed = self.added_and_removed(diffs, Drawable)
     for subdraw in Drawable.DRAW_SEQUENCE:
       if draw & subdraw:
+        # new stuff!
+        for item, c in added:
+          svg.gstart(hidden=FakeDiff(c, old=True, new=False).param())
+          item.fillsvg(svg, diffs, subdraw, context)
+          svg.gend()
+        # existing stuff, maybe removed
         for item in self.data:
           if isinstance(item, Drawable):
+            rm_c = removed.get(id(item))
+            if rm_c:
+              svg.gstart(hidden=FakeDiff(rm_c, old=False, new=True).param())
             item.fillsvg(svg, diffs, subdraw, context)
+            if rm_c:
+              svg.gend()
 
   def svgargs(self, diffs, context=None):
     if not isinstance(context, tuple):

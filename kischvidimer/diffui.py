@@ -32,8 +32,8 @@ from graphlib import TopologicalSorter
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from io import BytesIO
 
-from . import diff as diff_mod
 from . import git, themes
+from .diff import FakeDiff, TargetDict, applylists, threeway
 from .kicad_common import Drawable, Variables
 from .kicad_pro import DEFAULT_LICENSE_HEADER
 from .netlister import Netlister
@@ -41,16 +41,6 @@ from .svg import Svg
 
 
 class Page:
-  class InstanceSelector(diff_mod.Diff):
-    """Fakes a diff so that instances can be selected in svg output."""
-
-    def __init__(self, uuid):
-      super().__init__("svg", "hidden", old=True, new=False)
-      self._svgclass = f"instance {uuid}"
-
-    def param(self):
-      return diff_mod.Param(diff_mod.Diff.Group(self))
-
   def __init__(
     self,
     name,
@@ -75,7 +65,7 @@ class Page:
     # Make sure safediffs is the right format (match conflicts)
     if safediffs and not isinstance(safediffs[0], tuple):
       safediffs = [(d, None) for d in safediffs]
-    diffs = diff_mod.TargetDict(safediffs + conflicts)
+    diffs = TargetDict(safediffs + conflicts)
     # Generate the SVG for the page
     self.svg = Svg(header=False, auto_animate=False)
     self.svg.symbols = symbols
@@ -103,7 +93,9 @@ class Page:
           uuid = path.uuid(sheet)
           self.svg.metadata_context = uuid
           pgcontext = self.context + (path, sheet)
-          self.svg.gstart(hidden=Page.InstanceSelector(uuid).param())
+          self.svg.gstart(
+            hidden=FakeDiff(f"instance {uuid}", old=True, new=False).param()
+          )
           page.fillsvg(self.svg, diffs, draw, context=pgcontext)
           self.svg.gend()
         self.svg.metadata_context = None
@@ -798,9 +790,7 @@ def main(argv):
     conflicts = []
     diffs = []
     if count >= 3:
-      conflicts = diff_mod.threeway(
-        schs[0], schs[1], schs[2], return_safe=diffs
-      )
+      conflicts = threeway(schs[0], schs[1], schs[2], return_safe=diffs)
     elif count == 2:
       for difftree in schs[0].diff(schs[1]):
         diffs += [([d], []) for d in difftree._flatten()]
@@ -810,7 +800,7 @@ def main(argv):
     return 0
   if selected is None:
     return 2
-  if diff_mod.applylists(selected):
+  if applylists(selected):
     raise Exception("conflicting diffs selected")
   for i in range(len(paths) // count):
     base_schs[i].set_timestamp(time.strftime("%c"))

@@ -329,8 +329,20 @@ class SExp(Comparable):
     #    raise Exception("unhandled diff")
     pass
 
+  def added_and_removed(self, diffs, cls=None):
+    """Returns a list of added subsexps and a dict mapping rm'd to classes.
+    Returns and calls .forsvg() on all diffs matched by cls.
+    """
+    difflist = diffs.get(self, None, [])
+    added = [d.forsvg() for d in difflist if d.is_add and d.is_instance(cls)]
+    removed = {
+      d.old_id: d.forsvg()[1]
+      for d in difflist
+      if d.is_rm and d.is_instance(cls)
+    }
+    return added, removed
+
   def child_is_deleted(self, child):
-    # FIXME: is this correct?
     return not any(s is child for s in self._sexp)
 
   def hash(self):
