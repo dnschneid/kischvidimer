@@ -345,7 +345,7 @@ class Svg:
       mirror,
     )
     filt = Param(lambda f: f"url(#{f})" if f else "", filt)
-    if not prune and pos.reduce(lambda pos: any(p != (0, 0) for p in pos)):
+    if not prune and pos.reduce(any, lambda p: p != (0, 0)):
       transform.append(
         ("translate", float(pos[0].v[0]), float(self.y(pos[0].v[1])))
       )
@@ -363,7 +363,7 @@ class Svg:
       path = Param("")
       opacity = Param(True)
       filt = Param("")
-    if not prune and mirror.reduce(lambda mrr: any(m != (1, 1) for m in mrr)):
+    if not prune and mirror.reduce(any, lambda m: m != (1, 1)):
       transform.append(("scale",) + mirror[0].v)
       self.add(
         ["<g"]
@@ -718,7 +718,7 @@ class Svg:
       xys = Param.array(*xys)
     if len(xys) > 1:
       # Match the number of points in all versions of XYs so animations work
-      maxpts = xys.reduce(lambda diffs: max(len(xys) for xys in diffs))
+      maxpts = xys.reduce(max, len)
       xys = Param(lambda xys: xys + xys[-1:] * (maxpts - len(xys)), xys)
     d = Param(
       lambda close, pts: (

@@ -201,11 +201,12 @@ class Param:
     """
     return Param(func, self, *args)
 
-  def reduce(self, func):
+  def reduce(self, func, innerfunc=None):
     """Returns the result of a function applied across len(self)
     Function will be passed all of the versions as an iterable.
+    If innerfunc is provided, apply to each value before passing to func.
     """
-    return func(x.v for x in self)
+    return func(innerfunc(x.v) if innerfunc else x.v for x in self)
 
   @staticmethod
   def ify(param, default=None, diffs=None, key=None):

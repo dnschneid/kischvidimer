@@ -757,7 +757,7 @@ class Text(Drawable):
     variables = Variables.v(context)
     raw_text = self.param(diffs)
     text = Param(lambda t: variables.expand(subcontext, t), raw_text)
-    is_pg = raw_text.reduce(lambda ts: any("${" in t for t in ts))
+    is_pg = raw_text.reduce(any, lambda t: "${" in t)
     if not draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       return
     args = {
@@ -804,7 +804,7 @@ class TextBox(Drawable):
     subcontext = context + (self,)
     variables = Variables.v(context)
     raw_text = self.param(diffs)
-    is_pg = raw_text.reduce(lambda ts: any("${" in t for t in ts))
+    is_pg = raw_text.reduce(any, lambda t: "${" in t)
     is_symbol = any(c.type == "symbol" for c in context)
     args = {
       "rotate": None,
@@ -958,9 +958,10 @@ class Field(Drawable):
     # FIXME: diffs...
     prop = self.name  # changing field names is not supported
     raw_text = self.param(diffs, "value")
-    is_pg = raw_text.reduce(
-      lambda ts: any("${" in t for t in ts)
-    ) or prop.lower() in ("reference", "sheetname")
+    is_pg = raw_text.reduce(any, lambda t: "${" in t) or prop.lower() in (
+      "reference",
+      "sheetname",
+    )
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
     variables = Variables.v(context)
