@@ -143,11 +143,13 @@ class PinDef(Drawable):
     if not draw & Drawable.DRAW_PINS:
       return
     # REFERENCE: LIB_PIN::PlotSymbol, LIB_PIN::PlotPinTexts
-    # FIXME: diffs
     # FIXME: effects
     # FIXME: unconnected circle
     # FIXME: defaults?
     # FIXME: metadata (electrical type)
+    # FIXME: redo rendering to turn rot+inst_rot_mirror into rot_90+mirror,
+    #        where rot_90 is 0 or 90 and mirror can be x or y.  This will likely
+    #        simplify things tremendously, as well as make diffs look better.
 
     name = self.name(diffs, context)
     num = self.num(diffs, context)
