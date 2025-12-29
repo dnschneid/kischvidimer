@@ -95,7 +95,9 @@ class Param:
     default -- returned whenever there is no value or a function returns None
     """
     assert callable(func) == bool(args), "missing either function or args"
-    if isinstance(func, Param):
+    if isinstance(func, Param) and (
+      func._default is None or default is None or default == func._default
+    ):
       # Shallow copy, since Param operations are idempotent
       assert not args
       self._args = func._args
@@ -174,13 +176,17 @@ class Param:
         else:
           args.append(arg)
       assert self._func or len(args) == 1
-      self._evalcache[i] = ret = DiffParam(
-        v=self._func(*args) if self._func else args[0],
-        c=svgclasses,
-      )
+      val = self._func(*args) if self._func else args[0]
+      if val is None and self._default is not None:
+        if isinstance(self._default, Param):
+          val, classes = self._default.get(i)
+          svgclasses.update(classes)
+        else:
+          val = self._default
+      self._evalcache[i] = ret = DiffParam(v=val, c=svgclasses)
     else:
       ret = self._evalcache[i]
-    return self._default if ret is None else ret
+    return ret
 
   @property
   def v(self):
