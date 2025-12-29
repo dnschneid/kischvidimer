@@ -289,7 +289,7 @@ class Label(HasUUID, Drawable):
       return (0, 0)
     # Need to get effective size to calculate text height
     args = {"size": 1.27}  # default
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     th = float(args["size"]) * svg.Svg.FONT_HEIGHT
     offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
     yoffset = 0
@@ -331,7 +331,7 @@ class Label(HasUUID, Drawable):
         args["textcolor"] = f"{self.type[:4]}label"
       if "color" in self and any(self["color"][0].data):
         args["textcolor"] = self["color"][0].data
-      args.update(self.svgargs(diffs, context))
+      self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
       shape = self.shape(diffs)
@@ -430,7 +430,7 @@ class BusEntry(Drawable):
       "color": "wire",
       "tag": svg.getuid(self),
     }
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     svg.line(**args)
 
 
@@ -466,7 +466,7 @@ class NetclassFlag(HasUUID, Drawable):
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {"size": 1.27, "textcolor": "netclass_refs"}
-      args.update(self.svgargs(diffs, context))
+      self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
       size = sexp.Decimal(0.915)
@@ -541,8 +541,10 @@ class Table(Drawable):
       row_count = len(heights)
       width = sum(widths)
       height = sum(heights)
-      border_style = self["border"][0].svgargs(svg, context + (self,))
-      sep_style = self["separators"][0].svgargs(svg, context + (self,))
+      border_style = {}
+      self["border"][0].fillsvgargs(border_style, diffs, context + (self,))
+      sep_style = {}
+      self["separators"][0].fillsvgargs(sep_style, diffs, context + (self,))
       border_style.setdefault("color", "notes")
       sep_style.setdefault("color", "notes")
 
@@ -929,7 +931,7 @@ class Sheet(HasUUID, Drawable):
         "color": "sheet",
         "fill": "sheet_background",
       }
-      args.update(self.svgargs(diffs, context))
+      self.fillsvgargs(args, diffs, context)
       if not draw & Drawable.DRAW_FG:
         args["thick"] = 0
       if not self.draw_body(draw, args):

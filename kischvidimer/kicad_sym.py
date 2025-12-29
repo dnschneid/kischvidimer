@@ -342,9 +342,7 @@ class PinDef(Drawable):
         yoffset,
         swap_side,
       )
-      args.update(
-        Drawable.svgargs(self[part][0], diffs)
-      )  # , context + (self,)))
+      Drawable.fillsvgargs(self[part][0], args, diffs)  # , context + (self,)))
       svg.text(text, **args)
       svg.gend()
 

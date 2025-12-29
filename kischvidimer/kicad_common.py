@@ -391,7 +391,7 @@ class Drawable(sexp.SExp):
             if rm_c:
               svg.gend()
 
-  def svgargs(self, diffs, context=None):
+  def fillsvgargs(self, args, diffs, context=None):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
@@ -399,11 +399,15 @@ class Drawable(sexp.SExp):
     # And need to make sure to handle add-add and mod-remove conflicts,
     # especially when a whole tree is removed
     # added, removed = self.added_and_removed(diffs, Modifier)
-    args = {}
+    # TODO: all defaults must be set by the caller ahead of time
+    # before each step:
+    #  if item was added/removed, shallow-copy the state of args before it.
+    #  run args.update
+    #  create fakediffs to transition between the item and the previous state
+    # inside each step: instead of replacing items, inject with params
     for item in self.data:
       if isinstance(item, Modifier):
-        args.update(item.svgargs(diffs, context))
-    return args
+        item.fillsvgargs(args, diffs, context)
 
   def fillvars(self, variables, diffs, context=None):
     # FIXME: should we punt on diffs?
@@ -432,8 +436,8 @@ class Drawable(sexp.SExp):
 
 
 class Modifier(sexp.SExp):
-  def svgargs(self, diffs, context):
-    return {}
+  def fillsvgargs(self, args, diffs, context):
+    raise NotImplementedError()
 
 
 @sexp.handler("effects")
@@ -485,34 +489,31 @@ class Effects(Modifier):
     return self.has_yes("hide", diffs)
 
   @sexp.uses("href", "mirror")
-  def svgargs(self, diffs, context):
+  def fillsvgargs(self, args, diffs, context):
     """Returns a dict of arguments to Svg.text"""
-    args = {}
-    args["justify"], args["vjustify"] = self.get_justify(diffs)
-    args["size"] = self.get_size(diffs)
-    args["textcolor"] = self.get_color(diffs)
-    args["hidden"] = self.get_hidden(diffs)
-    args["bold"], args["italic"] = self.get_style(diffs)
+    justify, vjustify = self.get_justify(diffs)
+    size = self.get_size(diffs)
+    textcolor = self.get_color(diffs)
+    hidden = self.get_hidden(diffs)
+    bold, italic = self.get_style(diffs)
 
     if "href" in self:
       args["url"] = self["href"][0][0]
-
-    # Remove defaults so that calling function can easily override if desired
-    if args["justify"] == "middle":
-      del args["justify"]
-    if args["vjustify"] == "middle":
-      del args["vjustify"]
-    if args["size"] is None:
-      del args["size"]
-    if args["textcolor"] is None:
-      del args["textcolor"]
-    if not args["hidden"]:
-      del args["hidden"]
+    if justify != "middle":
+      args["justify"] = justify
+    if vjustify != "middle":
+      args["vjustify"] = vjustify
+    if size is not None:
+      args["size"] = size
+    if textcolor is not None:
+      args["textcolor"] = textcolor
+    if hidden:
+      args["hidden"] = hidden
 
     # Handle mirror/rotation causing justify to flip
     # Some nodes have their own implementation, so drop out early
     if context[-1].type in ("pin", "name", "number"):
-      return args
+      return
 
     # FIXME: confirm this actually works as intended
     # FIXME: move this into Field, and a modified version for text?
@@ -553,7 +554,6 @@ class Effects(Modifier):
     if "vjustify" in args and flipy:
       args["vjustify"] = "bottom" if args["vjustify"] == "top" else "top"
     args["rotate"] = (rot % 180 + 180 * spin) % 360
-    return args
 
 
 @sexp.handler("stroke", "default")
@@ -561,8 +561,7 @@ class Stroke(Modifier):
   """stroke effects"""
 
   @sexp.uses("width", "type", "color")
-  def svgargs(self, diffs, context):
-    args = {}
+  def fillsvgargs(self, args, diffs, context):
     if "width" in self and self["width"][0][0]:
       args["thick"] = self["width"][0][0]
     if "type" in self:
@@ -573,7 +572,6 @@ class Stroke(Modifier):
         args["color"] = stroke
     if "type" in self and self["type"][0][0] != "default":
       args["pattern"] = self["type"][0][0]
-    return args
 
 
 @sexp.handler("fill")
@@ -581,8 +579,7 @@ class Fill(Modifier):
   """fill properties"""
 
   @sexp.uses("background", "color")
-  def svgargs(self, diffs, context):
-    args = {}
+  def fillsvgargs(self, args, diffs, context):
     fill = None
     if "type" in self:
       fill = self["type"][0][0]
@@ -592,7 +589,6 @@ class Fill(Modifier):
       fill = tuple(self["color"][0].data)
     if any(fill):
       args["fill"] = fill
-    return args
 
 
 @sexp.handler("polyline")
@@ -639,7 +635,7 @@ class Polyline(Drawable):
       args["tag"] = tag
     if close:
       args["close"] = close
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
     if not self.draw_body(draw, args):
@@ -679,7 +675,7 @@ class Arc(Drawable):
       "thick": "wire",
     }
     args["fill"] = f"{args['color']}_background"
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     if not self.draw_body(draw, args):
       thick = args["thick"]
       args["thick"] = 0
@@ -712,7 +708,7 @@ class Circle(Drawable):
       "color": "device" if context[-1].type == "symbol" else "notes",
     }
     args["fill"] = f"{args['color']}_background"
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
     if not self.draw_body(draw, args):
@@ -741,7 +737,7 @@ class Rectangle(Drawable):
       "color": "device" if context[-1].type == "symbol" else "notes",
     }
     args["fill"] = f"{args['color']}_background"
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
     if not self.draw_body(draw, args):
@@ -770,7 +766,7 @@ class Text(Drawable):
       "rotate": None,
       "textcolor": "device" if context[-1].type == "symbol" else "notes",
     }
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     svg.text(**args)
 
 
@@ -817,7 +813,7 @@ class TextBox(Drawable):
       "fill": "none",
       "thick": "wire",
     }
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     # left, top, right, bottom
     margins = [dec_to_float(args["size"]) * 4 / 5] * 4
     if "margins" in self:
@@ -1027,7 +1023,7 @@ class Field(Drawable):
       "hidden": self.has_yes("hide"),
       "icon": icon,
     }
-    args.update(self.svgargs(diffs, context))
+    self.fillsvgargs(args, diffs, context)
     svg.text(**args)
 
   @staticmethod
