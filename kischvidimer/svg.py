@@ -40,6 +40,7 @@ class Svg:
   ANCHOR = {
     "left": "start",
     "middle": "middle",
+    "none": "middle",
     "right": "end",
     "0": "start",
     "90": "start",
@@ -50,6 +51,7 @@ class Svg:
     "bottom": (0, "text-after-edge"),
     "wks_bottom": (0, "alphabetic"),
     "middle": (0.5, "central"),
+    "none": (0.5, "central"),
     "top": (1, "hanging"),
   }
   # Scale the aspect of the SVG stipple pattern by changing the constant
@@ -314,9 +316,9 @@ class Svg:
     self,
     pos=None,
     rotate=None,
-    mirror=False,
-    hidden=False,
-    filt="",
+    mirror=None,
+    hidden=None,
+    filt=None,
     path=None,
     tag=None,
   ):
@@ -440,7 +442,7 @@ class Svg:
     self.add("</a>")
 
   def line(
-    self, p1=(0, 0), p2=None, color="wire", thick="wire", pattern=None, tag=None
+    self, p1=None, p2=None, color=None, thick=None, pattern=None, tag=None
   ):
     p1 = Param.ify(p1, (0, 0))
     p2 = Param.ify(p2, (0, 0))
@@ -464,13 +466,13 @@ class Svg:
 
   def rect(
     self,
-    pos=(0, 0),
+    pos=None,
     width=None,
     height=None,
     end=None,
-    color="notes",
+    color=None,
     fill=None,
-    thick="wire",
+    thick=None,
     pattern=None,
     tag=None,
   ):
@@ -519,11 +521,11 @@ class Svg:
 
   def circle(
     self,
-    pos=(0, 0),
+    pos=None,
     radius=None,
-    color="notes",
+    color=None,
     fill=None,
-    thick="wire",
+    thick=None,
     pattern=None,
     tag=None,
   ):
@@ -576,9 +578,9 @@ class Svg:
     mid=None,
     radius=None,
     largearc=None,
-    color="notes",
+    color=None,
     fill=None,
-    thick="wire",
+    thick=None,
     pattern=None,
   ):
     start = Param(start)
@@ -645,9 +647,9 @@ class Svg:
   def lines(
     self,
     xys,
-    color="notes",
+    color=None,
     fill=None,
-    thick="wire",
+    thick=None,
     pattern=None,
     tag=None,
   ):
@@ -667,11 +669,11 @@ class Svg:
   def polyline(
     self,
     xys,
-    color="notes",
+    color=None,
     fill=None,
-    thick="wire",
+    thick=None,
     pattern=None,
-    close=False,
+    close=None,
     tag=None,
   ):
     """Renders a polyline.
@@ -688,7 +690,7 @@ class Svg:
       tag=tag,
     )
 
-  def bezier(self, xys, color="notes", fill=None, thick="wire", pattern=None):
+  def bezier(self, xys, color=None, fill=None, thick=None, pattern=None):
     """Renders a bezier curve.
     xys should be a list of tuples of coordinates, or a Param of such.
     """
@@ -703,7 +705,7 @@ class Svg:
     )
 
   def _path(
-    self, ptfunc, xys, color, fill, thick, pattern, close=False, tag=None
+    self, ptfunc, xys, color, fill, thick, pattern, close=None, tag=None
   ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
@@ -724,7 +726,7 @@ class Svg:
           f"{ptfunc(i)}{Svg.tounit(pt[0])} {Svg.tounit(self.y(pt[1]))}"
           for i, pt in enumerate(pts)
         )
-        + " Z" * close
+        + " Z" * bool(close)
       ),
       close,
       xys,
@@ -749,11 +751,11 @@ class Svg:
       + Svg._tagattr(tag)
     ).nocontents()
 
-  def image(self, data, pos=(0, 0), scale=1):
+  def image(self, data, pos=None, scale=None):
     """Adds an image of specified size, centered around pos."""
     data = Param.ify(data)
     pos = Param.ify(pos, (0, 0))
-    scale = Param.ify(scale)
+    scale = Param.ify(scale, 1)
 
     image, width, height = Param.multi(3, self._image, data)
     width = Param(lambda w, s: round(w * float(s)), width, scale)
@@ -789,14 +791,14 @@ class Svg:
   def text(
     self,
     text,
-    prop="",
-    pos=(0, 0),
-    size="100%",
-    textcolor="notes",
-    justify="middle",
-    vjustify="middle",
-    bold=False,
-    italic=False,
+    prop=None,
+    pos=None,
+    size=None,
+    textcolor=None,
+    justify=None,
+    vjustify=None,
+    bold=None,
+    italic=None,
     rotate=None,
     hidden=None,
     url=None,
@@ -983,7 +985,15 @@ class Svg:
   def title(self, label):
     self.add(f"<title>{Svg.escape(label)}</title>")
 
-  def instantiate(self, draw, lib, lib_id, unit=1, variant=1, context=None):
+  def instantiate(
+    self,
+    draw,
+    lib,
+    lib_id,
+    unit=None,
+    variant=None,
+    context=None,
+  ):
     """Instantiates a symbol. lib must contain a definition of lib_id.
     Returns True if the symbol was successfully instantiated; otherwise you
     should draw something yourself.
@@ -996,8 +1006,8 @@ class Svg:
       alternates = f"{hash(alternates):x}"
     lib = Param(lib)
     lib_id = Param(lib_id)
-    unit = Param(unit)
-    variant = Param(variant)
+    unit = Param(unit, default=1)
+    variant = Param(variant, default=1)
     mirror = Param(
       lambda *mirrors: bool(sum(m[0] != m[1] for m in mirrors) % 2),
       *self._mirrorstate,
