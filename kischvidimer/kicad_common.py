@@ -83,103 +83,14 @@ class Version(sexp.SExp):
     return self.MIN_VERSION <= self.data[0] <= self.MAX_VERSION
 
 
-def unit_to_alpha(unit):
-  # FIXME: is this correct?
-  alpha = ""
-  while unit:
-    unit -= 1
-    alpha = chr(ord("A") + unit % 26) + alpha
-    unit //= 26
-  return alpha
+@sexp.handler("data")
+class Data(sexp.SExp):
+  """Raw data."""
 
+  LITERAL_MAP = {"data": (1, -1)}
 
-def dec_to_float(dec):
-  if isinstance(dec, (sexp.Decimal, float, int)):
-    return float(dec)
-  return type(dec)(map(float, dec))
-
-
-def instancedata(field, diffs, context, default=None):
-  # FIXME diffs!!!!
-  project = None
-  path = None
-  sheet = None
-  for c in reversed(context):
-    if c.type == "path":
-      path = c
-    elif c.type == "sheet":
-      sheet = c
-    elif c.type == "~project":
-      project = c
-  if path is None:
-    return Param(default)
-  uuid = path.uuid(sheet)
-  for c in reversed(context):
-    if "instances" in c:
-      inst = c["instances"][0].paths(project).get(uuid)
-      if inst and field in inst:
-        return Param(inst[field][0][0])
-  return Param(default)
-
-
-def draw_uc_at(svg, pos, color):
-  sz = 0.6  # FIXME: number?
-  pos = Param(
-    lambda p, sz: (float(pos[0]) - sz / 2, float(pos[1]) - sz / 2), pos, sz
-  )
-  svg.rect(
-    pos=pos,
-    width=sz,
-    height=sz,
-    color=color,
-    thick="ui",
-  )
-
-
-def translated(pos, offset):
-  if not isinstance(offset, tuple):
-    offset = (offset or 0, 0)
-  return (float(pos[0]) + float(offset[0]), float(pos[1]) + float(offset[1]))
-
-
-def rotated(pos, deg):
-  if isinstance(pos, tuple):
-    x, y = pos
-  else:
-    x, y = pos, 0
-  deg = (deg or 0) % 360
-  if not deg:
-    return pos
-  elif deg == 90:
-    return (-y, x)
-  elif deg == 180:
-    return (-x, -y)
-  elif deg == 270:
-    return (y, -x)
-  x = float(x)
-  y = float(y)
-  rad = math.radians(deg)
-  cos = math.cos(rad)
-  sin = math.sin(rad)
-  return (x * cos - y * sin, y * cos + x * sin)
-
-
-def mirrored(pos, mirror):
-  if isinstance(pos, tuple):
-    x, y = pos
-  else:
-    x, y = pos, 0
-  if mirror == "y":
-    return (-x, y)
-  elif mirror:
-    return (x, -y)
-  return (x, y)
-
-
-def transform(pos, rot=0, mirror=False, translate=None):
-  if any(isinstance(x, Param) for x in (pos, rot, mirror, translate)):
-    return Param(transform, pos, rot, mirror, translate)
-  return translated(mirrored(rotated(pos, rot), mirror), translate)
+  def b64(self, diffs):
+    return self.param(diffs).map("".join)
 
 
 @sexp.handler("at")
@@ -857,16 +768,6 @@ class Field(Drawable):
     return default
 
 
-@sexp.handler("data")
-class Data(sexp.SExp):
-  """Raw data."""
-
-  LITERAL_MAP = {"data": (1, -1)}
-
-  def b64(self, diffs):
-    return self.param(diffs).map("".join)
-
-
 @sexp.handler("image")
 class Image(Drawable):
   """An image!"""
@@ -881,6 +782,105 @@ class Image(Drawable):
       pos=self["at"][0].pos(diffs),
       scale=Param.ify(self.get("scale"), 1, diffs),
     )
+
+
+def unit_to_alpha(unit):
+  # FIXME: is this correct?
+  alpha = ""
+  while unit:
+    unit -= 1
+    alpha = chr(ord("A") + unit % 26) + alpha
+    unit //= 26
+  return alpha
+
+
+def dec_to_float(dec):
+  if isinstance(dec, (sexp.Decimal, float, int)):
+    return float(dec)
+  return type(dec)(map(float, dec))
+
+
+def instancedata(field, diffs, context, default=None):
+  # FIXME diffs!!!!
+  project = None
+  path = None
+  sheet = None
+  for c in reversed(context):
+    if c.type == "path":
+      path = c
+    elif c.type == "sheet":
+      sheet = c
+    elif c.type == "~project":
+      project = c
+  if path is None:
+    return Param(default)
+  uuid = path.uuid(sheet)
+  for c in reversed(context):
+    if "instances" in c:
+      inst = c["instances"][0].paths(project).get(uuid)
+      if inst and field in inst:
+        return Param(inst[field][0][0])
+  return Param(default)
+
+
+def draw_uc_at(svg, pos, color):
+  sz = 0.6  # FIXME: number?
+  pos = Param(
+    lambda p, sz: (float(pos[0]) - sz / 2, float(pos[1]) - sz / 2), pos, sz
+  )
+  svg.rect(
+    pos=pos,
+    width=sz,
+    height=sz,
+    color=color,
+    thick="ui",
+  )
+
+
+def translated(pos, offset):
+  if not isinstance(offset, tuple):
+    offset = (offset or 0, 0)
+  return (float(pos[0]) + float(offset[0]), float(pos[1]) + float(offset[1]))
+
+
+def rotated(pos, deg):
+  if isinstance(pos, tuple):
+    x, y = pos
+  else:
+    x, y = pos, 0
+  deg = (deg or 0) % 360
+  if not deg:
+    return pos
+  elif deg == 90:
+    return (-y, x)
+  elif deg == 180:
+    return (-x, -y)
+  elif deg == 270:
+    return (y, -x)
+  x = float(x)
+  y = float(y)
+  rad = math.radians(deg)
+  cos = math.cos(rad)
+  sin = math.sin(rad)
+  return (x * cos - y * sin, y * cos + x * sin)
+
+
+def mirrored(pos, mirror):
+  if isinstance(pos, tuple):
+    x, y = pos
+  else:
+    x, y = pos, 0
+  if mirror == "y":
+    return (-x, y)
+  elif mirror:
+    return (x, -y)
+  return (x, y)
+
+
+def transform(pos, rot=0, mirror=False, translate=None):
+  if any(isinstance(x, Param) for x in (pos, rot, mirror, translate)):
+    return Param(transform, pos, rot, mirror, translate)
+  return translated(mirrored(rotated(pos, rot), mirror), translate)
 
 
 def main(argv):
