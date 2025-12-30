@@ -46,7 +46,7 @@ class HasModifiers(sexp.SExp):
       if isinstance(item, (Modifier, HasModifiers)):
         rm_c = removed.get(id(item))
         if rm_c:
-          apply = FakeDiff(rm_c, old=True)
+          apply = FakeDiff(rm_c, old=True).param()
           self._wrap_svgargs_with_diff(apply, item, args, diffs, context)
         else:
           item.fillsvgargs(args, diffs, context)
