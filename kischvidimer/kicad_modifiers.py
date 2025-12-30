@@ -38,18 +38,26 @@ class HasModifiers(sexp.SExp):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
-    added, removed = self.added_and_removed(diffs, (Modifier, HasModifiers))
+    added, removed = self.added_and_removed(
+      diffs, (Modifier, HasModifiers), ModifierRoot
+    )
     for item, add_c in added:
       apply = FakeDiff(add_c, new=True).param()
       self._wrap_svgargs_with_diff(apply, item, args, diffs, context)
     for item in self.data:
-      if isinstance(item, (Modifier, HasModifiers)):
+      if isinstance(item, (Modifier, HasModifiers)) and not isinstance(
+        item, ModifierRoot
+      ):
         rm_c = removed.get(id(item))
         if rm_c:
           apply = FakeDiff(rm_c, old=True).param()
           self._wrap_svgargs_with_diff(apply, item, args, diffs, context)
         else:
           item.fillsvgargs(args, diffs, context)
+
+
+class ModifierRoot(HasModifiers):
+  """A tag that informs not to recurse into this object from above"""
 
 
 @sexp.handler("font")
@@ -79,7 +87,7 @@ class Effects(HasModifiers):
     # FIXME: move this into Field, and a modified version for text?
     flipx = flipy = False
     inst_rot = inst_mirror = False
-    rot = args.get("rotate", 0)
+    rot = args.get("rotate") or 0
     for c in context:
       # Special-case for text in symbols, which over-rotate if the instance is
       # included. This works because normally text doesn't have a symbol in its
@@ -197,6 +205,10 @@ class Justify(Modifier):
       default=default,
     )
 
+  def fillsvgargs(self, args, diffs, context):
+    for param in "justify", "vjustify":
+      args[param] = self.param(diffs, param, default=args.get(param))
+
 
 @sexp.handler("stroke", "default")
 class Stroke(Modifier):
@@ -204,6 +216,8 @@ class Stroke(Modifier):
 
   @sexp.uses("width", "type", "color")
   def fillsvgargs(self, args, diffs, context):
+    # FIXME
+    # super().fillsvgargs(args, diffs, context)
     if "width" in self and self["width"][0][0]:
       args["thick"] = self["width"][0][0]
     if "type" in self:
@@ -222,6 +236,8 @@ class Fill(Modifier):
 
   @sexp.uses("background", "color")
   def fillsvgargs(self, args, diffs, context):
+    # FIXME
+    # super().fillsvgargs(args, diffs, context)
     fill = None
     if "type" in self:
       fill = self["type"][0][0]

@@ -820,24 +820,21 @@ class Svg:
     anchor = Param(lambda j: Svg.ANCHOR[str(j).lower()], justify)
     ### WORKAROUND for crbug/389845192
     vjustmap = dict(Svg.VJUST)
-    if any("~{" in t.v for t in text):
+    if text.reduce(any, lambda t: "~{" in t):
       vjustmap["middle"] = (vjustmap["middle"][0], "middle")
     ### end workaround
     vjust = Param(lambda j: vjustmap[str(j).lower()], vjustify)
     url = Param(url)
     icon = Param(icon)
-    # FIXME: reduce across all diffs instead of assuming
     if (
-      len(rotate) > 1
-      or rotate[0].v
-      or len(hidden) > 1
-      or hidden[0].v
-      or len(text) > 1
-      or "\n" in text[0].v
-      or len(url) > 1
+      rotate.reduce(any)
+      or hidden.reduce(any)
       or self._mirror_text
+      or len(text) > 1
+      or text.reduce(any, lambda t: "\n" in t)
       or len(icon) > 1
-      or icon[0].v
+      or icon.reduce(any)
+      or len(url) > 1
     ):
       needsgroup = True
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)

@@ -25,6 +25,7 @@ import re
 from collections import namedtuple
 
 from . import sexp
+from .diff import Param
 from .kicad_common import HasUUID, unit_to_alpha
 from .kicad_sym import SymbolBody, SymbolDef
 
@@ -346,7 +347,10 @@ class InstCoord(namedtuple("InstCoord", ["instance", "x", "y", "is_bus"])):
   def __new__(cls, context, item, is_bus):
     inst = Instance(context)
     # FIXME: probably no diffs
+    if isinstance(item, Param):
+      item = item.v
     x, y = item if isinstance(item, tuple) else item.pts().v[0]
+    x, y = int(x * 10000), int(y * 10000)
     return super().__new__(cls, instance=inst, x=x, y=y, is_bus=is_bus)
 
 
@@ -559,8 +563,9 @@ class Netlister:
         power_net = c.power_net(None, sym_context, self.netprefix).v
         pins = symbol_def.get_pins(None, context, variant=variant).v
         break
-    name, number = pin.name_num(None, context).v
-    pintype = pin.get_type_style(None, context).v[0]
+    name = pin.name(None, context).v
+    number = pin.num(None, context).v[0]
+    pintype = pin.get_type_style(None, context)[0].v
     is_unique = len(pins[name]) == 1
     # FIXME: alternates can cause electrical type of hidden pin to be power
     # input (or not). does that still make it a power net?

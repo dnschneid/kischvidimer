@@ -29,7 +29,7 @@ from .kicad_variables import Variables
 if __name__ == "__main__":
   sexp.handler._handlers.clear()
 
-from .kicad_modifiers import HasModifiers
+from .kicad_modifiers import ModifierRoot
 
 
 class HasUUID:
@@ -150,9 +150,9 @@ class Coord(sexp.SExp):
   def sexp(self):
     """sexp for the purposes of outputting to a file."""
     pos = self.pos()
-    self._sexp[1] = pos[0]
+    self._sexp[1] = pos.v[0]
     if len(self._sexp) >= 3:
-      self._sexp[2] = pos[1]
+      self._sexp[2] = pos.v[1]
     return self._sexp
 
   @property
@@ -196,7 +196,7 @@ class Coord(sexp.SExp):
     return (a[0] + b[0], a[1] + b[1])
 
 
-@sexp.handler("pos", "center", "start", "mid", "end", "offset")
+@sexp.handler("pos", "center", "start", "mid", "end")
 class GravCoord(Coord):
   """Coordinate without rotation, possibly with gravity."""
 
@@ -233,7 +233,7 @@ class MultiCoord(Coord):
     return abs(this_i - other_i)
 
 
-class Drawable(HasModifiers, sexp.SExp):
+class Drawable(ModifierRoot, sexp.SExp):
   UNIQUE = False
 
   DRAW_WKS = 1 << 0  # worksheet
@@ -343,7 +343,7 @@ class Polyline(Drawable):
     # Don't try to render background only if there are only two points?
     # FIXME: diffs?
     xys = self.pts(diffs)
-    if not draw & Drawable.DRAW_FG and len(xys) <= 2:
+    if not draw & Drawable.DRAW_FG and xys.reduce(max, len) <= 2:
       return
     close = False
     default_color = "notes"
@@ -712,8 +712,10 @@ class Field(Drawable):
       textcolor = "valuepart"
       for i, c in enumerate(reversed(context)):
         if hasattr(c, "power_net"):
-          if (c.power_net(diffs, context[: -i - 1]) or "").startswith("/"):
-            icon = "local"
+          icon = Param(
+            lambda n: "local" if (n or "").startswith("/") else None,
+            c.power_net(diffs, context[: -i - 1]),
+          )
           break
     elif prop == "Intersheetrefs":
       textcolor = "intersheet_refs"
@@ -827,7 +829,7 @@ def instancedata(field, diffs, context, default=None):
 def draw_uc_at(svg, pos, color):
   sz = 0.6  # FIXME: number?
   pos = Param(
-    lambda p, sz: (float(pos[0]) - sz / 2, float(pos[1]) - sz / 2), pos, sz
+    lambda p, sz: (float(p[0]) - sz / 2, float(p[1]) - sz / 2), pos, sz
   )
   svg.rect(
     pos=pos,
@@ -841,7 +843,7 @@ def draw_uc_at(svg, pos, color):
 def translated(pos, offset):
   if not isinstance(offset, tuple):
     offset = (offset or 0, 0)
-  return (float(pos[0]) + float(offset[0]), float(pos[1]) + float(offset[1]))
+  return (pos[0] + offset[0], pos[1] + offset[1])
 
 
 def rotated(pos, deg):
@@ -872,15 +874,15 @@ def mirrored(pos, mirror):
   else:
     x, y = pos, 0
   if mirror == "y":
-    return (-x, y)
+    return (x, y)
   elif mirror:
     return (x, -y)
   return (x, y)
 
 
-def transform(pos, rot=0, mirror=False, translate=None):
+def transformed(pos, rot=0, mirror=False, translate=None):
   if any(isinstance(x, Param) for x in (pos, rot, mirror, translate)):
-    return Param(transform, pos, rot, mirror, translate)
+    return Param(transformed, pos, rot, mirror, translate)
   return translated(mirrored(rotated(pos, rot), mirror), translate)
 
 

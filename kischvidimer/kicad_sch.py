@@ -223,7 +223,7 @@ class Label(HasUUID, Drawable):
     variables.define(context, "OP", "--")
     n = Netlister.n(context)
     net = n.get_net(
-      context, self.pts(diffs).v[0], bool(self.bus(diffs, context))
+      context, self.pts(diffs).v[0], bool(self.bus(diffs, context).v)
     )
     variables.define(context, "NET_NAME", net.name())
     short_name = self.net(diffs, context, display=False)  # {SLASH} is shown
@@ -321,16 +321,16 @@ class Label(HasUUID, Drawable):
       args = {
         "textsize": 1.27,
       }
-      if self.bus(diffs, context):
-        args["textcolor"] = "bus"
+      if self.bus(diffs, context).v:
+        args["color"] = "bus"
       elif self.type == "label":
-        args["textcolor"] = "loclabel"
+        args["color"] = "loclabel"
       elif self.type == "pin":
-        args["textcolor"] = "sheetlabel"
+        args["color"] = "sheetlabel"
       else:
-        args["textcolor"] = f"{self.type[:4]}label"
+        args["color"] = f"{self.type[:4]}label"
       if "color" in self and any(self["color"][0].data):
-        args["textcolor"] = self["color"][0].data
+        args["color"] = self["color"][0].data
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
@@ -375,7 +375,7 @@ class Label(HasUUID, Drawable):
       toff = self.get_text_offset(diffs, context, is_field=False)
       svg.gstart(rotate=rot)
       if outline:
-        ocolor = args["textcolor"]
+        ocolor = args["color"]
         if isinstance(ocolor, str):
           ocolor = ocolor.replace("sheet", "hier")
         svg.polyline(
@@ -383,8 +383,10 @@ class Label(HasUUID, Drawable):
           color=ocolor,
           thick=args["textsize"] / 8,
         )
-      args["rotate"] = -180 * (rot >= 180)
-      svg.text(dispnet, prop=svg.PROP_LABEL, pos=toff, **args)
+      args["rotate"] = Param(lambda r: -180 * (r >= 180), rot)
+      text_args = args.copy()
+      text_args["textcolor"] = text_args.pop("color", None)
+      svg.text(dispnet, prop=svg.PROP_LABEL, pos=toff, **text_args)
       svg.gend()
     if (
       draw & Drawable.DRAW_FG_PG
@@ -393,7 +395,7 @@ class Label(HasUUID, Drawable):
       )
       == 1
     ):
-      uc_color = args["textcolor"]
+      uc_color = args["color"]
       if isinstance(uc_color, str):
         uc_color = uc_color.replace("sheet", "hier")
       draw_uc_at(svg, (0, 0), color=uc_color)  # FIXME: not the correct color?
@@ -671,9 +673,12 @@ class SymbolInst(HasUUID, Drawable):
       variant=variant,
     )
 
-  def transform_pin(self, pos):
+  def transform_pin(self, pos, _diffs=None):
+    # FIXME: diffs
     # Matches what's done in Svg with gstart.
     # y and rot are negative since symbols have inverted y
+    if not isinstance(pos, tuple):
+      pos = pos.v
     rot, mirror = self.rot_mirror().v
     trans = self["at"][0].pos().v
     return transformed((pos[0], -pos[1]), -rot, mirror, trans)
@@ -714,7 +719,7 @@ class SymbolInst(HasUUID, Drawable):
           abs_pos = self.transform_pin(pos)
           if n.get_net(context, abs_pos).is_floating_sympin():
             svg.circle(
-              pos=pos,
+              pos=Param(lambda p: (p[0], -p[1]), pos),
               radius=sexp.Decimal(0.3175),
               fill="none",
               color="device",  # FIXME: not the correct color
@@ -817,7 +822,7 @@ class SymbolInst(HasUUID, Drawable):
       chr(2): self.lib_id(None, context),
       "Reference": self.refdes(None, context),
     }
-    if self.dnp().v:
+    if self.dnp():
       props[chr(3)] = True
     if "property" not in self:
       return props["Reference"], props
@@ -926,12 +931,11 @@ class Sheet(HasUUID, Drawable):
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
       args = {
-        "width": size[0],
-        "height": size[1],
         "color": "sheet",
         "fill": "sheet_background",
       }
       self.fillsvgargs(args, diffs, context)
+      args["width"], args["height"] = Param.multi(2, args.pop("size"))
       if not draw & Drawable.DRAW_FG:
         args["thick"] = 0
       if not self.draw_body(draw, args):
@@ -1121,8 +1125,11 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     comps = {}
     for sym in self["symbol"]:
       ref, data = sym.as_comp(context)
-      if not ref.startswith("#"):
-        comps.setdefault(ref, []).append(data)
+      assert not any(isinstance(k, Param) for k in data)
+      # Un-diff everything (TODO: use the data?)
+      data = {k: v.v if isinstance(v, Param) else v for k, v in data.items()}
+      if not ref.v.startswith("#"):
+        comps.setdefault(ref.v, []).append(data)
     return comps
 
   # def get_nets(self, instance, variables, include_power=True):

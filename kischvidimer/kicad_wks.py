@@ -22,6 +22,7 @@ import re
 import sys
 
 from . import sexp, svg
+from .diff import Param
 from .kicad_common import Drawable, Variables, unit_to_alpha
 
 # NOTE: check common/drawing_sheet/drawing_sheet.keywords for completeness
@@ -49,10 +50,16 @@ ALL_WKS_VARS = {
 
 
 @sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
-def xy_from_corners(xy, gravity, corners=(0, 0, 0, 0)):
-  return (
-    corners[0] + xy[0] if gravity[0] == "l" else corners[2] - xy[0],
-    corners[1] + xy[1] if gravity[1] == "t" else corners[3] - xy[1],
+def xy_from_corners(xy, gravity, corners=None):
+  corners = corners or Param((0, 0, 0, 0))
+  return Param(
+    lambda xy, g, c: (
+      c[0] + xy[0] if g[0] == "l" else c[2] - xy[0],
+      c[1] + xy[1] if g[1] == "t" else c[3] - xy[1],
+    ),
+    xy,
+    gravity,
+    corners,
   )
 
 
@@ -64,12 +71,12 @@ def coord_from_corners(coord, corners, diffs):
   )
 
 
-def to_mm(x, y):
-  return (sexp.Decimal(x) * 254 / 10, sexp.Decimal(y) * 254 / 10)
-
-
 @sexp.handler("setup")
 class Setup(sexp.SExp):
+  @staticmethod
+  def _to_mm(x, y):
+    return (sexp.Decimal(x * 254) / 10, sexp.Decimal(y * 254) / 10)
+
   def is_pgone(self, context):
     pn = int(Variables.v(context).resolve(context, Variables.PAGENO) or 0)
     if pn:
@@ -105,14 +112,14 @@ class Setup(sexp.SExp):
         "A3": (420, 297),
         "A4": (297, 210),
         "A5": (210, 148),
-        "A": to_mm(11, 8.5),
-        "B": to_mm(17, 11),
-        "C": to_mm(22, 17),
-        "D": to_mm(34, 22),
-        "E": to_mm(44, 34),
-        "USLedger": to_mm(17, 11),
-        "USLegal": to_mm(14, 8.5),
-        "USLetter": to_mm(11, 8.5),
+        "A": Setup._to_mm(11, 8.5),
+        "B": Setup._to_mm(17, 11),
+        "C": Setup._to_mm(22, 17),
+        "D": Setup._to_mm(34, 22),
+        "E": Setup._to_mm(44, 34),
+        "USLedger": Setup._to_mm(17, 11),
+        "USLegal": Setup._to_mm(14, 8.5),
+        "USLetter": Setup._to_mm(11, 8.5),
       }.get(paper[0])
       assert size
       if len(paper) == 2:
@@ -168,6 +175,7 @@ class Repeatable(Drawable):
       "textthick": config.textthick,
       "size": config.textsize,
       "color": "SCHEMATIC_DRAWINGSHEET",
+      "hidden": Param(False),
     }
     if "pos" in self:
       params["pos"] = coord_from_corners(self["pos"][0], corners, diffs)
@@ -180,6 +188,7 @@ class Repeatable(Drawable):
       return variables.expand(context, t)
 
     # Don't render on the wrong page
+    # FIXME: diffs
     option = self.get("option", default=[None])[0]
     # If pageno is unknown, assume not page 1
     if option and (option == "page1only") != is_pgone:
@@ -189,20 +198,24 @@ class Repeatable(Drawable):
     incrx = self.get("incrx", default=[0])[0]
     incry = self.get("incry", default=[0])[0]
     for i in range(repeat):
+      svg.gstart(hidden=params["hidden"])
       self.fillsvginst(svg, i, params, expandfunc)
+      svg.gend()  # hide
       # Advance!
       for p in "pos", "start", "end":
         if p in params:
           gravity = self[p][0].gravity(diffs)
           vec = xy_from_corners((incrx, incry), gravity)
-          params[p] = (vec[0] + params[p][0], vec[1] + params[p][1])
+          params[p] = Param(
+            lambda v, p: (v[0] + p[0], v[1] + p[1]), vec, params[p]
+          )
           # Stop early if we've gone beyond the page size
-          if (
-            params[p][0] < corners[0]
-            or params[p][0] > corners[2]
-            or params[p][1] < corners[1]
-            or params[p][1] > corners[3]
-          ):
+          params["hidden"] = Param(
+            lambda p, c: not (c[0] <= p[0] <= c[2] and c[1] <= p[1] <= c[3]),
+            params[p],
+            corners,
+          )
+          if params["hidden"].reduce(all):
             return
 
 
@@ -248,7 +261,7 @@ class TBText(Repeatable):
     svg.text(
       text=text,
       pos=params["pos"],
-      size=self.size(params["size"]),
+      textsize=self.size(params["size"]),
       textcolor=params["color"],
       bold=bold,
       italic=italic,

@@ -21,10 +21,12 @@ symbols
 
 import random
 import sys
+from decimal import Decimal
 
 from . import sexp, svg
 from .diff import Param
-from .kicad_common import Drawable, HasModifiers, rotated, translated
+from .kicad_common import Drawable, rotated, translated
+from .kicad_modifiers import HasModifiers
 
 
 class PlaceholderHandler(sexp.SExp):
@@ -157,7 +159,7 @@ class PinDef(Drawable):
     rot = self["at"][0].rot(diffs)
     semiunrot = Param(lambda r: r % 180 - r, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
-    length = Param(float, Param.ify(self.get("length"), 0, diffs))
+    length = Param.ify(self.get("length"), 0, diffs)
 
     svg.gstart(pos=pos, rotate=rot, path=num, hidden=self.hide(diffs))
 
@@ -187,10 +189,12 @@ class PinDef(Drawable):
     # no_connect type supersedes all styles
     nc = Param(lambda t: t == "no_connect", typ)
 
+    sz = Decimal("0.635")
+
     # draw clk carrot
     svg.gstart(hidden=Param(lambda nc, s: nc or "clock" not in s, nc, style))
     svg.polyline(
-      xys=Param(lambda x: ((x, 0.635), (x + 0.635, 0), (x, -0.635)), length),
+      xys=Param(lambda x: ((x, sz), (x + sz, 0), (x, -sz)), length),
       color="device",
     )
     svg.gend()  # clock carrot
@@ -198,7 +202,7 @@ class PinDef(Drawable):
     # draw inversion circle
     svg.gstart(hidden=Param(lambda nc, s: nc or "inverted" not in s, nc, style))
     svg.circle(
-      pos=Param(lambda x: (x - 0.635, 0), length), radius=0.635, color="device"
+      pos=Param(lambda x: (x - sz, 0), length), radius=sz, color="device"
     )
     svg.gend()  # inversion circle
 
@@ -221,11 +225,11 @@ class PinDef(Drawable):
           else (
             (0, 0),
             (length, 0),
-            (length - 0.635, -0.635),
-            (length + 0.635, 0.635),
+            (length - sz, -sz),
+            (length + sz, sz),
             (length, 0),
-            (length + 0.635, -0.635),
-            (length - 0.635, 0.635),
+            (length + sz, -sz),
+            (length - sz, sz),
           )
           if style == "non_logic"
           # draw input-low
@@ -233,21 +237,22 @@ class PinDef(Drawable):
             (0, 0),
             (length, 0),
             translated(
-              (length, 0), rotated((-1.27 * mirror, 1.27 * flipy), semiunrot)
+              (length, 0),
+              rotated((-sz * 2 * mirror, sz * 2 * flipy), semiunrot),
             ),
-            translated((length, 0), rotated(-1.27 * mirror, semiunrot)),
+            translated((length, 0), rotated(-sz * 2 * mirror, semiunrot)),
           )
           if style in ("input_low", "clock_low", "edge_clock_high")
           # draw output-low
           else (
             (0, 0),
             (length, 0),
-            translated((length, 0), rotated(-1.27 * mirror, semiunrot)),
-            translated((length, 0), rotated((0, 1.27 * flipy), semiunrot)),
+            translated((length, 0), rotated(-sz * 2 * mirror, semiunrot)),
+            translated((length, 0), rotated((0, sz * 2 * flipy), semiunrot)),
           )
           if style == "output_low"
           # draw standard line
-          else ((0, 0), (length - 1.27 * (not nc and "inverted" in style), 0))
+          else ((0, 0), (length - sz * 2 * (not nc and "inverted" in style), 0))
         ),
         *(nc, style, length, mirror, flipy, semiunrot),
       ),
@@ -444,7 +449,8 @@ class SymbolDef(sexp.SExp):
       if "pin" not in body:
         continue
       for pin in body["pin"]:
-        name, num = pin.name_num(diffs, context)
+        name = pin.name(diffs, context).v  # FIXME: diffs
+        num = pin.num(diffs, context).v  # FIXME: diffs
         pins.setdefault(name, []).append(num)
     pins = Param(pins)
     if cacheentry is not None:
@@ -460,8 +466,8 @@ class SymbolDef(sexp.SExp):
         continue
       for pin in body["pin"]:
         if (
-          not pin.hide(diffs)
-          and pin.get_type_style(diffs, context)[0] != "no_connect"
+          not pin.hide(diffs).v
+          and pin.get_type_style(diffs, context)[0].v != "no_connect"
         ):
           pins.update(pin.pts(diffs, context).v)
     return pins
@@ -483,7 +489,7 @@ class SymbolDef(sexp.SExp):
 
   @sexp.uses("pin_names", "offset", "pin_numbers", "hide")
   def pin_config(self, diffs=None):
-    defx = 0.508
+    defx = Decimal("0.508")
     cfg = {
       "name": {
         "xoffset": defx,
