@@ -31,7 +31,123 @@ from .diff import FakeDiff, Param
 if __name__ == "__main__":
   sexp.handler._handlers.clear()
 
-# FIXME: (uuid "7d02517e-895f-4725-8c48-050f5414907e")
+
+class HasYes(sexp.SExp):
+  """Marker class for easy identification."""
+
+
+@sexp.handler("hide")
+class Hide(HasYes):
+  pass
+
+
+@sexp.handler("show_name")
+class ShowName(HasYes):
+  pass
+
+
+class Modifier(sexp.SExp):
+  # map of literal name to arg name, if different. if None, will ignore.
+  ARG_MAP = {}
+
+  def fillsvgargs(self, args, diffs, context):
+    # Grabs the literals and puts them in args
+    for key in self.LITERAL_MAP:
+      param = self.ARG_MAP.get(key, key)
+      if param is not None:
+        args[param] = self.param(diffs, key, default=args.get(param))
+
+  @classmethod
+  def basic(cls, name, arg=None, istuple=False):
+    @sexp.handler(name)
+    class BasicModifier(cls):
+      LITERAL_MAP = {name: (1, -1) if istuple else 1}
+      ARG_MAP = {name: arg or name}
+
+    return BasicModifier
+
+
+# margins should have 4 entries (left, top, right, bottom).
+Margins = Modifier.basic("margins", istuple=True)
+
+Face = Modifier.basic("face", None)  # TODO: support font faces
+Thickness = Modifier.basic("thickness")  # TODO: properly support thick fonts
+Href = Modifier.basic("href", "url")
+
+
+@sexp.handler("size")
+class Size(Modifier):
+  """size can be a textsize or a physical size, and can have 1 or 2 values."""
+
+  LITERAL_MAP = {"size": (1, -1)}
+
+  @property
+  def is_textsize(self):
+    return self.parent.type == "font"
+
+  def fillsvgargs(self, args, diffs, context):
+    p = self.param(diffs)
+    if self.is_textsize:
+      args["textsize"] = p.map(lambda d: d[0])
+    else:
+      args["size"] = p
+
+  def reparent(self, new_parent):
+    super().reparent(new_parent)
+    if self.is_textsize:
+      assert len(set(self.data)) == 1, "unexpected multidimensional font size"
+
+
+@sexp.handler("color")
+class Color(Modifier):
+  """parameter is different depending on the context of the color."""
+
+  LITERAL_MAP = {"color": (1, -1)}
+
+  def reparent(self, new_parent):
+    super().reparent(new_parent)
+    if new_parent.type == "font":
+      self.ARG_MAP = {"color": "textcolor"}
+    elif new_parent.type == "fill":
+      self.ARG_MAP = {"color": "fill"}
+
+
+@sexp.handler("justify")
+class Justify(Modifier):
+  """justify can specify either or both horizontal and vertical."""
+
+  LITERAL_MAP = {"justify": (1, -1)}
+
+  def param(self, diffs, key, default=None):
+    assert key in ("justify", "vjustify")
+    v = ("top", "bottom") if key[0] == "v" else ("left", "right")
+    return Param(
+      lambda j: v[0] if v[0] in j else v[1] if v[1] in j else None,
+      super().param(diffs),
+      default=default,
+    )
+
+
+class HasModifiers(sexp.SExp):
+  LITERAL_MAP = {}  # shouldn't have any literals
+
+  def fillsvgargs(self, args, diffs, context=None):
+    if not isinstance(context, tuple):
+      context = () if context is None else (context,)
+    context = context + (self,)
+    # FIXME: need to be able to generate defaults somehow
+    # And need to make sure to handle add-add and mod-remove conflicts,
+    # especially when a whole tree is removed
+    # added, removed = self.added_and_removed(diffs, Modifier)
+    # TODO: all defaults must be set by the caller ahead of time
+    # before each step:
+    #  if item was added/removed, shallow-copy the state of args before it.
+    #  run args.update
+    #  create fakediffs to transition between the item and the previous state
+    # inside each step: instead of replacing items, inject with params
+    for item in self.data:
+      if isinstance(item, (Modifier, HasModifiers)):
+        item.fillsvgargs(args, diffs, context)
 
 
 class HasUUID:
@@ -184,13 +300,6 @@ def transform(pos, rot=0, mirror=False, translate=None):
   return translated(mirrored(rotated(pos, rot), mirror), translate)
 
 
-@sexp.handler("size")
-class Size(sexp.SExp):
-  """A size property, usually two-dimensional but sometimes 1-dimensional."""
-
-  LITERAL_MAP = {"size": (1, -1)}
-
-
 @sexp.handler("at")
 class Coord(sexp.SExp):
   """A set of offset or coordinates, and sometimes rotation"""
@@ -330,7 +439,7 @@ class MultiCoord(Coord):
     return abs(this_i - other_i)
 
 
-class Drawable(sexp.SExp):
+class Drawable(HasModifiers, sexp.SExp):
   UNIQUE = False
 
   DRAW_WKS = 1 << 0  # worksheet
@@ -391,24 +500,6 @@ class Drawable(sexp.SExp):
             if rm_c:
               svg.gend()
 
-  def fillsvgargs(self, args, diffs, context=None):
-    if not isinstance(context, tuple):
-      context = () if context is None else (context,)
-    context = context + (self,)
-    # FIXME: need to be able to generate defaults somehow
-    # And need to make sure to handle add-add and mod-remove conflicts,
-    # especially when a whole tree is removed
-    # added, removed = self.added_and_removed(diffs, Modifier)
-    # TODO: all defaults must be set by the caller ahead of time
-    # before each step:
-    #  if item was added/removed, shallow-copy the state of args before it.
-    #  run args.update
-    #  create fakediffs to transition between the item and the previous state
-    # inside each step: instead of replacing items, inject with params
-    for item in self.data:
-      if isinstance(item, Modifier):
-        item.fillsvgargs(args, diffs, context)
-
   def fillvars(self, variables, diffs, context=None):
     # FIXME: should we punt on diffs?
     if not isinstance(context, tuple):
@@ -431,37 +522,22 @@ class Drawable(sexp.SExp):
   def draw_body(draw, fill):
     if isinstance(fill, dict):
       fill = fill["fill"]
-    body_draw = Drawable.DRAW_FG if fill == "outline" else Drawable.DRAW_BG
+    body_draw = (
+      Drawable.DRAW_FG
+      if Param(fill).reduce(any, lambda f: f == "outline")
+      else Drawable.DRAW_BG
+    )
     return draw & body_draw != 0
 
 
-class Modifier(sexp.SExp):
-  def fillsvgargs(self, args, diffs, context):
-    raise NotImplementedError()
+@sexp.handler("font")
+class Font(HasModifiers):
+  pass
 
 
 @sexp.handler("effects")
-class Effects(Modifier):
+class Effects(HasModifiers):
   """font effects"""
-
-  @sexp.uses("font", "size")
-  def get_size(self, diffs=None):
-    # FIXME: diffs
-    if "font" in self and "size" in self["font"][0]:
-      size = self["font"][0]["size"][0]
-      assert size[0] == size[1]
-      return size[0]
-    # FIXME: default size?
-    return None
-
-  @sexp.uses("font", "color")
-  def get_color(self, diffs=None):
-    # FIXME: diffs
-    if "font" in self and "color" in self["font"][0]:
-      color = self["font"][0]["color"][0]
-      return tuple(color.data)
-    # FIXME: default size?
-    return None
 
   @sexp.uses("font", "bold", "italic")
   def get_style(self, diffs=None):
@@ -472,47 +548,18 @@ class Effects(Modifier):
       return (bold, italic)
     return (False, False)
 
-  @sexp.uses("justify", "left", "right", "top", "bottom")
-  def get_justify(self, diffs=None):
-    # FIXME: diffs
-    lr = "middle"
-    tb = "middle"
-    if "justify" in self:
-      lr = "left" if "left" in self["justify"][0] else lr
-      lr = "right" if "right" in self["justify"][0] else lr
-      tb = "top" if "top" in self["justify"][0] else tb
-      tb = "bottom" if "bottom" in self["justify"][0] else tb
-    return (lr, tb)
-
-  @sexp.uses("hide")
-  def get_hidden(self, diffs=None):
-    return self.has_yes("hide", diffs)
-
-  @sexp.uses("href", "mirror")
+  @sexp.uses("href", "mirror", "hide")
   def fillsvgargs(self, args, diffs, context):
     """Returns a dict of arguments to Svg.text"""
-    justify, vjustify = self.get_justify(diffs)
-    size = self.get_size(diffs)
-    textcolor = self.get_color(diffs)
-    hidden = self.get_hidden(diffs)
-    bold, italic = self.get_style(diffs)
+    super().fillsvgargs(args, diffs, context)
+    args["hidden"] = self.has_yes("hide", diffs, args.get("hidden"))
 
-    if "href" in self:
-      args["url"] = self["href"][0][0]
-    if justify != "middle":
-      args["justify"] = justify
-    if vjustify != "middle":
-      args["vjustify"] = vjustify
-    if size is not None:
-      args["size"] = size
-    if textcolor is not None:
-      args["textcolor"] = textcolor
-    if hidden:
-      args["hidden"] = hidden
+    # FIXME: bold/italic
+    bold, italic = self.get_style(diffs)
 
     # Handle mirror/rotation causing justify to flip
     # Some nodes have their own implementation, so drop out early
-    if context[-1].type in ("pin", "name", "number"):
+    if self.parent.type in ("pin", "name", "number"):
       return
 
     # FIXME: confirm this actually works as intended
@@ -798,7 +845,6 @@ class TextBox(Drawable):
       size,
     )
 
-  @sexp.uses("margins")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs
     subcontext = context + (self,)
@@ -807,17 +853,17 @@ class TextBox(Drawable):
     is_pg = raw_text.reduce(any, lambda t: "${" in t)
     is_symbol = any(c.type == "symbol" for c in context)
     args = {
-      "rotate": None,
       "color": "device" if is_symbol else "notes",
       "textcolor": "device" if is_symbol else "notes",
       "fill": "none",
       "thick": "wire",
     }
     self.fillsvgargs(args, diffs, context)
-    # left, top, right, bottom
-    margins = [dec_to_float(args["size"]) * 4 / 5] * 4
-    if "margins" in self:
-      margins = dec_to_float(self["margins"][0].data)
+    margins = Param(
+      lambda m, s: dec_to_float(m if m else [s * 4 / 5] * 4),
+      args.pop("margins", None),
+      args.get("textsize", 0),
+    )
     pos, size = self.pos_size(diffs, relative=True)
     pos = dec_to_float(pos)
     size = dec_to_float(size)
@@ -869,7 +915,7 @@ class TextBox(Drawable):
           x: args[x]
           for x in (
             "text",
-            "size",
+            "textsize",
             "textcolor",
             "justify",
             "vjustify",

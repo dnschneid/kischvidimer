@@ -793,18 +793,20 @@ class Svg:
     text,
     prop=None,
     pos=None,
-    size=None,
+    textsize=None,
     textcolor=None,
     justify=None,
     vjustify=None,
     bold=None,
     italic=None,
+    thickness=None,
     rotate=None,
     hidden=None,
     url=None,
     icon=None,
     tag=None,
   ):
+    # FIXME: how is thickness different from bold?
     needsgroup = False
     rotate = Param.ify(rotate, 0)
     hidden = Param.ify(hidden, False)
@@ -812,8 +814,8 @@ class Svg:
     pos = Param.ify(pos, (0, 0))
     bold = Param(lambda b: "bold" if b else "normal", bold)
     italic = Param(lambda i: "italic" if i else "normal", italic)
-    kisize = Param(lambda s: self.size(s, False), size)
-    emsize = Param(lambda s: self.size(s, True), size)
+    kisize = Param(lambda s: self.textsize(s, False), textsize)
+    emsize = Param(lambda s: self.textsize(s, True), textsize)
     textcolor, opacity = self._color(textcolor, "notes")
     anchor = Param(lambda j: Svg.ANCHOR[str(j).lower()], justify)
     ### WORKAROUND for crbug/389845192
@@ -1211,14 +1213,14 @@ class Svg:
       color = "#" + "".join(f"{c:02X}" for c in color[:3])
     return (color, opacity)
 
-  def size(self, size, em):
+  def textsize(self, textsize, em):
     """Maps a size to the unit size of the font.
     If em is true, scale to SVG size (em)
     """
-    size = 1.0 if size is None else size
-    if isinstance(size, str) and size.endswith("%"):
-      size = float(size[:-1]) / 100
-    return Svg.FONT_SIZE * float(size) if em else float(size)
+    textsize = 1.0 if textsize is None else textsize
+    if isinstance(textsize, str) and textsize.endswith("%"):
+      textsize = float(textsize[:-1]) / 100
+    return Svg.FONT_SIZE * float(textsize) if em else float(textsize)
 
   @staticmethod
   def pattern(pattern, thick):
@@ -1248,7 +1250,7 @@ class Svg:
   _ENCODE_BLOCKS_RE = re.compile(r"[_^~]\{((?:[^{}]|\{[^}]*\})*)\}")
 
   @staticmethod
-  def calcwidth(text, size, font="newstroke"):
+  def calcwidth(text, textsize, font="newstroke"):
     # Load the font map
     widthmap = Svg.FONT_WIDTH_CACHE.get(font) if font else {}
     if widthmap is None:
@@ -1258,9 +1260,9 @@ class Svg:
 
         path = os.path.join(os.path.dirname(__file__), "fonts", f"{font}.woff")
         opts = fts.Options()
-        # Scale font metrics such that size * widthmap = character advance
+        # Scale font metrics such that textsize * widthmap = character advance
         # This is based on FONT_WOFF_SCALE in fontconv.py along with some more
-        # reverse tracing of the size.
+        # reverse tracing of the textsize.
         # FIXME: resolve the magic number 26.5
         metric_scale = 1 / 29.7 * 50 * 0.0254 / 26.5
         with fts.load_font(path, opts, dontLoadGlyphNames=True) as srcfont:
@@ -1275,10 +1277,12 @@ class Svg:
     # Handle the different contexts (string vs sub-block vs multiline)
     if isinstance(text, re.Match):
       if text[0][0] != "~":
-        size *= 0.8  # match font-size in _encode_block
+        textsize *= 0.8  # match font-size in _encode_block
       text = text[1]
     elif "\n" in text:
-      return max(Svg.calcwidth(line, size, font) for line in text.split("\n"))
+      return max(
+        Svg.calcwidth(line, textsize, font) for line in text.split("\n")
+      )
 
     # Process formatted blocks and then remove from the string
     width = 0
@@ -1289,7 +1293,7 @@ class Svg:
     # Handle the remaining string
     width += sum(widthmap.get(c, 1) for c in text)
 
-    return width * float(size)
+    return width * float(textsize)
 
   @staticmethod
   def encode(text):

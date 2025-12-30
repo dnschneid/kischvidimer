@@ -28,7 +28,7 @@ import sys
 from decimal import Decimal
 from string import whitespace
 
-from .diff import Comparable, Diff, Param, TargetDict, difflists
+from .diff import Comparable, Diff, FakeDiff, Param, TargetDict, difflists
 
 INT_DEC_ATOM_RE = re.compile(
   r"""
@@ -284,7 +284,9 @@ class SExp(Comparable):
           that_chunk = that_chunk[0] if that_chunk else None
         diffs.append(Diff((self, SExp), key, old=this_chunk, new=that_chunk))
     # Sanity-check that we didn't miss anything (not checking for gaps)
-    assert max_end + 1 >= max(this_sexp_i, that_sexp_i), "unexpected data found"
+    assert max_end >= ((max(this_sexp_i, that_sexp_i) - 1) or -2), (
+      f"unexpected data found in {self.type}"
+    )
 
     # Handle sub-sexps, which can be reordered
     diffs += difflists(
@@ -368,9 +370,8 @@ class SExp(Comparable):
     """sexp for the purposes of comparison."""
     return self._sexp
 
-  @property
-  def yes(self):
-    return len(self._sexp) == 1 or is_atom(self._sexp[1], "yes")
+  def yes(self, diffs=None):
+    return Param(lambda d: d is None or is_atom(d, "yes"), self.param(diffs))
 
   @property
   def ancestry(self):
@@ -385,10 +386,21 @@ class SExp(Comparable):
       if isinstance(item, SExp):
         item.reparent(self)
 
-  def has_yes(self, atom, diffs=None):
-    # FIXME: diffs
+  def has_yes(self, atom, diffs=None, default=None):
+    atom = Atom(atom)
     item = self.get(atom)
-    return Param(item.yes if isinstance(item, SExp) else bool(item))
+    if is_atom(item, recurse=False):
+      # FIXME: support diffs for the legacy case of an atom mixed in the sexp
+      return Param(True)
+    if item is None:
+      options = Diff.Group(False)
+    else:
+      options = Diff.Group(*(dp if dp.c else dp.v for dp in item.yes(diffs)))
+    if diffs:
+      added, removed = self.added_and_removed(diffs, handler._handlers[atom])
+      options += (FakeDiff(c, new=item.yes().v) for item, c in added)
+      options += (FakeDiff(c, old=item.yes().v) for item, c in removed.values())
+    return Param(options, default=default)
 
   def enum(self, *atoms, start_i=0):
     for i, entry in enumerate(self._sexp):

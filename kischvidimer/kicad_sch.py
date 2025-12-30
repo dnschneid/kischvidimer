@@ -288,9 +288,9 @@ class Label(HasUUID, Drawable):
     if is_field and self.type != "global_label":
       return (0, 0)
     # Need to get effective size to calculate text height
-    args = {"size": 1.27}  # default
+    args = {"textsize": 1.27}  # default
     self.fillsvgargs(args, diffs, context)
-    th = float(args["size"]) * svg.Svg.FONT_HEIGHT
+    th = float(args["textsize"]) * svg.Svg.FONT_HEIGHT
     offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
     yoffset = 0
     # Reference: sch_label.cpp: *::CreateGraphicShape
@@ -301,7 +301,7 @@ class Label(HasUUID, Drawable):
       if shape == "input" or shape in ("bidirectional", "tri_state"):
         offset += h / 2
     elif self.type in ("hierarchical_label", "pin"):
-      h = float(args["size"])
+      h = float(args["textsize"])
       offset += h
       if self.type == "pin":
         offset *= -1
@@ -319,7 +319,7 @@ class Label(HasUUID, Drawable):
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {
-        "size": 1.27,
+        "textsize": 1.27,
       }
       if self.bus(diffs, context):
         args["textcolor"] = "bus"
@@ -338,10 +338,10 @@ class Label(HasUUID, Drawable):
       dispnet = self.net(diffs, context, display=True)
       outline = None
       if self.type != "label":
-        th = float(args["size"]) * svg.FONT_HEIGHT
+        th = float(args["textsize"]) * svg.FONT_HEIGHT
         # Reference: sch_label.cpp: *::CreateGraphicShape
         if self.type == "global_label":
-          w = float(svg.calcwidth(dispnet, args["size"]))
+          w = float(svg.calcwidth(dispnet, args["textsize"]))
           h = float(th * 1.5)  # from sch_label.cpp
           if shape == "input":
             outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
@@ -352,7 +352,7 @@ class Label(HasUUID, Drawable):
           elif shape == "passive":
             outline = [(0, h / 2), (w + h / 2, h / 2)]
         elif self.type in ("hierarchical_label", "pin"):
-          h = float(args["size"])
+          h = float(args["textsize"])
           if shape == "input":
             outline = [(0, 0), (h / 2, h / 2), (h, h / 2)]
           elif shape == "output":
@@ -381,7 +381,7 @@ class Label(HasUUID, Drawable):
         svg.polyline(
           outline,
           color=ocolor,
-          thick=args["size"] / 8,
+          thick=args["textsize"] / 8,
         )
       args["rotate"] = -180 * (rot >= 180)
       svg.text(dispnet, prop=svg.PROP_LABEL, pos=toff, **args)
@@ -465,7 +465,7 @@ class NetclassFlag(HasUUID, Drawable):
     args = None
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
-      args = {"size": 1.27, "textcolor": "netclass_refs"}
+      args = {"textcolor": "netclass_refs"}
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)

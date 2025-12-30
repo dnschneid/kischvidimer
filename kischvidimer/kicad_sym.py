@@ -24,7 +24,7 @@ import sys
 
 from . import sexp, svg
 from .diff import Param
-from .kicad_common import Drawable, rotated, translated
+from .kicad_common import Drawable, HasModifiers, rotated, translated
 
 
 class PlaceholderHandler(sexp.SExp):
@@ -344,7 +344,8 @@ class PinDef(Drawable):
         yoffset,
         swap_side,
       )
-      Drawable.fillsvgargs(self[part][0], args, diffs)  # , context + (self,)))
+      HasModifiers.fillsvgargs(self[part][0], args, diffs)
+      # FIXME: not sure why this was disabled: , context + (self,))
       svg.text(text, **args)
       svg.gend()
 
