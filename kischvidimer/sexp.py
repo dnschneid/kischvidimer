@@ -335,6 +335,8 @@ class SExp(Comparable):
     """Returns a list of added subsexps and a dict mapping rm'd to classes.
     Returns and calls .forsvg() on all diffs matched by cls.
     """
+    if diffs is None:
+      return [], {}
     difflist = diffs.get(self, None, [])
     added = [d.forsvg() for d in difflist if d.is_add and d.is_instance(cls)]
     removed = {
@@ -396,10 +398,9 @@ class SExp(Comparable):
       options = Diff.Group(False)
     else:
       options = Diff.Group(*(dp if dp.c else dp.v for dp in item.yes(diffs)))
-    if diffs:
-      added, removed = self.added_and_removed(diffs, handler._handlers[atom])
-      options += (FakeDiff(c, new=item.yes().v) for item, c in added)
-      options += (FakeDiff(c, old=item.yes().v) for item, c in removed.values())
+    added, removed = self.added_and_removed(diffs, handler._handlers[atom])
+    options += (FakeDiff(c, new=item.yes().v) for item, c in added)
+    options += (FakeDiff(c, old=options[0]) for c in removed.values())
     return Param(options, default=default)
 
   def enum(self, *atoms, start_i=0):

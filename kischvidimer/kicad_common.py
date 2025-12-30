@@ -131,23 +131,33 @@ class Justify(Modifier):
 class HasModifiers(sexp.SExp):
   LITERAL_MAP = {}  # shouldn't have any literals
 
+  @staticmethod
+  def _wrap_svgargs_with_diff(apply, item, args, diffs, context):
+    new_args = args.copy()
+    item.fillsvgargs(new_args, diffs, context)
+    for key, newvalue in new_args.items():
+      oldvalue = args.get(key)
+      if newvalue is not oldvalue:
+        args[key] = Param(
+          lambda a, o, n: n if a else o, apply, oldvalue, newvalue
+        )
+
   def fillsvgargs(self, args, diffs, context=None):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
-    # FIXME: need to be able to generate defaults somehow
-    # And need to make sure to handle add-add and mod-remove conflicts,
-    # especially when a whole tree is removed
-    # added, removed = self.added_and_removed(diffs, Modifier)
-    # TODO: all defaults must be set by the caller ahead of time
-    # before each step:
-    #  if item was added/removed, shallow-copy the state of args before it.
-    #  run args.update
-    #  create fakediffs to transition between the item and the previous state
-    # inside each step: instead of replacing items, inject with params
+    added, removed = self.added_and_removed(diffs, (Modifier, HasModifiers))
+    for item, add_c in added:
+      apply = FakeDiff(add_c, new=True).param()
+      self._wrap_svgargs_with_diff(apply, item, args, diffs, context)
     for item in self.data:
       if isinstance(item, (Modifier, HasModifiers)):
-        item.fillsvgargs(args, diffs, context)
+        rm_c = removed.get(id(item))
+        if rm_c:
+          apply = FakeDiff(rm_c, old=True)
+          self._wrap_svgargs_with_diff(apply, item, args, diffs, context)
+        else:
+          item.fillsvgargs(args, diffs, context)
 
 
 class HasUUID:
