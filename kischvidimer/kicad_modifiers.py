@@ -54,30 +54,21 @@ class HasModifiers(sexp.SExp):
 
 @sexp.handler("font")
 class Font(HasModifiers):
-  pass
+  @sexp.uses("bold", "italic")
+  def fillsvgargs(self, args, diffs, context):
+    super().fillsvgargs(args, diffs, context)
+    args["bold"] = self.has_yes("bold", diffs, args.get("bold"))
+    args["italic"] = self.has_yes("italic", diffs, args.get("italic"))
 
 
 @sexp.handler("effects")
 class Effects(HasModifiers):
   """font effects"""
 
-  @sexp.uses("font", "bold", "italic")
-  def get_style(self, diffs=None):
-    # FIXME: diffs
-    if "font" in self:
-      bold = "bold" in self["font"][0]
-      italic = "italic" in self["font"][0]
-      return (bold, italic)
-    return (False, False)
-
   @sexp.uses("href", "mirror", "hide")
   def fillsvgargs(self, args, diffs, context):
-    """Returns a dict of arguments to Svg.text"""
     super().fillsvgargs(args, diffs, context)
     args["hidden"] = self.has_yes("hide", diffs, args.get("hidden"))
-
-    # FIXME: bold/italic
-    bold, italic = self.get_style(diffs)
 
     # Handle mirror/rotation causing justify to flip
     # Some nodes have their own implementation, so drop out early
@@ -245,12 +236,16 @@ class Fill(Modifier):
 class HasYes(sexp.SExp):
   """Marker class for easy identification."""
 
+  @classmethod
+  def handler(cls, name):
+    @sexp.handler(name)
+    class Wrapper(cls):
+      pass
 
-@sexp.handler("hide")
-class Hide(HasYes):
-  pass
+    return Wrapper
 
 
-@sexp.handler("show_name")
-class ShowName(HasYes):
-  pass
+Bold = HasYes.handler("bold")
+Hide = HasYes.handler("hide")
+Italic = HasYes.handler("italic")
+ShowName = HasYes.handler("show_name")
