@@ -42,7 +42,8 @@ class HasUUID:
     gen = getattr(self, "__uuidcache", None)
     if gen or not generate:
       return gen
-    self.__uuidcache = gen = str(uuid4())
+    gen = str(uuid4())
+    setattr(self, "__uuidcache", gen)
     return gen
 
   def uuid_matches(self, other):
