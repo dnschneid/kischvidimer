@@ -336,7 +336,7 @@ class PinDef(Drawable):
       # Handle side swap (to ensure text is always at 0 or 90)
       svg.gstart(
         pos=Param(lambda x, s: x if s else (0, 0), xoffset, swap_side),
-        rotate=Param(lambda s: 180 * s, swap_side),
+        rotate=Param(lambda s: -180 * s, swap_side),
       )
       args["justify"] = Param(
         lambda j, s: (j + 180) % 360 if s and j != "middle" else j,
