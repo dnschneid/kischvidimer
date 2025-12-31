@@ -839,7 +839,7 @@ class Svg:
     )
     # Spin text so it's always at 0 or 90
     spin = rotate_state.map(lambda r, m: r in (180, 90 if m else 270), mirror)
-    rotate = rotate.map(lambda r, s: (r + 180 * s) % 360, spin)
+    rotate = rotate.map(lambda r, s: r - 180 * s, spin)
     anchor = anchor.map(
       lambda a, m: {"start": "end", "end": "start"}.get(a, a) if m else a,
       spin,
