@@ -127,13 +127,22 @@ class Effects(HasModifiers):
 class Modifier(sexp.SExp):
   # map of literal name to arg name, if different. if None, will ignore.
   ARG_MAP = {}
+  # map of values to replacement values
+  VALUE_MAP = {}
 
   def fillsvgargs(self, args, diffs, context):
     # Grabs the literals and puts them in args
     for key in self.LITERAL_MAP:
       param = self.ARG_MAP.get(key, key)
       if param is not None:
-        args[param] = self.param(diffs, key, default=args.get(param))
+        if self.VALUE_MAP:
+          args[param] = Param(
+            lambda v: self.VALUE_MAP.get(v, v),
+            self.param(diffs, key),
+            default=args.get(param),
+          )
+        else:
+          args[param] = self.param(diffs, key, default=args.get(param))
 
   @classmethod
   def basic(cls, name, arg=None, istuple=False):
@@ -181,6 +190,7 @@ class Color(Modifier):
   """parameter is different depending on the context of the color."""
 
   LITERAL_MAP = {"color": (1, -1)}
+  VALUE_MAP = {(0, 0, 0): None, (0, 0, 0, 0): None}
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
@@ -210,43 +220,43 @@ class Justify(Modifier):
       args[param] = self.param(diffs, param, default=args.get(param))
 
 
-@sexp.handler("stroke", "default")
-class Stroke(Modifier):
-  """stroke effects"""
+@sexp.handler("type")
+class Type(Modifier):
+  """parameter is different depending on the context of type."""
 
-  @sexp.uses("width", "type", "color")
-  def fillsvgargs(self, args, diffs, context):
-    # FIXME
-    # super().fillsvgargs(args, diffs, context)
-    if "width" in self and self["width"][0][0]:
-      args["thick"] = self["width"][0][0]
-    if "type" in self:
-      args["pattern"] = self["type"][0][0]
-    if "color" in self:
-      stroke = tuple(self["color"][0].data)
-      if any(stroke):
-        args["color"] = stroke
-    if "type" in self and self["type"][0][0] != "default":
-      args["pattern"] = self["type"][0][0]
+  LITERAL_MAP = {"type": 1}
+
+  def reparent(self, new_parent):
+    super().reparent(new_parent)
+    if new_parent.type == "stroke":
+      self.ARG_MAP = {"type": "pattern"}
+      self.VALUE_MAP = {"default": None}
+    elif new_parent.type == "fill":
+      self.ARG_MAP = {"type": "fill"}
+      self.VALUE_MAP = {
+        "background": "device_background",
+        "color": None,  # value will get filled in by Color
+      }
+    else:
+      raise NotImplementedError(f"unexpected type parent {new_parent.type}")
+
+
+@sexp.handler("width")
+class Width(Modifier):
+  """line width, actually"""
+
+  LITERAL_MAP = {"thick": 1}
+  VALUE_MAP = {0: None}
+
+
+@sexp.handler("stroke")
+class Stroke(HasModifiers):
+  """stroke effects: width, type, color"""
 
 
 @sexp.handler("fill")
-class Fill(Modifier):
-  """fill properties"""
-
-  @sexp.uses("background", "color")
-  def fillsvgargs(self, args, diffs, context):
-    # FIXME
-    # super().fillsvgargs(args, diffs, context)
-    fill = None
-    if "type" in self:
-      fill = self["type"][0][0]
-      if fill == "background":
-        fill = "device_background"
-    if fill == "color" or "color" in self:
-      fill = tuple(self["color"][0].data)
-    if any(fill):
-      args["fill"] = fill
+class Fill(HasModifiers):
+  """fill properties: type, color"""
 
 
 class HasYes(sexp.SExp):
