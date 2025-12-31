@@ -94,7 +94,7 @@ class Effects(HasModifiers):
       # context.
       # FIXME: clean this up.
       if c.type == "symbol" and "lib_id" in c and context[-1].type == "text":
-        inst_rot, inst_mirror = c.rot_mirror(diffs)
+        inst_rot, inst_mirror = c.rot_mirror(diffs).v
         continue
       if "mirror" in c:
         if c["mirror"][0][0] == "x":

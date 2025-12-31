@@ -19,6 +19,7 @@ Common classes and routines for handling sexp-based kicad files
 import math
 import os
 import sys
+from decimal import Decimal
 from uuid import uuid4
 
 from . import sexp
@@ -507,6 +508,8 @@ class Text(Drawable):
 class TextBox(Drawable):
   """Graphical text, but in a box!"""
 
+  LITERAL_MAP = {"text": 1}
+
   def __str__(self):
     pos, size = self.pos_size().v
     descr = self.type.replace("_", " ")
@@ -532,7 +535,7 @@ class TextBox(Drawable):
     )
 
   def fillsvg(self, svg, diffs, draw, context):
-    # FIXME: diffs
+    # FIXME: rotation/flipping correction inside symbols
     subcontext = context + (self,)
     variables = Variables.v(context)
     raw_text = self.param(diffs)
@@ -546,13 +549,11 @@ class TextBox(Drawable):
     }
     self.fillsvgargs(args, diffs, context)
     margins = Param(
-      lambda m, s: dec_to_float(m if m else [s * 4 / 5] * 4),
+      lambda m, s: m if m else [Decimal(s * 4) / 5] * 4,
       args.pop("margins", None),
       args.get("textsize", 0),
     )
     pos, size = self.pos_size(diffs, relative=True)
-    pos = dec_to_float(pos)
-    size = dec_to_float(size)
     if (
       draw & Drawable.DRAW_BG
       or draw & Drawable.DRAW_FG
@@ -564,8 +565,10 @@ class TextBox(Drawable):
       rargs["pos"] = pos
       rargs["width"], rargs["height"] = Param.multi(2, size)
       # stroke of <0 means no border. stroke of 0 means default
-      if not isinstance(rargs["thick"], str) and rargs["thick"] < 0:
-        rargs["thick"] = 0
+      rargs["thick"] = Param(
+        lambda t: t if t is None or isinstance(t, str) or t >= 0 else 0,
+        rargs.get("thick"),
+      )
       if not draw & Drawable.DRAW_FG:
         rargs["thick"] = 0
       if not self.draw_body(draw, args):
@@ -588,29 +591,17 @@ class TextBox(Drawable):
           p[1]
           + (
             m[1]
-            if j == vjust[0]
+            if vj == vjust[0]
             else s[1] - m[3]
-            if j == vjust[1]
+            if vj == vjust[1]
             else s[1] / 2
           ),
         ),
         *(pos, size, margins, args.get("justify"), args.get("vjustify")),
       )
-      svg.text(
-        **{
-          x: args[x]
-          for x in (
-            "text",
-            "textsize",
-            "textcolor",
-            "justify",
-            "vjustify",
-            "rotate",
-            "hidden",
-          )
-          if x in args
-        }
-      )
+      for unneeded in "color", "fill", "thick", "size", "pattern":
+        args.pop(unneeded, None)
+      svg.text(**args)
 
   @staticmethod
   def wrap_text(svg, text, size, wrapwidth):
