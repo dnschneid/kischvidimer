@@ -71,57 +71,12 @@ class Font(HasModifiers):
 
 @sexp.handler("effects")
 class Effects(HasModifiers):
-  """font effects"""
+  """font effects: href, mirror, hide, font"""
 
-  @sexp.uses("href", "mirror", "hide")
+  @sexp.uses("hide")
   def fillsvgargs(self, args, diffs, context):
     super().fillsvgargs(args, diffs, context)
     args["hidden"] = self.has_yes("hide", diffs, args.get("hidden"))
-
-    # Handle mirror/rotation causing justify to flip
-    # Some nodes have their own implementation, so drop out early
-    if self.parent.type in ("pin", "name", "number"):
-      return
-
-    # FIXME: confirm this actually works as intended
-    # FIXME: move this into Field, and a modified version for text?
-    flipx = flipy = False
-    inst_rot = inst_mirror = False
-    rot = args.get("rotate") or 0
-    for c in context:
-      # Special-case for text in symbols, which over-rotate if the instance is
-      # included. This works because normally text doesn't have a symbol in its
-      # context.
-      # FIXME: clean this up.
-      if c.type == "symbol" and "lib_id" in c and context[-1].type == "text":
-        inst_rot, inst_mirror = c.rot_mirror(diffs).v
-        continue
-      if "mirror" in c:
-        if c["mirror"][0][0] == "x":
-          flipy = not flipy
-        if c["mirror"][0][0] == "y":
-          flipx = not flipx
-      if "at" in c and "label" not in c.type and c.type != "netclass_flag":
-        rot += c["at"][0].rot(diffs, context).v * (-1 if flipy != flipx else 1)
-    rot = rot % 360
-    spin = False
-    if (
-      rot in (0, 180)
-      and inst_rot in (180, 270)
-      or rot in (90, 270)
-      and inst_rot in (90, 180)
-    ):
-      spin = True
-    if inst_mirror and not (rot + inst_rot) % 180:
-      spin = not spin
-    if rot in (180, 270) != spin:
-      flipx = not flipx
-      flipy = not flipy
-    if "justify" in args and flipx:
-      args["justify"] = "right" if args["justify"] == "left" else "left"
-    if "vjustify" in args and flipy:
-      args["vjustify"] = "bottom" if args["vjustify"] == "top" else "top"
-    args["rotate"] = (rot % 180 + 180 * spin) % 360
 
 
 class Modifier(sexp.SExp):

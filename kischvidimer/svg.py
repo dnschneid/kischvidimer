@@ -97,7 +97,6 @@ class Svg:
     bgcolor="SCHEMATIC_BACKGROUND",
     header=True,
     auto_animate=(2, 1),
-    mirror_text=False,
     theme=None,
   ):
     """Preps an empty SVG.
@@ -117,13 +116,12 @@ class Svg:
     self.glyphs = set()
     self._extend_current_line = 0
     self._invert_y = []
-    self._mirror_text = mirror_text
     self._bounds = None
     self._wks_bounds = None
     # Stack of lists of transforms, where each transform is ('op', parameters)
     self._transforms = []
-    self._mirrorstate = []
-    self._rotatestate = []
+    self._mirrorstate = [(1, 1)]
+    self._rotatestate = [0]
     self._animate = []
     self.colormap = themes.get(theme)
     self.bgcolor = self.color(bgcolor)[0]
@@ -818,6 +816,39 @@ class Svg:
     emsize = Param(lambda s: self.textsize(s, True), textsize)
     textcolor, opacity = self._color(textcolor, "notes")
     anchor = Param(lambda j: Svg.ANCHOR[str(j).lower()], justify)
+    # Need to unmirror text so it's legible
+    mirror = Param(
+      lambda *mirrors: bool(sum(m[0] != m[1] for m in mirrors) % 2),
+      *self._mirrorstate,
+    )
+    # Note that we don't directly update rotate with _rotatestate, since
+    # _rotatestate is set when instantiating a symbol, and those will already
+    # have rotation applied.
+    rotate_state = Param(
+      # Y mirrors are just X mirrors rotated 180 degrees
+      lambda *rotmirrors: (
+        sum(
+          180 * (rm == (-1, 1)) if isinstance(rm, tuple) else rm or 0
+          for rm in rotmirrors
+        )
+        % 360
+      ),
+      *self._mirrorstate,
+      *self._rotatestate,
+      rotate,
+    )
+    # Spin text so it's always at 0 or 90
+    spin = rotate_state.map(lambda r, m: r in (180, 90 if m else 270), mirror)
+    rotate = rotate.map(lambda r, s: (r + 180 * s) % 360, spin)
+    anchor = anchor.map(
+      lambda a, m: {"start": "end", "end": "start"}.get(a, a) if m else a,
+      spin,
+    )
+    vjustify = Param(
+      lambda v, s: {"top": "bottom", "bottom": "top"}.get(v, v) if s else v,
+      vjustify,
+      spin,
+    )
     ### WORKAROUND for crbug/389845192
     vjustmap = dict(Svg.VJUST)
     if text.reduce(any, lambda t: "~{" in t):
@@ -829,7 +860,6 @@ class Svg:
     if (
       rotate.reduce(any)
       or hidden.reduce(any)
-      or self._mirror_text
       or len(text) > 1
       or text.reduce(any, lambda t: "\n" in t)
       or len(icon) > 1
@@ -839,7 +869,7 @@ class Svg:
       needsgroup = True
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)
       pos = Param((0, 0))
-    # Calculate bounding box
+    ### Calculate bounding box
     # FIXME: get rid of the duplicate calcs by moving it into the render loop
     # FIXME: revamp the positioning to match better
     # FIXME: diffify
@@ -864,24 +894,22 @@ class Svg:
         - (kisize[0].v * 1 / 3 if vjust[0].v[1] == "hanging" else 0)
       ),
     )
-    if any(not h.v for h in hidden) and any(t.v for t in text):
+    if hidden.reduce(any, op.not_) and text.reduce(any):
       # self.rect((textpos[0], textpos[1] - theight), twidth, theight)
       self._update_bounds(
         textpos,
         (textpos[0] + twidth, textpos[1] - self.y(theight)),
         thick=thick,
       )
-    # done with bounding box calculations
-    xpos_factor = 1
-    if self._mirror_text:
-      anchor = Param(
-        lambda a: {"start": "end", "end": "start"}.get(a, a),
-        anchor,
-      )
-      xpos_factor = -1
+    ### done with bounding box calculations
+    # apply mirroring now, so bbox calculations can ignore it
+    anchor = anchor.map(
+      lambda a, m: {"start": "end", "end": "start"}.get(a, a) if m else a,
+      mirror,
+    )
     self.add(
       ["<text", 'stroke="none"']
-      + self.attr("x", pos.map(lambda p: p[0] * xpos_factor), 0)
+      + self.attr("x", pos.map(lambda p, m: -p[0] if m else p[0], mirror), 0)
       + self.attr("y", pos.map(self.gety), 0)
       + self.attr("fill", textcolor, "none")
       + self.attr("fill-opacity", opacity, 1, convert=False)
@@ -889,7 +917,7 @@ class Svg:
       + self.attr("font-style", italic, "normal")
       + self.attr("font-weight", bold, "normal")
       + self.attr("text-anchor", anchor, "start")
-      + ['transform="scale(-1 1)"'] * self._mirror_text
+      + self.attr("transform", mirror.map(lambda m: "scale(-1 1)" * m))
       + Svg._tagattr(tag)
       + ([f'prop="{prop}"'] if prop and isinstance(prop, str) else [])
     ).hascontents()
@@ -1050,8 +1078,9 @@ class Svg:
         self.bgcolor,
         header=False,
         auto_animate=False,
-        mirror_text=mirror.get(i).v,
       )
+      symsvg._mirrorstate = [(-1 if mirror.get(i).v else 1, 1)]
+      symsvg._rotatestate = [rotate.get(i).v]
       symsvg.push_invert_y()
       symsvg.colormap = self.colormap
       # FIXME: diffs

@@ -32,6 +32,9 @@ if __name__ == "__main__":
 
 from .kicad_modifiers import ModifierRoot
 
+JUST_FLIP = {"left": "right", "right": "left"}
+VJUST_FLIP = {"top": "bottom", "bottom": "top"}
+
 
 class HasUUID:
   UNIQUE = False  # UUID-containing things are usually not unique
@@ -497,7 +500,7 @@ class Text(Drawable):
     args = {
       "text": text,
       "pos": self["at"][0].pos(diffs),
-      "rotate": None,
+      "rotate": self["at"][0].rot(diffs),
       "textcolor": "device" if context[-1].type == "symbol" else "notes",
     }
     self.fillsvgargs(args, diffs, context)
@@ -535,7 +538,7 @@ class TextBox(Drawable):
     )
 
   def fillsvg(self, svg, diffs, draw, context):
-    # FIXME: rotation/flipping correction inside symbols
+    # FIXME: rotation/flipping, both in and out of symbols
     subcontext = context + (self,)
     variables = Variables.v(context)
     raw_text = self.param(diffs)
@@ -743,13 +746,32 @@ class Field(Drawable):
       "text": text,
       "prop": prop,
       "pos": pos,
-      "rotate": 0,
       "textcolor": textcolor,
       "url": url,
       "hidden": self.has_yes("hide"),
       "icon": icon,
     }
     self.fillsvgargs(args, diffs, context)
+    rot = self["at"][0].rot(diffs)
+    # Symbol rotation impacts field rotation for some reason
+    for c in context:
+      if c.type == "symbol" and hasattr(c, "rot_mirror"):
+        inst_rot_mirror = c.rot_mirror(diffs)
+        rot = Param(lambda r, rm: (r + rm[0]) % 360, rot, inst_rot_mirror)
+        args["justify"] = Param(
+          lambda j, r, rm: JUST_FLIP.get(j, j) if rm[1] and r % 180 else j,
+          args.get("justify"),
+          rot,
+          inst_rot_mirror,
+        )
+        args["vjustify"] = Param(
+          lambda j, r, rm: VJUST_FLIP.get(j, j) if rm[1] and not r % 180 else j,
+          args.get("vjustify"),
+          rot,
+          inst_rot_mirror,
+        )
+        break
+    args["rotate"] = rot
     svg.text(**args)
 
   @staticmethod
