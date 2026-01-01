@@ -444,8 +444,9 @@ class Svg:
   ):
     p1 = Param.ify(p1, (0, 0))
     p2 = Param.ify(p2, (0, 0))
-    # FIXME: don't emit anything if color is none?
     color, opacity = self._color(color, "wire")
+    if not opacity.reduce(any):
+      return
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
     self._update_bounds(p1[0].v, p2[0].v, thick[0].v)
@@ -488,9 +489,10 @@ class Svg:
       x = pos.map(self.getx)
       y = pos.map(lambda p, h: min(self.y(p[1]), self.y(p[1] + h)), height)
       height = height.map(op.abs)
-    # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
+    if not opacity.reduce(any) and not fillopacity.reduce(any):
+      return
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
     # FIXME: use map/reduce to consider the bounds of all diffs
@@ -531,9 +533,10 @@ class Svg:
     radius = Param(radius)
     if any(r.v < 0 for r in radius):
       raise Exception("negative radius")
-    # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
+    if not opacity.reduce(any) and not fillopacity.reduce(any):
+      return
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
     self._update_bounds(
@@ -597,9 +600,10 @@ class Svg:
       assert radius and largearc
       radius = Param(radius)
       largearc = Param(largearc)
-    # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
+    if not opacity.reduce(any) and not fillopacity.reduce(any):
+      return
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
     d = Param(
@@ -729,9 +733,10 @@ class Svg:
       close,
       xys,
     )
-    # FIXME: don't emit anything if color and fill are none?
     color, opacity = self._color(color, "notes")
     fill, fillopacity = self._fill(fill, color, opacity)
+    if not opacity.reduce(any) and not fillopacity.reduce(any):
+      return
     thick = Svg._thick(thick)
     pattern = Param(Svg.pattern, pattern, thick)
     for xy, _ in xys:
@@ -815,6 +820,8 @@ class Svg:
     kisize = Param(lambda s: self.textsize(s, False), textsize)
     emsize = Param(lambda s: self.textsize(s, True), textsize)
     textcolor, opacity = self._color(textcolor, "notes")
+    if not opacity.reduce(any) or hidden.reduce(all):
+      return
     anchor = Param(lambda j: Svg.ANCHOR[str(j).lower()], justify)
     # Need to unmirror text so it's legible
     mirror = Param(
