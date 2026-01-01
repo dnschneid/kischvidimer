@@ -241,6 +241,24 @@ class SExp(Comparable):
           base = tuple(self._sexp[start : end + 1])
     return TargetDict.param(diffs, self, key, base, default=default)
 
+  def getparam(self, atom, diffs=None, default=None, key=None):
+    """Returns a Param for data of a unique subsexp, handling add/removes.
+    It's generally better to make these subsexps Modifiers, if applicable.
+    """
+    item = self.get(atom)
+    if is_atom(item, recurse=False):
+      return Param(default)
+    if item is None:
+      options = Diff.Group(None)
+    else:
+      options = Diff.Group(
+        *(dp if dp.c else dp.v for dp in item.param(diffs, key))
+      )
+    added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
+    options += (FakeDiff(c, new=item.param().v) for item, c in added)
+    options += (FakeDiff(c, old=options[0]) for c in removed.values())
+    return Param(options, default=default)
+
   def distance(self, other, fast, diffparam):
     """Enforces uniqueness by type; should be overridden for other purposes."""
     if self.type != other.type:
