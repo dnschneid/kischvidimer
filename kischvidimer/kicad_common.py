@@ -73,6 +73,146 @@ class HasUUID:
     return super().distance(other, fast, diffparam)
 
 
+class HasInstanceData(sexp.SExp):
+  """Sexp with instances->project->path->field/data"""
+
+  @classmethod
+  def lookup(cls, field, diffs, context, default=None):
+    # Instance data is tricky. Modifications are straightfoward (the
+    # modification should be visually shown), but adds and removes are usually
+    # associated with the addition and removal of an associated symbol/sheet.
+    # Representing the add/remove as a diff would cause unnecessary visual
+    # glitches when animating all diffs. For example, adding a symbol to a
+    # reused sheet, where different sheets have different units, would cause the
+    # symbol to glitch between the different units on any page except the first.
+    # So for now, while we don't have a way of associating the add/remove diffs,
+    # treat add/remove as constant states.
+    project = None
+    path = None
+    sheet = None
+    for c in reversed(context):
+      if c.type == "path":
+        path = c
+      elif c.type == "sheet":
+        sheet = c
+      elif c.type == "~project":
+        project = c[0]
+    data = default
+    if path is not None:
+      uuid = path.uuid(sheet)
+      for c in context:  # priority to the descendent
+        if isinstance(c, cls):
+          cdata = c.instancedata(project, uuid, field, diffs)
+          if cdata and not cdata.is_empty:
+            data = Param(cdata, default=data)
+    return Param(data)
+
+  def instancedata(self, project, uuid, field, diffs):
+    # Disregard diffs on additions and removals
+    added, _removed = self.added_and_removed(diffs, Instances)
+    data = None
+    # Earlier results take precedence
+    for instances, _add_c in (
+      [(i, None) for i in self["instances"]] if "instances" in self else []
+    ) + added:
+      newdata = instances.instancedata(project, uuid, field, diffs)
+      if newdata and not newdata.is_empty:
+        data = Param(data, default=newdata)
+    return data
+
+
+@sexp.handler("instances")
+class Instances(sexp.SExp):
+  """Tracks instances of a sheet or symbol"""
+
+  @sexp.uses("project")
+  def paths(self, project=None):
+    """Returns a dict of instance to path elements"""
+    if "project" not in self:
+      return {}
+    if isinstance(project, sexp.SExp):
+      project = project[0]
+    ret = {}
+    for proj in self["project"]:
+      if not project:
+        project = proj[0]
+      if proj[0] not in ("", project) or "path" not in proj:
+        continue
+      for inst in proj["path"]:
+        assert inst[0] not in ret
+        ret[inst[0]] = inst
+    return ret
+
+  def instancedata(self, project, uuid, field, diffs):
+    # Disregard diffs on additions and removals
+    added, _removed = self.added_and_removed(diffs, Project)
+    data = None
+    # Prioritize added data, mainly for project matching if project is unknown
+    all_projects = added + (
+      [(p, None) for p in self["project"]] if "project" in self else []
+    )
+    # Named results get precedence
+    for prj, _add_c in all_projects:
+      newdata = prj.instancedata(project, uuid, field, diffs)
+      if newdata and not newdata.is_empty:
+        data = Param(data, default=newdata)
+    # Check for buggy unnamed projects
+    for prj, _add_c in all_projects:
+      newdata = prj.instancedata("", uuid, field, diffs)
+      if newdata and not newdata.is_empty:
+        data = Param(data, default=newdata)
+    return data
+
+
+@sexp.handler("project")
+class Project(sexp.SExp):
+  UNIQUE = "name"
+  LITERAL_MAP = {"name": 1}
+
+  def instancedata(self, project, uuid, field, diffs):
+    if project is not None and project != self[0]:
+      return None
+    # Disregard diffs on additions and removals
+    added, _removed = self.added_and_removed(diffs, Path)
+    data = None
+    # Order shouldn't matter since there should only be one match
+    for path, _add_c in added + (
+      [(p, None) for p in self["path"]] if "path" in self else []
+    ):
+      newdata = path.instancedata(uuid, field, diffs)
+      if newdata and not newdata.is_empty:
+        data = Param(data, default=newdata)
+    return data
+
+
+@sexp.handler("path")
+class Path(sexp.SExp):
+  UNIQUE = "path"
+  LITERAL_MAP = {"path": 1}
+
+  def uuid(self, ref=None, generate=False):
+    if ref and not isinstance(ref, (tuple, list)):
+      ref = [ref]
+    if not ref:
+      return self[0]
+    return f"{self[0]}/{'/'.join(r.uuid(generate=generate) for r in ref)}"
+
+  def instancedata(self, uuid, field, diffs):
+    if uuid != self[0]:
+      return None
+    # Disregard diffs on additions and removals
+    added, _removed = self.added_and_removed(diffs, sexp.SExp.get_class(field))
+    data = None
+    # Order shouldn't matter since there should only be one match
+    for d, _add_c in added + (
+      [(d, None) for d in self[field]] if field in self else []
+    ):
+      newdata = d.param(diffs)
+      if newdata and not newdata.is_empty:
+        data = Param(data, default=newdata)
+    return data
+
+
 @sexp.handler("version")
 class Version(sexp.SExp):
   """File version"""
@@ -694,12 +834,14 @@ class Field(Drawable):
     show_name = self.has_yes("show_name", diffs)
     url = None
     icon = None
+    # FIXME: special props should be limited to the relevant types
+    #        (sheet/sym/globallabel)
     if prop == "Reference":
       textcolor = "referencepart"
       raw_text = Param(
         lambda r, u, s: r + unit_to_alpha(u) if s else r,
-        instancedata("reference", diffs, context, raw_text),
-        instancedata("unit", diffs, context, 0),
+        HasInstanceData.lookup("reference", diffs, context, raw_text),
+        HasInstanceData.lookup("unit", diffs, context, 0),
         context[-1].show_unit(diffs, context),
       )
     elif prop == "Value":
@@ -788,15 +930,15 @@ class Field(Drawable):
 class Image(Drawable):
   """An image!"""
 
-  """ (image (at ) (scale x) (uuid ) (data "base64?" "base64?" ) )"""
-
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_IMG:
       return
+    args = {}
+    self.fillsvgargs(args, diffs, context)
     svg.image(
-      data=self["data"][0].b64(diffs),
       pos=self["at"][0].pos(diffs),
-      scale=Param.ify(self.get("scale"), 1, diffs),
+      data=self["data"][0].b64(diffs),
+      **args,
     )
 
 
@@ -808,35 +950,6 @@ def unit_to_alpha(unit):
     alpha = chr(ord("A") + unit % 26) + alpha
     unit //= 26
   return alpha
-
-
-def dec_to_float(dec):
-  if isinstance(dec, (sexp.Decimal, float, int)):
-    return float(dec)
-  return type(dec)(map(float, dec))
-
-
-def instancedata(field, diffs, context, default=None):
-  # FIXME diffs!!!!
-  project = None
-  path = None
-  sheet = None
-  for c in reversed(context):
-    if c.type == "path":
-      path = c
-    elif c.type == "sheet":
-      sheet = c
-    elif c.type == "~project":
-      project = c
-  if path is None:
-    return Param(default)
-  uuid = path.uuid(sheet)
-  for c in reversed(context):
-    if "instances" in c:
-      inst = c["instances"][0].paths(project).get(uuid)
-      if inst and field in inst:
-        return Param(inst[field][0][0])
-  return Param(default)
 
 
 def draw_uc_at(svg, pos, color):

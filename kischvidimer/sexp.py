@@ -150,7 +150,25 @@ class SExp(Comparable):
       return cls()
     if not isinstance(data[0], Atom):
       return cls(data)
-    return getattr(handler, "_handlers", {}).get(data[0], cls)(data)
+    return SExp.get_class(data[0], cls)(data)
+
+  @staticmethod
+  def get_class(atm, default=None):
+    ret = getattr(handler, "_handlers", {}).get(Atom(atm), default)
+    assert ret, f"no handler defined for '{atm}' and no default specified"
+    return ret
+
+  @classmethod
+  def new(cls, *data, typ=None):
+    """Creates a new typed sexp. Be sure that atoms are atoms."""
+    typ = (
+      Atom(typ)
+      if typ
+      else next(
+        a for a, c in getattr(handler, "_handlers", {}).items() if cls is c
+      )
+    )
+    return cls([typ, *data])
 
   def __init__(self, data=None):
     self.parent = None
@@ -393,7 +411,6 @@ class SExp(Comparable):
         item.reparent(self)
 
   def has_yes(self, atom, diffs=None, default=None):
-    atom = Atom(atom)
     item = self.get(atom)
     if is_atom(item, recurse=False):
       # FIXME: support diffs for the legacy case of an atom mixed in the sexp
@@ -402,7 +419,7 @@ class SExp(Comparable):
       options = Diff.Group(False)
     else:
       options = Diff.Group(*(dp if dp.c else dp.v for dp in item.yes(diffs)))
-    added, removed = self.added_and_removed(diffs, handler._handlers[atom])
+    added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
     options += (FakeDiff(c, new=item.yes().v) for item, c in added)
     options += (FakeDiff(c, old=options[0]) for c in removed.values())
     return Param(options, default=default)

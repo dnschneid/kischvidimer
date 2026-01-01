@@ -45,9 +45,7 @@ class KicadPro(Comparable):
     return self.json.get("text_variables", {})
 
   def context(self):
-    s = kicad_sch.sexp.SExp.init(
-      [kicad_sch.sexp.Atom("~project"), self.project]
-    )
+    s = sexp.SExp.init([sexp.Atom("~project"), self.project])
     return (s,)
 
   def fillnetlist(self, netlister, diffs, pages=None, p=None):
@@ -168,7 +166,9 @@ class KicadPro(Comparable):
       if relpath not in pages:
         root_path = sch.root_path
         assert root_path is not None
-        pages[relpath] = ([(kicad_sch.fakepath(""), kicad_sch.fakesheet(sch))],)
+        pages[relpath] = (
+          [(kicad_sch.Path.new(""), kicad_sch.Sheet.fake(sch))],
+        )
       assert len(pages[relpath]) == 1
       pages[relpath] += (sch,)
       for path, sheet in sch.get_sheets(self.project):

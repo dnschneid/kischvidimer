@@ -21,11 +21,12 @@ from .diff import Param
 from .kicad_common import (
   Drawable,
   Field,
+  HasInstanceData,
   HasUUID,
+  Path,
   Polyline,
   Variables,
   draw_uc_at,
-  instancedata,
   rotated,
   transformed,
   unit_to_alpha,
@@ -609,9 +610,19 @@ class Cells(Drawable):
     return count // len(xs), len(xs) - 1
 
 
+@sexp.handler("reference")
+class Reference(sexp.SExp):
+  """Instance data: reference"""
+
+
+@sexp.handler("unit")
+class Unit(sexp.SExp):
+  """Instance data: unit. Also exists inside SymbolInsts"""
+
+
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
 #          (instances (project "x" (path "y" (reference "z") (unit 1)))))
-class SymbolInst(HasUUID, Drawable):
+class SymbolInst(HasUUID, HasInstanceData, Drawable):
   """An instance of a symbol in a schematic"""
 
   def fillvars(self, variables, diffs, context):
@@ -765,7 +776,7 @@ class SymbolInst(HasUUID, Drawable):
     return self.get("dnp", default=[False])[0] == "yes"
 
   def refdes(self, diffs, context):
-    return instancedata(
+    return HasInstanceData.lookup(
       "reference",
       diffs,
       context + (self,) if context else None,
@@ -774,7 +785,7 @@ class SymbolInst(HasUUID, Drawable):
 
   @sexp.uses("unit")
   def unit(self, diffs, context, as_alpha=False):
-    unit = instancedata(
+    unit = HasInstanceData.lookup(
       "unit",
       diffs,
       context + (self,) if context else None,
@@ -896,18 +907,17 @@ class Member(sexp.SExp):
   # FIXME: members are a list of literals; this needs custom diff handling.
 
 
-def fakesheet(uuid):
-  """Creates a fake sheet element for the purposes of UUIDs"""
-  if not isinstance(uuid, str):
-    uuid = uuid["uuid"][0][0]
-  return sexp.SExp.init(
-    [sexp.Atom("sheet"), sexp.SExp.init([sexp.Atom("uuid"), uuid])]
-  )
-
-
 @sexp.handler("sheet")
-class Sheet(HasUUID, Drawable):
+class Sheet(HasUUID, HasInstanceData, Drawable):
   """Sheet instance"""
+
+  @classmethod
+  def fake(cls, uuid):
+    """Creates a fake, incomplete sheet element for the purposes of UUIDs"""
+    if isinstance(uuid, (HasUUID, KicadSch)):
+      uuid = HasUUID.uuid(uuid)
+    assert isinstance(uuid, str)
+    return cls.new(sexp.SExp.init([sexp.Atom("uuid"), uuid]))
 
   def fillvars(self, variables, diffs, context):
     super().fillvars(variables, diffs, context)
@@ -971,53 +981,6 @@ class Sheet(HasUUID, Drawable):
   @property
   def file(self):
     return Field.getprop(self, "Sheetfile")
-
-
-@sexp.handler("instances")
-class Instances(sexp.SExp):
-  """Tracks instances of a sheet or symbol"""
-
-  @sexp.uses("project")
-  def paths(self, project=None):
-    """Returns a dict of instance to path elements"""
-    if "project" not in self:
-      return {}
-    if isinstance(project, sexp.SExp):
-      project = project[0]
-    ret = {}
-    for proj in self["project"]:
-      if not project:
-        project = proj[0]
-      if proj[0] not in ("", project) or "path" not in proj:
-        continue
-      for inst in proj["path"]:
-        assert inst[0] not in ret
-        ret[inst[0]] = inst
-    return ret
-
-
-@sexp.handler("project")
-class Project(sexp.SExp):
-  UNIQUE = "name"
-  LITERAL_MAP = {"name": 1}
-
-
-@sexp.handler("path")
-class Path(sexp.SExp):
-  UNIQUE = "path"
-  LITERAL_MAP = {"path": 1}
-
-  def uuid(self, ref=None, generate=False):
-    if ref and not isinstance(ref, (tuple, list)):
-      ref = [ref]
-    if not ref:
-      return self[0]
-    return f"{self[0]}/{'/'.join(r.uuid(generate=generate) for r in ref)}"
-
-
-def fakepath(path):
-  """Creates a fake path element for the purposes of tracking instances"""
-  return sexp.SExp.init([sexp.Atom("path"), path])
 
 
 @sexp.handler("kicad_sch")
@@ -1103,12 +1066,13 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     if not instances:
       instances.add("/" + HasUUID.uuid(self, generate=True))
     return [
-      (fakepath(i.rpartition("/")[0]), fakesheet(i.rpartition("/")[2]))
+      (Sheet.fake(i.rpartition("/")[0]), Sheet.fake(i.rpartition("/")[2]))
       for i in instances
     ]
 
   def get_sheets(self, project=None):
     """Returns a list of tuples of (path, sheetref)"""
+    # FIXME: includes adds from from diffs
     if "sheet" not in self:
       return []
     sheets = []
@@ -1121,7 +1085,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     # Context should include project and variables, ideally
     if "symbol" not in self:
       return {}
-    context += (fakepath(instance), self)
+    context += (Path.new(instance), self)
     comps = {}
     for sym in self["symbol"]:
       ref, data = sym.as_comp(context)

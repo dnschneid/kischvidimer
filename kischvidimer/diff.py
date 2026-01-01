@@ -95,6 +95,10 @@ class Param:
     default -- returned whenever there is no value or a function returns None
     """
     assert callable(func) == bool(args), "missing either function or args"
+    if func is None and not args:
+      # Inverted case where there's no initial value but there is a default
+      func = default
+      default = None
     if isinstance(func, Param) and (
       func._default is None or default is None or default == func._default
     ):
@@ -192,6 +196,13 @@ class Param:
   def v(self):
     """Convenience getter for code that doesn't care about diffs."""
     return self[0].v
+
+  @property
+  def is_empty(self):
+    """Returns True if the diff would only return None.
+    If a constant default is provided, this will usually return False.
+    """
+    return self.reduce(all, lambda x: x is None)
 
   def get(self, i):
     """Clamps i to the last diff in the set."""
