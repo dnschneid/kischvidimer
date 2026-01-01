@@ -531,14 +531,11 @@ class NetclassFlag(HasUUID, Drawable):
       circle = {
         "pos": length.map(lambda h: (0, -h)),
         "radius": size.map(op.truediv, 2),
-        "color": shape.map(lambda s, c: c if s == "round" else None),
-        "fill": shape.map(lambda s, c: c if s == "dot" else None),
+        "color": shape.map(lambda s, c: c if s == "round" else "none"),
+        "fill": shape.map(lambda s, c: c if s == "dot" else "none"),
       }
       svg.polyline(xys=xys, color=ocolor)
-      if not circle["color"].is_empty or not circle["fill"].is_empty:
-        circle["color"] = Param(circle["color"], default="none")
-        circle["fill"] = Param(circle["fill"], default="none")
-        svg.circle(**circle)
+      svg.circle(**circle)
       svg.gend()
     if (
       draw & Drawable.DRAW_FG_PG
@@ -558,44 +555,68 @@ class Table(Drawable):
     pos = self["cells"][0].pos(diffs)
     svg.gstart(pos=pos)
     if draw & Drawable.DRAW_FG:
-      # FIXME: diffs? lolol good luck
-      widths = self["column_widths"][0].data
-      heights = self["row_heights"][0].data
-      col_count = len(widths)
-      row_count = len(heights)
-      width = sum(widths)
-      height = sum(heights)
-      border_style = {}
+      widths = self["column_widths"][0].param()
+      heights = self["row_heights"][0].param()
+      width = widths.map(sum)
+      height = heights.map(sum)
+      border_style = {"color": "notes"}
       self["border"][0].fillsvgargs(border_style, diffs, context + (self,))
-      sep_style = {}
+      sep_style = {"color": "notes"}
       self["separators"][0].fillsvgargs(sep_style, diffs, context + (self,))
       border_style.setdefault("color", "notes")
       sep_style.setdefault("color", "notes")
 
       # render external border. external border is under inner border in Z
-      if self["border"][0]["external"][0][0] == "yes":
-        svg.rect(width=width, height=height, **border_style)
+      has_external = self["border"][0].has_yes("external")
+      svg.gstart(hidden=has_external.map(op.not_))
+      svg.rect(width=width, height=height, **border_style)
+      svg.gend()
 
       # render header
-      has_header = self["border"][0]["header"][0][0] == "yes"
-      if has_header:
-        y = heights[0]
-        svg.line(p1=(0, y), p2=(width, y), **border_style)
+      has_header = self["border"][0].has_yes("header")
+      svg.gstart(hidden=has_header.map(op.not_))
+      svg.line(
+        p1=heights.map(lambda hs: (0, hs[0])),
+        p2=heights.map(lambda hs, w: (w, hs[0]), width),
+        **border_style,
+      )
 
       # render inner horizontal lines (special-case header)
-      if self["separators"][0]["rows"][0][0] == "yes":
-        y = heights[0] * has_header
-        for i in range(has_header, row_count - 1):
-          y += heights[i]
-          svg.line(p1=(0, y), p2=(width, y), **sep_style)
+      has_row_sep = self["separators"][0].has_yes("rows")
+      svg.gstart(hidden=has_row_sep.map(op.not_))
+      svg.lines(
+        xys=heights.map(
+          lambda hs, w, has_header: [
+            pt
+            for i in range(has_header + 1, len(hs))
+            for y in (sum(hs[:i]),)
+            for pt in ((0, y), (w, y))
+          ],
+          heights,
+          width,
+          has_header,
+        ),
+        **sep_style,
+      )
+      svg.gend()
 
       # render inner vertical lines
-      if self["separators"][0]["cols"][0][0] == "yes":
-        x = 0
-        for i in range(col_count - 1):
-          x += widths[i]
-          svg.line(p1=(x, 0), p2=(x, height), **sep_style)
-
+      has_col_sep = self["separators"][0].has_yes("cols")
+      svg.gstart(hidden=has_col_sep.map(op.not_))
+      svg.lines(
+        xys=widths.map(
+          lambda ws, h: [
+            pt
+            for i in range(1, len(ws))
+            for x in (sum(ws[:i]),)
+            for pt in ((x, 0), (x, height))
+          ],
+          widths,
+          height,
+        ),
+        **sep_style,
+      )
+      svg.gend()
     super().fillsvg(svg, diffs, draw, context)
     svg.gend()  # pos
 
@@ -624,7 +645,7 @@ class Cells(Drawable):
     xs = set()
     count = 0
     for cell in self["table_cell"]:
-      pos = cell["at"].pos(relative=relative)
+      pos = cell["at"].pos(relative=relative).v
       if pos[0] <= coord[0] and pos[1] <= coord[1]:
         xs.add(pos[0])
         count += 1

@@ -654,11 +654,11 @@ class TextBox(Drawable):
   LITERAL_MAP = {"text": 1}
 
   def __str__(self):
-    pos, size = self.pos_size().v
+    pos, size = self.pos_size()
     descr = self.type.replace("_", " ")
-    if size[0] ** 2 + size[1] ** 2 > 100**2:
+    if size.v[0] ** 2 + size.v[1] ** 2 > 100**2:
       descr = f"large {descr}"
-    return f"{descr} at ({pos[0]}, {pos[1]})"
+    return f"{descr} at ({pos.v[0]}, {pos.v[1]})"
 
   @sexp.uses("pos", "size")
   def pos_size(self, diffs, relative=False, raw_pos=False):
