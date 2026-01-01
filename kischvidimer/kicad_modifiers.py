@@ -117,6 +117,17 @@ Thickness = Modifier.basic("thickness")  # TODO: properly support thick fonts
 Href = Modifier.basic("href", "url")
 
 
+@sexp.handler("diameter")
+class Diameter(Modifier):
+  """diameter is like radius, but twice as large!"""
+
+  LITERAL_MAP = {"diameter": 1}
+
+  def fillsvgargs(self, args, diffs, context):
+    p = self.param(diffs)
+    args["radius"] = p.map(lambda d: d / 2)
+
+
 @sexp.handler("size")
 class Size(Modifier):
   """size can be a textsize or a physical size, and can have 1 or 2 values."""

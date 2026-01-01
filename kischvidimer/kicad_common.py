@@ -952,20 +952,6 @@ def unit_to_alpha(unit):
   return alpha
 
 
-def draw_uc_at(svg, pos, color):
-  sz = 0.6  # FIXME: number?
-  pos = Param(
-    lambda p, sz: (float(p[0]) - sz / 2, float(p[1]) - sz / 2), pos, sz
-  )
-  svg.rect(
-    pos=pos,
-    width=sz,
-    height=sz,
-    color=color,
-    thick="ui",
-  )
-
-
 def translated(pos, offset):
   if not isinstance(offset, tuple):
     offset = (offset or 0, 0)

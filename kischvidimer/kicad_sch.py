@@ -12,12 +12,13 @@
 #   limitations under the License.
 # SPDX-License-Identifier: Apache-2.0
 
+import operator as op
 import os
 import re
 import sys
 
 from . import kicad_sym, kicad_wks, sexp, svg
-from .diff import Param
+from .diff import FakeDiff, Param
 from .kicad_common import (
   Drawable,
   Field,
@@ -26,7 +27,6 @@ from .kicad_common import (
   Path,
   Polyline,
   Variables,
-  draw_uc_at,
   rotated,
   transformed,
   unit_to_alpha,
@@ -130,22 +130,19 @@ class Junction(HasUUID, Drawable):
     #        Can this be resolved?
     if not draw & Drawable.DRAW_FG_PG:
       return
-    # FIXME: diffs
     pos = self["at"][0].pos(diffs)
-    diameter = sexp.Decimal(0.915)
-    if "diameter" in self and self["diameter"][0][0]:
-      diameter = self["diameter"][0][0]
-    color = "junction"
-    if Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0:
-      color = "bus_junction"
-    if "color" in self and any(self["color"][0].data):
-      color = tuple(self["color"][0].data)
+    is_bus = Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0
+    args = {
+      "radius": sexp.Decimal("0.915") / 2,
+      "color": "bus_junction" if is_bus else "junction",
+    }
+    self.fillsvgargs(args, diffs, context)
+    args["fill"] = args.pop("color")
     svg.circle(
       pos,
-      radius=diameter / 2,
       color="none",
-      fill=color,
       tag=svg.getuid(self),
+      **args,
     )
 
 
@@ -163,7 +160,6 @@ class NoConnect(Drawable):
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
-    # FIXME: diffs
     xys = (
       self["at"][0]
       .pos(diffs)
@@ -175,13 +171,12 @@ class NoConnect(Drawable):
           (p[0] + sz, p[1] - sz),
           (p[0] - sz, p[1] + sz),
         ),
-        sexp.Decimal(0.6350),
+        sexp.Decimal("0.6350"),
       )
     )
     svg.polyline(xys, color="noconnect", tag=svg.getuid(self))
 
 
-# FIXME: (wire (pts (xy) (xy)) (stroke) (uuid))
 @sexp.handler("wire", "bus")
 class Wire(HasUUID, Polyline):
   """wire or bus"""
@@ -192,9 +187,30 @@ class Wire(HasUUID, Polyline):
   def fillsvg(self, svg, diffs, draw, context):
     super().fillsvg(svg, diffs, draw, context, tag=svg.getuid(self))
     if draw & Drawable.DRAW_FG_PG and self.type == "wire":
-      for pos in self.pts(diffs).v:
+      pts = self.pts(diffs)
+      if len(pts) > 1:
+        # TODO: Netlists are currently only valid for the base, so hide the NCs
+        cs = {c for diff in pts for c in diff.c}
+        svg.gstart(hidden=FakeDiff(cs, old=False, new=True).param())
+      for pos in pts.v:
         if Netlister.n(context).get_node_count(context, pos) == 1:
           draw_uc_at(svg, pos, color="wire")  # FIXME: not the correct color?
+      if len(pts) > 1:
+        svg.gend()
+
+
+@sexp.handler("shape")
+class Shape(sexp.SExp):
+  """specifies the shape of a label/pin"""
+
+  LITERAL_MAP = {"shape": 1}
+
+
+@sexp.handler("length")
+class Length(sexp.SExp):
+  """the length of a pin"""
+
+  LITERAL_MAP = {"length": 1}
 
 
 # FIXME: (hierarchical_label "x" (shape input) (at) (effects) (uuid) (property))
@@ -212,7 +228,7 @@ class Label(HasUUID, Drawable):
     self.netbus = netlister.add_label(context, self)
 
   def fillvars(self, variables, diffs, context):
-    shape = self.shape(diffs)
+    shape = self.shape(diffs).v
     if shape is not None:
       variables.define(
         context + (self,),
@@ -237,11 +253,7 @@ class Label(HasUUID, Drawable):
 
   @sexp.uses("shape")
   def shape(self, diffs=None):
-    if self.type == "pin":
-      return self[1]
-    elif "shape" in self:
-      return self["shape"][0][0]
-    return None
+    return self.getparam("shape", diffs)
 
   def net(self, diffs, context, display=False):
     name = self.param(diffs)
@@ -250,7 +262,7 @@ class Label(HasUUID, Drawable):
     return name
 
   def bus(self, diffs, context):
-    return Param(Label.BUS_RE.search(self.net(diffs, context).v))
+    return self.net(diffs, context).map(Label.BUS_RE.search)
 
   def expand_bus(self, diffs, context):
     bus = self.bus(diffs, context).v
@@ -289,28 +301,41 @@ class Label(HasUUID, Drawable):
     if is_field and self.type != "global_label":
       return (0, 0)
     # Need to get effective size to calculate text height
-    args = {"textsize": 1.27}  # default
+    args = {
+      "textsize": Param(1.27),
+    }
     self.fillsvgargs(args, diffs, context)
-    th = float(args["textsize"]) * svg.Svg.FONT_HEIGHT
-    offset = float(th * 0.375)  # DEFAULT_LABEL_SIZE_RATIO
+    th = args["textsize"].map(lambda s: float(s) * svg.Svg.FONT_HEIGHT)
+    offset = th.map(op.mul, 0.375)  # DEFAULT_LABEL_SIZE_RATIO
     yoffset = 0
     # Reference: sch_label.cpp: *::CreateGraphicShape
     if self.type == "global_label":
-      yoffset = th * -0.0715  # from sch_label.cpp
-      h = float(th * 1.5)  # from sch_label.cpp
+      yoffset = th.map(op.mul, -0.0715)  # from sch_label.cpp
+      h = th.map(op.mul, 1.5)  # from sch_label.cpp
       shape = self.shape(diffs)
-      if shape == "input" or shape in ("bidirectional", "tri_state"):
-        offset += h / 2
+      offset = offset.map(
+        lambda o, h, s: o
+        + h / 2 * (shape == "input" or shape in ("bidirectional", "tri_state")),
+        h,
+        shape,
+      )
+    elif self.type == "hierarchical_label":
+      offset = offset.map(op.add, args["textsize"])
     elif self.type in ("hierarchical_label", "pin"):
-      h = float(args["textsize"])
-      offset += h
-      if self.type == "pin":
-        offset *= -1
-    offset = (offset, yoffset)
+      offset = offset.map(lambda o, s: -o - s, args["textsize"])
+    offset = Param(lambda x, y: (x, y), offset, yoffset)
     if is_field:
-      rot = self["at"][0].rot(diffs)
-      offset = rotated(offset, rot)
+      offset = offset.map(rotated, self["at"][0].rot(diffs))
     return offset
+
+  @staticmethod
+  def _makeoutline(xys, mx=0):
+    """Makes a list of xys symmetric across X
+    If mx is provided, subtracts mx from all x coordinates.
+    """
+    if mx:
+      xys = type(xys)((p[0] - mx, p[1]) for p in xys)
+    return xys and xys + type(xys)((p[0], -p[1]) for p in reversed(xys) if p[1])
 
   @sexp.uses("bidirectional", "input", "output", "passive", "tri_state")
   def fillsvg(self, svg, diffs, draw, context):
@@ -320,7 +345,7 @@ class Label(HasUUID, Drawable):
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
       # FIXME: diffs
       args = {
-        "textsize": 1.27,
+        "textsize": Param(1.27),
       }
       if self.bus(diffs, context).v:
         args["color"] = "bus"
@@ -330,8 +355,6 @@ class Label(HasUUID, Drawable):
         args["color"] = "sheetlabel"
       else:
         args["color"] = f"{self.type[:4]}label"
-      if "color" in self and any(self["color"][0].data):
-        args["color"] = self["color"][0].data
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
@@ -339,67 +362,70 @@ class Label(HasUUID, Drawable):
       dispnet = self.net(diffs, context, display=True)
       outline = None
       if self.type != "label":
-        th = float(args["textsize"]) * svg.FONT_HEIGHT
+        th = args["textsize"].map(lambda s: float(s) * svg.Svg.FONT_HEIGHT)
         # Reference: sch_label.cpp: *::CreateGraphicShape
         if self.type == "global_label":
-          w = float(svg.calcwidth(dispnet, args["textsize"]))
-          h = float(th * 1.5)  # from sch_label.cpp
-          if shape == "input":
-            outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
-          elif shape == "output":
-            outline = [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
-          elif shape in ("bidirectional", "tri_state"):
-            outline = [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
-          elif shape == "passive":
-            outline = [(0, h / 2), (w + h / 2, h / 2)]
+          outline = shape.map(
+            lambda s, w, h: Label._makeoutline(
+              [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
+              if shape == "input"
+              else [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
+              if shape == "output"
+              else [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
+              if shape in ("bidirectional", "tri_state")
+              else [(0, h / 2), (w + h / 2, h / 2)]
+              # if shape == "passive"
+            ),
+            dispnet.map(svg.calcwidth, args["textsize"]),
+            th.map(op.mul, 1.5),  # from sch_label.cpp,
+          )
         elif self.type in ("hierarchical_label", "pin"):
-          h = float(args["textsize"])
-          if shape == "input":
-            outline = [(0, 0), (h / 2, h / 2), (h, h / 2)]
-          elif shape == "output":
-            outline = [(0, h / 2), (h / 2, h / 2), (h, 0)]
-          elif shape in ("bidirectional", "tri_state"):
-            outline = [(0, 0), (h / 2, h / 2), (h, 0)]
-          elif shape == "passive":
-            outline = [(0, h / 2), (h, h / 2)]
-          if self.type == "pin":
-            for i, p in enumerate(outline):
-              outline[i] = (p[0] - h, p[1])
-      # Outlines are symmetric across X
-      if outline:
-        for p in reversed(outline):
-          if p[1]:
-            outline.append((p[0], -p[1]))
-        # close the path
-        if outline[-1] != outline[0]:
-          outline.append(outline[0])
+          outline = shape.map(
+            lambda s, h, mx: Label._makeoutline(
+              [(0, 0), (h / 2, h / 2), (h, h / 2)]
+              if shape == "input"
+              else [(0, h / 2), (h / 2, h / 2), (h, 0)]
+              if shape == "output"
+              else [(0, 0), (h / 2, h / 2), (h, 0)]
+              if shape in ("bidirectional", "tri_state")
+              else [(0, h / 2), (h, h / 2)],
+              # if shape == "passive"
+              mx,
+            ),
+            args["textsize"],
+            args["textsize"] if self.type == "pin" else 0,
+          )
       toff = self.get_text_offset(diffs, context, is_field=False)
       svg.gstart(rotate=rot)
       if outline:
-        ocolor = args["color"]
-        if isinstance(ocolor, str):
-          ocolor = ocolor.replace("sheet", "hier")
+        ocolor = Param(
+          lambda c: c.replace("sheet", "hier") if isinstance(c, str) else c,
+          args["color"],
+        )
         svg.polyline(
           outline,
           color=ocolor,
-          thick=args["textsize"] / 8,
+          thick=args["textsize"].map(op.truediv, 8),
+          close=True,
         )
       args["rotate"] = Param(lambda r: -180 * (r >= 180), rot)
       text_args = args.copy()
-      text_args["textcolor"] = text_args.pop("color", None)
+      text_args["textcolor"] = text_args.pop("color")
       svg.text(dispnet, prop=svg.PROP_LABEL, pos=toff, **text_args)
       svg.gend()
     if (
       draw & Drawable.DRAW_FG_PG
       and Netlister.n(context).get_node_count(
-        context, pos, is_bus=bool(self.bus(diffs, context))
+        context, pos, is_bus=bool(self.bus(diffs, context).v)
       )
       == 1
     ):
-      uc_color = args["color"]
-      if isinstance(uc_color, str):
-        uc_color = uc_color.replace("sheet", "hier")
-      draw_uc_at(svg, (0, 0), color=uc_color)  # FIXME: not the correct color?
+      # FIXME: not the correct color?
+      uc_color = Param(
+        lambda c: c.replace("sheet", "hier") if isinstance(c, str) else c,
+        args["color"],
+      )
+      draw_uc_at(svg, (0, 0), color=uc_color)
     super().fillsvg(svg, diffs, draw, context)
     svg.gend()  # tag, pos
 
@@ -434,6 +460,7 @@ class BusEntry(Drawable):
       "tag": svg.getuid(self),
     }
     self.fillsvgargs(args, diffs, context)
+    args.pop("size")
     svg.line(**args)
 
 
@@ -453,15 +480,12 @@ class NetclassFlag(HasUUID, Drawable):
   @sexp.uses("shape")
   def shape(self, diffs=None):
     """ "dot" "rectangle" "round" "diamond" """
-    if "shape" in self:
-      return self["shape"][0][0]
-    return "round"
+    return self.getparam("shape", diffs, default="round")
 
   @sexp.uses("at")
   def pts(self, diffs=None):
     return Param.array(self["at"][0].pos(diffs))
 
-  @sexp.uses("length")
   def fillsvg(self, svg, diffs, draw, context):
     pos = self["at"][0].pos(diffs)
     svg.gstart(pos=pos)  # tag=svg.getuid(self))
@@ -472,52 +496,49 @@ class NetclassFlag(HasUUID, Drawable):
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
-      size = sexp.Decimal(0.915)
-      length = self["length"][0][0]
+      size = sexp.Decimal("0.915")
+      length = self.getparam("length", diffs, default=0)
       shape = self.shape(diffs)
       ocolor = args["textcolor"]
       svg.gstart(rotate=rot)
-      if shape == "dot":
-        svg.polyline(xys=((0, 0), (0, -length + size / 2)), color=ocolor)
-        svg.circle(
-          (0, -length),
-          radius=size / 2,
-          color="none",
-          fill=ocolor,
-        )
-      elif shape == "round":
-        svg.polyline(xys=((0, 0), (0, -length + size / 2)), color=ocolor)
-        svg.circle(
-          (0, -length),
-          radius=size / 2,
-          color=ocolor,
-          fill="none",
-        )
-      elif shape == "rectangle":
-        svg.polyline(
-          xys=(
+      xys = shape.map(
+        lambda sh, h, s: (
+          (
             (0, 0),
-            (0, -length + size / 2),
-            (size, -length + size / 2),
-            (size, -length - size / 2),
-            (-size, -length - size / 2),
-            (-size, -length + size / 2),
-            (0, -length + size / 2),
-          ),
-          color=ocolor,
-        )
-      elif shape == "diamond":
-        svg.polyline(
-          xys=(
+            (0, s / 2 - h),
+            (s, s / 2 - h),
+            (s, -s / 2 - h),
+            (-s, -s / 2 - h),
+            (-s, s / 2 - h),
+            (0, s / 2 - h),
+          )
+          if shape == "rectangle"
+          else (
             (0, 0),
-            (0, -length + size / 2),
-            (size, -length),
-            (0, -length - size / 2),
-            (-size, -length),
-            (0, -length + size / 2),
-          ),
-          color=ocolor,
-        )
+            (0, s / 2 - h),
+            (s, -h),
+            (0, -s / 2 - h),
+            (-s, -h),
+            (0, s / 2 - h),
+          )
+          if shape == "diamond"
+          else ((0, 0), (0, s / 2 - h))
+          # if shape in ("dot", "round")
+        ),
+        length,
+        size,
+      )
+      circle = {
+        "pos": length.map(lambda h: (0, -h)),
+        "radius": size.map(op.truediv, 2),
+        "color": shape.map(lambda s, c: c if s == "round" else None),
+        "fill": shape.map(lambda s, c: c if s == "dot" else None),
+      }
+      svg.polyline(xys=xys, color=ocolor)
+      if not circle["color"].is_empty or not circle["fill"].is_empty:
+        circle["color"] = Param(circle["color"], default="none")
+        circle["fill"] = Param(circle["fill"], default="none")
+        svg.circle(**circle)
       svg.gend()
     if (
       draw & Drawable.DRAW_FG_PG
@@ -884,8 +905,13 @@ kicad_sym.PinInst = PinInst
 class PinSheet(Label):
   """A pin on a sheet instance"""
 
+  LITERAL_MAP = {"name": 1, "shape": 2}
+
   def fillnetlist(self, netlister, diffs, context):
     self.netbus = netlister.add_sheetpin(context, self)
+
+  def shape(self, diffs=None):
+    return self.param("shape", diffs)
 
 
 kicad_sym.PinSheet = PinSheet
@@ -1141,6 +1167,20 @@ def draw_dnp(svg, bounds):
   )
   pts = (adj[:2], adj[2:], (adj[0], adj[3]), (adj[2], adj[1]))
   svg.lines(pts, color="dnp_marker", thick="dnp")
+
+
+def draw_uc_at(svg, pos, color):
+  sz = 0.6  # FIXME: number?
+  pos = Param(
+    lambda p, sz: (float(p[0]) - sz / 2, float(p[1]) - sz / 2), pos, sz
+  )
+  svg.rect(
+    pos=pos,
+    width=sz,
+    height=sz,
+    color=color,
+    thick="ui",
+  )
 
 
 def main(argv):
