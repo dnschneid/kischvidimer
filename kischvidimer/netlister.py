@@ -350,7 +350,7 @@ class InstCoord(namedtuple("InstCoord", ["instance", "x", "y", "is_bus"])):
     if isinstance(item, Param):
       item = item.v
     x, y = item if isinstance(item, tuple) else item.pts().v[0]
-    x, y = int(x * 10000), int(y * 10000)
+    x, y = round(x * 10000), round(y * 10000)
     return super().__new__(cls, instance=inst, x=x, y=y, is_bus=is_bus)
 
 
