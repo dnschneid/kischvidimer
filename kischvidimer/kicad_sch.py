@@ -685,7 +685,11 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   def lib_id(self, diffs, context):
     # lib_name specifies page-local overrides of the original library symbol,
     # usually due to out-of-date symbol instances.
-    p = self.getparam("lib_name", diffs, default=self.getparam("lib_id", diffs))
+    p = self.getparam(
+      "lib_name", diffs, default=self.getparam("lib_id", diffs, default="")
+    )
+    # Ensure none of the diffs are ever empty, since that would look glitchy
+    p = Param(p, default=p.reduce(max))
     return p
 
   def get_alternates(self, diffs, context):
@@ -765,7 +769,13 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       svg.gstart(rotate=rot, mirror=mirror)
       svg.gstart(filt=dnp)
       bounds = svg.instantiate(
-        subdraw, lib, lib_id, unit=unit, variant=variant, context=(self,)
+        subdraw,
+        lib,
+        lib_id,
+        unit=unit,
+        variant=variant,
+        diffs=diffs,
+        context=(self,),
       )
       # Draw unconnected circles
       if subdraw & Drawable.DRAW_PINS:  # FIXME: should this be DRAW_FG_PG?
@@ -777,7 +787,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
         # FIXME: diffs. hide unconnected circles on diffs
         # NOTE: context passed to sym (intentionally) does not include self, so
         #       returned pts will be untransformed
-        sym = lib.symbol(lib_id.v)
+        sym = lib.symbol(lib_id.v, diffs)
         for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
           abs_pos = transformed_pin(pos, rot, mirror, sym_pos)
           if n.get_net(context, abs_pos).is_floating_sympin():
@@ -805,7 +815,9 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
         # TODO: n x m diffs :(
         if len(lib_id) > 1:
           return lib_id.map(
-            lambda lib_id, lib: lib.symbol(lib_id).show_unit(None, context).v,
+            lambda lib_id, lib: lib.symbol(lib_id, diffs)
+            .show_unit(None, context)
+            .v,
             lib,
           )
         return lib.symbol(lib_id).v.show_unit(diffs, context)

@@ -548,7 +548,7 @@ class SymbolDef(sexp.SExp):
     if "extends" in self:
       for c in reversed(context):
         if isinstance(c, SymLib):
-          return Param(c.symbol(self["extends"][0][0]))
+          return Param(c.symbol(self["extends"][0][0], diffs))
       raise Exception("extended symbol with no library in context")
     return Param(self)
 
@@ -616,7 +616,9 @@ class SymLib(sexp.SExp):
     if isinstance(name, Param):
       return name.map(lambda n: self.symbol(n, diffs))
     added, _removed = self.added_and_removed(diffs, SymbolDef)
-    for s in (self["symbol"] if "symbol" in self else []) + added:
+    for s in (self["symbol"] if "symbol" in self else []) + [
+      a.v for a in added
+    ]:
       if s.libname == name:
         return s
     return None
