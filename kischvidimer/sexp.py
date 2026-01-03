@@ -56,8 +56,9 @@ class BadStringError(Exception):
   pass
 
 
-class Atom(str):
-  pass
+class Atom(str, Comparable):
+  def apply(self, key, data):
+    raise NotImplementedError()
 
 
 class InvalidAtomError(Exception):
@@ -214,7 +215,7 @@ class SExp(Comparable):
     return Atom(atm) in self._subs or Atom(atm) in self._atoms
 
   def __eq__(self, other):
-    return self._sexp == other._sexp
+    return isinstance(other, SExp) and self._sexp == other._sexp
 
   def __str__(self):
     return self.type or repr(self)
@@ -270,7 +271,7 @@ class SExp(Comparable):
 
   def distance(self, other, fast, diffparam):
     """Enforces uniqueness by type; should be overridden for other purposes."""
-    if self.type != other.type:
+    if not isinstance(other, SExp) or self.type != other.type:
       return None
     if self.UNIQUE is True:
       return 0
@@ -289,7 +290,7 @@ class SExp(Comparable):
     Returns an empty list if the two are the same.
     Returns None if the two are disparate (shouldn't be compared).
     """
-    if self.type != other.type:
+    if not isinstance(other, SExp) or self.type != other.type:
       return None
     diffs = []
 
@@ -306,11 +307,10 @@ class SExp(Comparable):
       if isinstance(item, SExp):
         that_sexp_i = i
         break
-    assert all(isinstance(item, SExp) for item in this[this_sexp_i:]), this
-    assert all(isinstance(item, SExp) for item in that[that_sexp_i:]), that
 
     # Handle modified/added/removed literals/atoms, grouped by the class
-    max_end = -2
+    this_max_end = -1 + self._has_type
+    that_max_end = -1 + other._has_type
     for key, start_end in self.LITERAL_MAP.items():
       is_tuple = isinstance(start_end, tuple)
       if not is_tuple:
@@ -320,7 +320,8 @@ class SExp(Comparable):
       start += not start and self._has_type
       this_end = min(end, this_sexp_i - 1) if end >= 0 else this_sexp_i + end
       that_end = min(end, that_sexp_i - 1) if end >= 0 else that_sexp_i + end
-      max_end = max(max_end, this_end, that_end)
+      this_max_end = max(this_max_end, this_end)
+      that_max_end = max(that_max_end, that_end)
       this_chunk = this[start : this_end + 1]
       that_chunk = that[start : that_end + 1]
       if this_chunk != that_chunk:
@@ -328,17 +329,14 @@ class SExp(Comparable):
           this_chunk = this_chunk[0] if this_chunk else None
           that_chunk = that_chunk[0] if that_chunk else None
         diffs.append(Diff((self, SExp), key, old=this_chunk, new=that_chunk))
-    # Sanity-check that we didn't miss anything (not checking for gaps)
-    assert max_end >= ((max(this_sexp_i, that_sexp_i) - 1) or -2), (
-      f"unexpected data found in {self.type}"
-    )
+    # All remaining data will be treated as errant atoms
 
     # Handle sub-sexps, which can be reordered
     diffs += difflists(
       (self, SExp),
       key=None,
-      base=this[this_sexp_i:],
-      other=that[that_sexp_i:],
+      base=this[this_max_end + 1 :],
+      other=that[that_max_end + 1 :],
       data=None,
     )
 
@@ -440,15 +438,27 @@ class SExp(Comparable):
   def has_yes(self, atom, diffs=None, default=None):
     item = self.get(atom)
     if is_atom(item, recurse=False):
-      # FIXME: support diffs for the legacy case of an atom mixed in the sexp
-      return Param(True)
-    if item is None:
+      # Raw atom
+      options = Diff.Group(True)
+    elif item is None:
       options = Diff.Group(False)
     else:
       options = Diff.Group(*(dp if dp.c else dp.v for dp in item.yes(diffs)))
     added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
-    options += (FakeDiff(c, new=item.yes().v) for item, c in added)
-    options += (FakeDiff(c, old=options[0]) for c in removed.values())
+    options += (
+      FakeDiff(c, old=options[0], new=item.yes().v) for item, c in added
+    )
+    options += (
+      FakeDiff(c, old=options[0], new=False) for c in removed.values()
+    )
+    # Check for raw atoms too
+    added, removed = self.added_and_removed(diffs, Atom)
+    options += (
+      FakeDiff(c, old=options[0], new=True) for item, c in added if item == atom
+    )
+    rm_c = removed.get(id(item))
+    if rm_c:
+      options.append(FakeDiff(rm_c, new=False))
     return Param(options, default=default)
 
   def enum(self, *atoms, start_i=0):
