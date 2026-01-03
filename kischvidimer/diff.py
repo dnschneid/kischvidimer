@@ -100,7 +100,7 @@ class Param:
       func = default
       default = None
     if isinstance(func, Param) and (
-      func._default is None or default is None or default == func._default
+      default is None or default == func._default
     ):
       # Shallow copy, since Param operations are idempotent
       assert not args
@@ -108,14 +108,19 @@ class Param:
       self._func = func._func
       self._lencache = func._lencache
       self._evalcache = func._evalcache
-      self._default = func._default if default is None else default
+      self._default = func._default
       return
     if not args:
       assert not isinstance(func, Diff)
       self._args = [func]
       self._func = None
     else:
-      if len(args) == 1 and isinstance(args[0], Param) and not args[0]._func:
+      if (
+        len(args) == 1
+        and isinstance(args[0], Param)
+        and not args[0]._func
+        and args[0]._default is None
+      ):
         # Copy-through
         self._args = args[0]._args
       else:
@@ -128,12 +133,15 @@ class Param:
     for arg in self._args:
       if isinstance(arg, (Param, Diff.Group)):
         self._lencache = max(self._lencache, len(arg))
+    if isinstance(default, (Param, Diff.Group)):
+      self._lencache = max(self._lencache, len(default))
     self._evalcache = {}
 
   def __str__(self):
     return (
       f"<Param({self._func}, "
-      f"*({', '.join(map(str, self._args))})[:{len(self)}])>"
+      f"*({', '.join(map(str, self._args))})[:{len(self)}]), "
+      f"d={self._default}>"
     )
 
   @staticmethod
@@ -150,6 +158,24 @@ class Param:
     Long-term, this should be avoided since it conflates many diffs into one.
     """
     return Param(lambda *a: a, *(array or items))
+
+  @staticmethod
+  def adds(diffparams, default=None):
+    """Constructs a Param that represents multiple conflicting adds."""
+    return Param(
+      Diff.Group(None, *(FakeDiff(dp.c, new=dp.v) for dp in diffparams)),
+      default=default,
+    )
+
+  @staticmethod
+  def only_for_base(param, base_value=True, diff_value=False):
+    """Constructs a Param that is base_value for the base version of param, and
+    diff_value for any of param's diffs.
+    """
+    if len(param) == 1:
+      return Param(base_value)
+    cs = {c for diff in param for c in diff.c}
+    return FakeDiff(cs, old=base_value, new=diff_value).param()
 
   def __getitem__(self, i):
     """Indexes into the diffs and returns a DiffParam of (value, svgclassset).
@@ -549,9 +575,10 @@ class TargetDict(dict):
   def get(self, target, key, default=None):
     return super().get((id(target), key), default)
 
-  def param(self, target, key, base, default=None):
+  def param(self, target, key, base, default=None, with_remove_c=None):
     diffs = None if self is None else self.get(target, key)
-    return Param(Diff.Group(base, *(diffs or ())), default=default)
+    remove_d = (FakeDiff(with_remove_c, old=base),) if with_remove_c else ()
+    return Param(Diff.Group(base, *(diffs or ())), *remove_d, default=default)
 
 
 def matchlists(base, other, data=None):

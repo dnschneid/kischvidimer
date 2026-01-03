@@ -22,7 +22,7 @@ import subprocess
 from xml.sax.saxutils import escape
 
 from . import bmp, jpeg, png, themes
-from .diff import DiffParam, Param
+from .diff import Diff, DiffParam, FakeDiff, Param
 from .kicad_common import Drawable
 
 
@@ -1026,11 +1026,12 @@ class Svg:
     lib_id,
     unit=None,
     variant=None,
+    diffs=None,
     context=None,
   ):
     """Instantiates a symbol. lib must contain a definition of lib_id.
-    Returns True if the symbol was successfully instantiated; otherwise you
-    should draw something yourself.
+    Returns a Param of the bounds if the symbol was successfully instantiated;
+    otherwise you should draw something yourself.
     """
     # FIXME: this is a terrible hack for alternates, and doesn't support diffs
     alternates = ""
@@ -1063,7 +1064,7 @@ class Svg:
         ":".join(
           (
             "symbol",
-            f"{lib.sym_hash(lib_id):x}",
+            f"{lib.sym_hash(lib_id, diffs):x}",
             str(unit),
             str(variant),
             alternates,
@@ -1093,7 +1094,7 @@ class Svg:
       # FIXME: diffs
       sym.fillsvg(
         symsvg,
-        None,
+        diffs,
         draw,
         context or (),
         unit=int(params[2]),
@@ -1153,11 +1154,18 @@ class Svg:
           (self.metadata_context,) + t[1:] for t in symsvg.pin_text
         )
         self.glyphs.update(symsvg.glyphs)
-        bounds = symsvg._bounds
+        symbounds = symsvg._bounds
+        if bounds:
+          bounds.append(FakeDiff(name[i].c, old=bounds[0], new=symbounds))
+        else:
+          bounds = [symbounds]
         self._update_bounds(
-          (bounds[0], self.y(bounds[1])), (bounds[2], self.y(bounds[3]))
+          (symbounds[0], self.y(symbounds[1])),
+          (symbounds[2], self.y(symbounds[3])),
         )
-    return bounds
+    if not bounds:
+      return None
+    return Param(Diff.Group(*bounds))
 
   def _image(self, data):
     imagetype, imagedata, w, h = self.imagedata(data)

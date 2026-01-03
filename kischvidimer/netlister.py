@@ -564,7 +564,7 @@ class Netlister:
         pins = symbol_def.get_pins(None, context, variant=variant).v
         break
     name = pin.name(None, context).v
-    number = pin.num(None, context).v[0]
+    number = pin.num(None, context).v
     pintype = pin.get_type_style(None, context)[0].v
     is_unique = len(pins[name]) == 1
     # FIXME: alternates can cause electrical type of hidden pin to be power

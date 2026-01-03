@@ -31,7 +31,11 @@ class HasModifiers(sexp.SExp):
       oldvalue = args.get(key)
       if newvalue is not oldvalue:
         args[key] = Param(
-          lambda a, o, n: n if a else o, apply, oldvalue, newvalue
+          lambda a, o, n: n if a else o,
+          apply,
+          oldvalue,
+          newvalue,
+          default=args.get(key),
         )
 
   def fillsvgargs(self, args, diffs, context=None):
@@ -115,6 +119,7 @@ Margins = Modifier.basic("margins", istuple=True)
 Face = Modifier.basic("face", None)  # TODO: support font faces
 Thickness = Modifier.basic("thickness")  # TODO: properly support thick fonts
 Href = Modifier.basic("href", "url")
+Scale = Modifier.basic("scale")  # image scale factor
 
 
 @sexp.handler("diameter")
@@ -125,7 +130,10 @@ class Diameter(Modifier):
 
   def fillsvgargs(self, args, diffs, context):
     p = self.param(diffs)
-    args["radius"] = p.map(lambda d: d / 2)
+    # A diameter of 0 means default
+    args["radius"] = Param(
+      lambda d: sexp.Decimal(d) / 2 or None, p, default=args.get("radius")
+    )
 
 
 @sexp.handler("size")
@@ -141,9 +149,11 @@ class Size(Modifier):
   def fillsvgargs(self, args, diffs, context):
     p = self.param(diffs)
     if self.is_textsize:
-      args["textsize"] = p.map(lambda d: d[0])
+      args["textsize"] = Param(
+        lambda d: d[0] or None, p, default=args.get("textsize")
+      )
     else:
-      args["size"] = p
+      args["size"] = Param(p, default=args.get("size"))
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
@@ -227,6 +237,8 @@ class Fill(HasModifiers):
 
 class HasYes(sexp.SExp):
   """Marker class for easy identification."""
+
+  LITERAL_MAP = {"yes": 1}
 
   @classmethod
   def handler(cls, name):

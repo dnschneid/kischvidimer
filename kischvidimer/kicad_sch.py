@@ -18,7 +18,7 @@ import re
 import sys
 
 from . import kicad_sym, kicad_wks, sexp, svg
-from .diff import FakeDiff, Param
+from .diff import Param
 from .kicad_common import (
   Drawable,
   Field,
@@ -28,9 +28,10 @@ from .kicad_common import (
   Polyline,
   Variables,
   rotated,
-  transformed,
+  transformed_pin,
   unit_to_alpha,
 )
+from .kicad_modifiers import HasYes
 from .netlister import Netlister
 
 # FIXME: check eeschema/schematic.keywords for completeness
@@ -188,29 +189,11 @@ class Wire(HasUUID, Polyline):
     super().fillsvg(svg, diffs, draw, context, tag=svg.getuid(self))
     if draw & Drawable.DRAW_FG_PG and self.type == "wire":
       pts = self.pts(diffs)
-      if len(pts) > 1:
-        # TODO: Netlists are currently only valid for the base, so hide the NCs
-        cs = {c for diff in pts for c in diff.c}
-        svg.gstart(hidden=FakeDiff(cs, old=False, new=True).param())
+      # FIXME: not the correct color?
+      color = Param.only_for_base(pts, "wire", "none")
       for pos in pts.v:
         if Netlister.n(context).get_node_count(context, pos) == 1:
-          draw_uc_at(svg, pos, color="wire")  # FIXME: not the correct color?
-      if len(pts) > 1:
-        svg.gend()
-
-
-@sexp.handler("shape")
-class Shape(sexp.SExp):
-  """specifies the shape of a label/pin"""
-
-  LITERAL_MAP = {"shape": 1}
-
-
-@sexp.handler("length")
-class Length(sexp.SExp):
-  """the length of a pin"""
-
-  LITERAL_MAP = {"length": 1}
+          draw_uc_at(svg, pos, color=color)
 
 
 # FIXME: (hierarchical_label "x" (shape input) (at) (effects) (uuid) (property))
@@ -305,17 +288,18 @@ class Label(HasUUID, Drawable):
       "textsize": Param(1.27),
     }
     self.fillsvgargs(args, diffs, context)
-    th = args["textsize"].map(lambda s: float(s) * svg.Svg.FONT_HEIGHT)
-    offset = th.map(op.mul, 0.375)  # DEFAULT_LABEL_SIZE_RATIO
+    th = args["textsize"].map(lambda s: s * sexp.Decimal(svg.Svg.FONT_HEIGHT))
+    offset = th.map(op.mul, sexp.Decimal("0.375"))  # DEFAULT_LABEL_SIZE_RATIO
     yoffset = 0
     # Reference: sch_label.cpp: *::CreateGraphicShape
     if self.type == "global_label":
-      yoffset = th.map(op.mul, -0.0715)  # from sch_label.cpp
-      h = th.map(op.mul, 1.5)  # from sch_label.cpp
+      yoffset = th.map(op.mul, sexp.Decimal("-0.0715"))  # from sch_label.cpp
+      h = th.map(op.mul, sexp.Decimal("1.5"))  # from sch_label.cpp
       shape = self.shape(diffs)
       offset = offset.map(
-        lambda o, h, s: o
-        + h / 2 * (shape == "input" or shape in ("bidirectional", "tri_state")),
+        lambda o, h, s: (
+          o + h / 2 * (s == "input" or s in ("bidirectional", "tri_state"))
+        ),
         h,
         shape,
       )
@@ -362,19 +346,19 @@ class Label(HasUUID, Drawable):
       dispnet = self.net(diffs, context, display=True)
       outline = None
       if self.type != "label":
-        th = args["textsize"].map(lambda s: float(s) * svg.Svg.FONT_HEIGHT)
+        th = args["textsize"].map(lambda s: float(s) * svg.FONT_HEIGHT)
         # Reference: sch_label.cpp: *::CreateGraphicShape
         if self.type == "global_label":
           outline = shape.map(
             lambda s, w, h: Label._makeoutline(
               [(0, 0), (h / 2, h / 2), (h + w, h / 2)]
-              if shape == "input"
+              if s == "input"
               else [(0, h / 2), (h / 2 + w, h / 2), (h + w, 0)]
-              if shape == "output"
+              if s == "output"
               else [(0, 0), (h / 2, h / 2), (h + w, h / 2), (h * 1.5 + w, 0)]
-              if shape in ("bidirectional", "tri_state")
+              if s in ("bidirectional", "tri_state")
               else [(0, h / 2), (w + h / 2, h / 2)]
-              # if shape == "passive"
+              # if s == "passive"
             ),
             dispnet.map(svg.calcwidth, args["textsize"]),
             th.map(op.mul, 1.5),  # from sch_label.cpp,
@@ -383,13 +367,13 @@ class Label(HasUUID, Drawable):
           outline = shape.map(
             lambda s, h, mx: Label._makeoutline(
               [(0, 0), (h / 2, h / 2), (h, h / 2)]
-              if shape == "input"
+              if s == "input"
               else [(0, h / 2), (h / 2, h / 2), (h, 0)]
-              if shape == "output"
+              if s == "output"
               else [(0, 0), (h / 2, h / 2), (h, 0)]
-              if shape in ("bidirectional", "tri_state")
+              if s in ("bidirectional", "tri_state")
               else [(0, h / 2), (h, h / 2)],
-              # if shape == "passive"
+              # if s == "passive"
               mx,
             ),
             args["textsize"],
@@ -441,7 +425,7 @@ class BusEntry(Drawable):
   @sexp.uses("at", "size")
   def pts(self, diffs=None):
     pos = self["at"][0].pos(diffs)
-    size = self["size"][0].param(diffs)
+    size = self.getparam("size", diffs)
     return Param(
       lambda p, s: (p, (p[0] + s[0], p[1] + s[1])),
       pos,
@@ -496,7 +480,7 @@ class NetclassFlag(HasUUID, Drawable):
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
-      size = sexp.Decimal("0.915")
+      size = Param(sexp.Decimal("0.915"))
       length = self.getparam("length", diffs, default=0)
       shape = self.shape(diffs)
       ocolor = args["textcolor"]
@@ -512,7 +496,7 @@ class NetclassFlag(HasUUID, Drawable):
             (-s, s / 2 - h),
             (0, s / 2 - h),
           )
-          if shape == "rectangle"
+          if sh == "rectangle"
           else (
             (0, 0),
             (0, s / 2 - h),
@@ -521,7 +505,7 @@ class NetclassFlag(HasUUID, Drawable):
             (-s, -h),
             (0, s / 2 - h),
           )
-          if shape == "diamond"
+          if sh == "diamond"
           else ((0, 0), (0, s / 2 - h))
           # if shape in ("dot", "round")
         ),
@@ -531,8 +515,8 @@ class NetclassFlag(HasUUID, Drawable):
       circle = {
         "pos": length.map(lambda h: (0, -h)),
         "radius": size.map(op.truediv, 2),
-        "color": shape.map(lambda s, c: c if s == "round" else "none"),
-        "fill": shape.map(lambda s, c: c if s == "dot" else "none"),
+        "color": shape.map(lambda s, c: c if s == "round" else "none", ocolor),
+        "fill": shape.map(lambda s, c: c if s == "dot" else "none", ocolor),
       }
       svg.polyline(xys=xys, color=ocolor)
       svg.circle(**circle)
@@ -555,8 +539,8 @@ class Table(Drawable):
     pos = self["cells"][0].pos(diffs)
     svg.gstart(pos=pos)
     if draw & Drawable.DRAW_FG:
-      widths = self["column_widths"][0].param()
-      heights = self["row_heights"][0].param()
+      widths = self.getparam("column_widths", diffs)
+      heights = self.getparam("row_heights", diffs)
       width = widths.map(sum)
       height = heights.map(sum)
       border_style = {"color": "notes"}
@@ -580,6 +564,7 @@ class Table(Drawable):
         p2=heights.map(lambda hs, w: (w, hs[0]), width),
         **border_style,
       )
+      svg.gend()
 
       # render inner horizontal lines (special-case header)
       has_row_sep = self["separators"][0].has_yes("rows")
@@ -592,7 +577,6 @@ class Table(Drawable):
             for y in (sum(hs[:i]),)
             for pt in ((0, y), (w, y))
           ],
-          heights,
           width,
           has_header,
         ),
@@ -609,9 +593,8 @@ class Table(Drawable):
             pt
             for i in range(1, len(ws))
             for x in (sum(ws[:i]),)
-            for pt in ((x, 0), (x, height))
+            for pt in ((x, 0), (x, h))
           ],
-          widths,
           height,
         ),
         **sep_style,
@@ -652,14 +635,21 @@ class Cells(Drawable):
     return count // len(xs), len(xs) - 1
 
 
-@sexp.handler("reference")
-class Reference(sexp.SExp):
-  """Instance data: reference"""
+Reference = sexp.SExp.basic("reference")  # Instance data reference
+Unit = sexp.SExp.basic("unit")  # SymbolInst/Instance data unit
+BodyStyle = sexp.SExp.basic("body_style", "convert")  # SymbolInst: sym variant
+LibId = sexp.SExp.basic("lib_id")  # ID of a symbol back to the original library
+LibName = sexp.SExp.basic("lib_name")  # ID of a local symbol override
+Mirror = sexp.SExp.basic("mirror")  # SymbolInst: mirrors
+Shape = sexp.SExp.basic("shape")  # specifies the shape of a label/pin
+ColumnWidths = sexp.SExp.basic("column_widths", istuple=True)  # table params
+RowHeights = sexp.SExp.basic("row_heights", istuple=True)  # table params
 
-
-@sexp.handler("unit")
-class Unit(sexp.SExp):
-  """Instance data: unit. Also exists inside SymbolInsts"""
+Cols = HasYes.handler("cols")  # table border params
+Dnp = HasYes.handler("dnp")  # SymbolInst/Sheet
+External = HasYes.handler("external")  # table border params
+Header = HasYes.handler("header")  # table border params
+Rows = HasYes.handler("rows")  # table border params
 
 
 # FIXME: (symbol (lib_id "x") (at) (unit 1) (property) (pin)
@@ -688,14 +678,30 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     """
     super().fillvars(variables, diffs, context)
 
-  @sexp.uses("lib_name", "lib_id")
   def lib_id(self, diffs, context):
     # lib_name specifies page-local overrides of the original library symbol,
     # usually due to out-of-date symbol instances.
-    return self.get("lib_name", default=self.get("lib_id"))[0]
+    p = self.getparam("lib_name", diffs, default=self.getparam("lib_id", diffs))
+    return p
 
   def get_alternates(self, diffs, context):
-    # FIXME: diffs
+    # TODO: redo alternates system.  SymbolInst.get_alternates is only used by
+    # svg.instantiate (to generate the instance hash) and by PinDef.alternate
+    # (lookup by pin number). netlister uses SymbolDef.get_pins which exists
+    # only to check if a pin name is unique, considering alternates. All of this
+    # is slow/requires caching and doesn't support diffs. Plus the unique check
+    # isn't even sufficient if alternates span pages.
+    # Instead, only have two entries in the symbol library: one with all pins at
+    # their default configuration and another with none of the alternate-enabled
+    # pins rendered. When rendering a unit with any alternates (across any
+    # diff), use the latter type and manually render all of the alternate pins.
+    # This may require updates to the javascript code for mouseovers, although
+    # that could be helpful to show the original pin name for alternates.
+    # Netlister should track fallback names and select the fallback if it turns
+    # out there are collisions. Then delete SymbolInst.get_alternates and
+    # SymboldDef.get_pins and only feature a lookup_alternate func for one pin
+    # at a time.
+    # Until then, just don't support diffs.
     if not diffs and hasattr(self, "_get_alternates_cache"):
       return self._get_alternates_cache
     if "pin" not in self:
@@ -705,7 +711,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     for pin in self["pin"]:
       alternate = pin.get_alternate(diffs, context)
       if alternate is not None:
-        alternates[pin.number] = alternate
+        alternates[pin.number] = alternate.v
     alternates_param = Param(alternates)
     if not diffs:
       self._get_alternates_cache = alternates_param
@@ -714,7 +720,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
     lib = context[-1]["lib_symbols"][0]
-    lib_id = self.lib_id(diffs, context)
+    lib_id = self.lib_id(diffs, context).v
     sym = lib.symbol(lib_id)
     unit = self.unit(diffs, context)
     variant = self.variant(diffs, context)
@@ -728,81 +734,86 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
 
   def transform_pin(self, pos, _diffs=None):
     # FIXME: diffs
+    # Only used by PinDef.pts, which in turn is only used by the netlister.
     # Matches what's done in Svg with gstart.
-    # y and rot are negative since symbols have inverted y
-    if not isinstance(pos, tuple):
-      pos = pos.v
-    rot, mirror = self.rot_mirror().v
-    trans = self["at"][0].pos().v
-    return transformed((pos[0], -pos[1]), -rot, mirror, trans)
+    return transformed_pin(
+      pos,
+      *self.rot_mirror().v,
+      self["at"][0].pos().v,
+    )
 
   def fillsvg(self, svg, diffs, draw, context):
     # Decide what to draw
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
-    dnp = self.dnp(diffs)
+    dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
     sym_pos = self["at"][0].pos(diffs)
     svg.gstart(pos=sym_pos, path=self.uuid(generate=True))
     if subdraw:
       # FIXME: diffs, of course
-      lib = context[-1]["lib_symbols"][0]
+      lib = context[-1].get_symbol_lib(diffs, context)
       lib_id = self.lib_id(diffs, context)
-      sym = lib.symbol(lib_id)
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
       variant = self.variant(diffs, context)
-      svg.gstart(
-        rotate=rot,
-        mirror=mirror,
-        hidden=False,
-      )
-      svg.gstart(filt="dim" * dnp)
+      svg.gstart(rotate=rot, mirror=mirror)
+      svg.gstart(filt=dnp)
       bounds = svg.instantiate(
         subdraw, lib, lib_id, unit=unit, variant=variant, context=(self,)
       )
       # Draw unconnected circles
       if subdraw & Drawable.DRAW_PINS:  # FIXME: should this be DRAW_FG_PG?
+        # TODO: Netlists are currently only valid for the base, so hide
+        # FIXME: only_for_base isn't getting a full picture of diffs...
+        # FIXME: not the correct color
+        uc_color = Param.only_for_base(sym_pos, "device", "none")
         n = Netlister.n(context)
+        # FIXME: diffs. hide unconnected circles on diffs
         # NOTE: context passed to sym (intentionally) does not include self, so
         #       returned pts will be untransformed
+        sym = lib.symbol(lib_id.v)
         for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
-          # FIXME: diffs
-          abs_pos = self.transform_pin(pos)
+          abs_pos = transformed_pin(pos, rot, mirror, sym_pos)
           if n.get_net(context, abs_pos).is_floating_sympin():
             svg.circle(
               pos=Param(lambda p: (p[0], -p[1]), pos),
               radius=sexp.Decimal(0.3175),
               fill="none",
-              color="device",  # FIXME: not the correct color
+              color=uc_color,
               thick="ui",
             )
       svg.gend()  # dim
-      if dnp and bounds and subdraw & Drawable.DRAW_FG:
-        draw_dnp(svg, bounds)
-      svg.gend()
-    if dnp:
-      svg.gstart(filt="dim")
+      if bounds and subdraw & Drawable.DRAW_FG:
+        draw_dnp(dnp, svg, bounds)
+      svg.gend()  # rot, mirror
+    svg.gstart(filt=dnp)
     super().fillsvg(svg, diffs, draw, context)
-    if dnp:
-      svg.gend()  # dim
+    svg.gend()  # dim
     svg.gend()  # pos, path
 
   def show_unit(self, diffs, context):
     for c in reversed(context):
       if c.type == "kicad_sch":
-        lib = c["lib_symbols"][0]
+        lib = c.get_symbol_lib(diffs, context)
         lib_id = self.lib_id(diffs, context)
-        return lib.symbol(lib_id).show_unit(diffs, context)
-    return True
+        # TODO: n x m diffs :(
+        if len(lib_id) > 1:
+          return lib_id.map(
+            lambda lib_id, lib: lib.symbol(lib_id).show_unit(None, context).v,
+            lib,
+          )
+        return lib.symbol(lib_id).v.show_unit(diffs, context)
+
+    return Param(True)
 
   def rot(self, diffs=None):
     return self["at"][0].rot(diffs)
 
   @sexp.uses("mirror")
   def mirror(self, diffs=None):
-    return self.get("mirror", default=[None])[0]
+    return self.getparam("mirror", diffs)
 
   @sexp.uses("x", "y")
   def rot_mirror(self, diffs=None):
@@ -813,56 +824,63 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       self.mirror(diffs),
     )
 
-  @sexp.uses("dnp")
   def dnp(self, diffs=None):
-    return self.get("dnp", default=[False])[0] == "yes"
+    return self.has_yes("dnp", diffs)
 
   def refdes(self, diffs, context):
     return HasInstanceData.lookup(
       "reference",
       diffs,
       context + (self,) if context else None,
-      default=Field.getprop(self, "Reference", default="?"),
+      default=Field.getprop(self, "Reference", diffs, default="?"),
     )
 
-  @sexp.uses("unit")
   def unit(self, diffs, context, as_alpha=False):
     unit = HasInstanceData.lookup(
       "unit",
       diffs,
       context + (self,) if context else None,
-      default=self.get("unit", default=[1])[0],
+      default=self.getparam("unit", diffs, default=1),
     )
     if not as_alpha:
       return unit
     return unit.map(unit_to_alpha)
 
-  @sexp.uses("convert", "body_style")
   def variant(self, diffs, context):
     return Param(
-      self.get("body_style", default=self.get("convert", default=[1]))[0]
+      self.getparam(
+        "body_style", diffs, default=self.getparam("convert", diffs, default=1)
+      )
     )
 
-  @sexp.uses("power")
   def power_net(self, diffs, context, netprefix="/"):
     """If power symbol, return the net; if local, include netprefix"""
-    lib = context[-1]["lib_symbols"][0]
+    lib = context[-1].get_symbol_lib(diffs, context)
     lib_id = self.lib_id(diffs, context)
-    sym = lib.symbol(lib_id)
-    power_type = sym.get("power", [None])
-    power_type = power_type[0] if power_type.data else "global"
-    if not power_type:
-      return Param(None)
-    netprefix = netprefix.rstrip("/") + "/" if power_type == "local" else ""
+    sym = lib.symbol(lib_id, diffs)
+    # TODO: n x m diffs :(
+    if len(sym) > 1:
+      power_type = sym.map(lambda s: s.getparam("power", None).v)
+    else:
+      power_type = sym.v.getparam("power", None)
+    if power_type.is_empty:
+      return power_type  # effectively Param(None)
+    netprefix = power_type.map(
+      lambda t, n: n.rstrip("/") + "/" if t == "local" else "", netprefix
+    )
     # Power symbols use the Value as the net
     variables = Variables.v(context)
-    if "property" in self:
-      for prop in self["property"]:
-        if prop.name == "Value":
-          return Param(
-            netprefix + variables.expand(context + (self,), prop.value)
-          )
-    return Param(netprefix + lib_id.rpartition(":")[2])
+    value = Field.getprop(self, "Value", diffs)
+    power_net = value.map(
+      lambda v, n, lib_id: (
+        n + variables.expand(context + (self,), v)
+        if v
+        else n + lib_id.rpartition(":")[2]
+      ),
+      netprefix,
+      lib_id,
+    )
+    return power_type.map(lambda t, n: None if t is None else n, power_net)
 
   def as_comp(self, context):
     # returns (refdes, {dict of properties})
@@ -872,10 +890,10 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     #   chr(3): dnp
     props = {
       chr(1): self.uuid(generate=True),
-      chr(2): self.lib_id(None, context),
-      "Reference": self.refdes(None, context),
+      chr(2): self.lib_id(None, context).v,
+      "Reference": self.refdes(None, context).v,
     }
-    if self.dnp():
+    if self.dnp().v:
       props[chr(3)] = True
     if "property" not in self:
       return props["Reference"], props
@@ -917,7 +935,7 @@ class PinInst(HasUUID, sexp.SExp):
 
   @sexp.uses("alternate")
   def get_alternate(self, diffs, context):
-    return self.get("alternate", default=[None])[0]
+    return self.getparam("alternate", diffs)
 
 
 kicad_sym.PinInst = PinInst
@@ -932,7 +950,7 @@ class PinSheet(Label):
     self.netbus = netlister.add_sheetpin(context, self)
 
   def shape(self, diffs=None):
-    return self.param("shape", diffs)
+    return self.param(diffs, "shape")
 
 
 kicad_sym.PinSheet = PinSheet
@@ -969,8 +987,8 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
   def fillvars(self, variables, diffs, context):
     super().fillvars(variables, diffs, context)
     context = context + (self,)
-    variables.define(context, "FILENAME", os.path.basename(self.file))
-    variables.define(context, "FILEPATH", self.file)
+    variables.define(context, "FILENAME", os.path.basename(self.file(diffs).v))
+    variables.define(context, "FILEPATH", self.file(diffs).v)
     # Define SHEETPATH using the parent sheetpath and just-now-defined sheetname
     # The resolver handles the recursion by going up in the hierarchy
     variables.define(context, "SHEETPATH", "${SHEETPATH}${SHEETNAME}/")
@@ -978,12 +996,10 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs, of course
     pos = self["at"][0].pos(diffs)
-    size = self["size"][0].data
-    dnp = self.dnp(diffs)
+    dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
 
     svg.gstart(pos=pos, path=self.uuid(generate=True))
-    if dnp:
-      svg.gstart(filt="dim")
+    svg.gstart(filt=dnp)
 
     # Draw the rectangle
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_BG):
@@ -1002,32 +1018,32 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
     # Draw the rest of the owl
     super().fillsvg(svg, diffs, draw, context)
 
-    if dnp:
-      svg.gend()  # dim
-    if dnp and draw & Drawable.DRAW_FG:
+    svg.gend()  # dim
+    if draw & Drawable.DRAW_FG:
       # FIXME: in the sheet case, margins for the X include property text
       margin = sexp.Decimal("1.27")
-      draw_dnp(svg, (-margin, -margin, size[0] + margin, size[1] + margin))
+      draw_dnp(
+        dnp,
+        svg,
+        Param(
+          lambda w, h, m: (-m, -m, w + m, h + m),
+          args["width"],
+          args["height"],
+          margin,
+        ),
+      )
 
     svg.gend()  # path
 
   @sexp.uses("dnp")
   def dnp(self, diffs=None):
-    return self.get("dnp", default=[False])[0] == "yes"
+    return self.has_yes("dnp", diffs)
 
-  def paths(self, project=None):
-    """Returns a list of path elements for a project"""
-    if "instances" not in self:
-      return []
-    return list(self["instances"][0].paths(project).values())
+  def name(self, diffs):
+    return Field.getprop(self, "Sheetname", diffs)
 
-  @property
-  def name(self):
-    return Field.getprop(self, "Sheetname")
-
-  @property
-  def file(self):
-    return Field.getprop(self, "Sheetfile")
+  def file(self, diffs):
+    return Field.getprop(self, "Sheetfile", diffs)
 
 
 @sexp.handler("kicad_sch")
@@ -1100,16 +1116,31 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       variables.define(context, "SHEETPATH", "/")
     super().fillvars(variables, diffs, context)
 
-  def inferred_instances(self, project=None):
+  def get_symbol_lib(self, diffs, context):
+    """Always returns a SymLib instance, even if it was added or rm'd."""
+    # TODO: handle the case where a page is blank and two diffs add symbols.
+    #       it's possible this is never an issue if blank pages always have a
+    #       blank symbol_lib entry.
+    # Added/removed symbol libs are returned as if they're normal to avoid
+    # rendering glitches.
+    added, _removed = self.added_and_removed(diffs, kicad_sym.SymLib)
+    if "lib_symbols" in self:
+      return self["lib_symbols"][0]
+    if added:
+      assert len(added) == 1, "add-add conflicts not supported"
+      return added[0]
+    return kicad_sym.SymLib.new()
+
+  def inferred_instances(self, project=None, diffs=None):
     """If operating on a standalone file, we won't have any context on
     instances. So come up with the different instance views."""
     instances = set()
     # Instances can be inferred from sheet and symbol instantiations
     for typ in "sheet", "symbol":
-      if typ in self:
-        for obj in self[typ]:
-          if "instances" in obj:
-            instances.update(obj["instances"][0].paths(project))
+      added, _removed = self.added_and_removed(diffs, sexp.SExp.get_class(typ))
+      all_items = [a.v for a in added] + (self[typ] if typ in self else [])
+      for obj in all_items:
+        instances.update(obj.paths(project))
     if not instances:
       instances.add("/" + HasUUID.uuid(self, generate=True))
     return [
@@ -1117,30 +1148,30 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       for i in instances
     ]
 
-  def get_sheets(self, project=None):
+  def get_sheets(self, project=None, diffs=None):
     """Returns a list of tuples of (path, sheetref)"""
     # FIXME: includes adds from from diffs
-    if "sheet" not in self:
-      return []
+    added, _removed = self.added_and_removed(diffs, Sheet)
+    alls = [a.v for a in added] + (self["sheet"] if "sheet" in self else [])
     sheets = []
-    for sheet in self["sheet"]:
-      sheets.extend((p, sheet) for p in sheet.paths(project))
+    for sheet in alls:
+      sheets.extend((p, sheet) for p in sheet.paths(project).values())
     return sheets
 
-  def get_components(self, context, instance):
+  def get_components(self, context, instance, diffs=None):
     # returns a dict mapping refdes to dict of properties
     # Context should include project and variables, ideally
-    if "symbol" not in self:
-      return {}
+    added, _removed = self.added_and_removed(diffs, SymbolInst)
+    alls = [a.v for a in added] + (self["symbol"] if "symbol" in self else [])
     context += (Path.new(instance), self)
     comps = {}
-    for sym in self["symbol"]:
+    for sym in alls:
       ref, data = sym.as_comp(context)
       assert not any(isinstance(k, Param) for k in data)
       # Un-diff everything (TODO: use the data?)
       data = {k: v.v if isinstance(v, Param) else v for k, v in data.items()}
-      if not ref.v.startswith("#"):
-        comps.setdefault(ref.v, []).append(data)
+      if not ref.startswith("#"):
+        comps.setdefault(ref, []).append(data)
     return comps
 
   # def get_nets(self, instance, variables, include_power=True):
@@ -1174,20 +1205,26 @@ def kicad_sch(f, fname=None):
   return None
 
 
-def draw_dnp(svg, bounds):
+def draw_dnp(dnp, svg, bounds):
   # FIXME: SCH_SYMBOL::PlotDNP uses a fancy calculation for margins which comes
   # out to -0.4x the pin length if pins exist on an edge, and -0.7x other pin
   # length if the edge has none. Sheets are even wonkier, including properties.
   margin = 0.4 * 1.27
-  bounds = list(map(float, bounds))
-  adj = (
-    bounds[0] + margin,
-    bounds[1] + margin,
-    bounds[2] - margin,
-    bounds[3] - margin,
+  corners = bounds.map(
+    lambda b, m: (
+      float(b[0]) + m,
+      float(b[1]) + m,
+      float(b[2]) - m,
+      float(b[3]) - m,
+    ),
+    margin,
   )
-  pts = (adj[:2], adj[2:], (adj[0], adj[3]), (adj[2], adj[1]))
-  svg.lines(pts, color="dnp_marker", thick="dnp")
+  pts = corners.map(lambda c: (c[:2], c[2:], (c[0], c[3]), (c[2], c[1])))
+  svg.lines(
+    pts,
+    color=dnp.map(lambda dnp: "dnp_marker" if dnp else "none"),
+    thick="dnp",
+  )
 
 
 def draw_uc_at(svg, pos, color):

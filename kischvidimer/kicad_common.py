@@ -35,6 +35,8 @@ from .kicad_modifiers import ModifierRoot
 JUST_FLIP = {"left": "right", "right": "left"}
 VJUST_FLIP = {"top": "bottom", "bottom": "top"}
 
+Length = sexp.SExp.basic("length")  # length of a pin
+
 
 class HasUUID:
   UNIQUE = False  # UUID-containing things are usually not unique
@@ -112,13 +114,20 @@ class HasInstanceData(sexp.SExp):
     added, _removed = self.added_and_removed(diffs, Instances)
     data = None
     # Earlier results take precedence
-    for instances, _add_c in (
-      [(i, None) for i in self["instances"]] if "instances" in self else []
-    ) + added:
+    for instances in (self["instances"] if "instances" in self else []) + added:
       newdata = instances.instancedata(project, uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
     return data
+
+  def paths(self, project=None, diffs=None):
+    # Disregard diffs on additions and removals
+    added, _removed = self.added_and_removed(diffs, Instances)
+    paths = {}
+    # Added results get overridden (preexisting ones take precedence)
+    for instances in added + (self["instances"] if "instances" in self else []):
+      paths.update(instances.paths(project, diffs))
+    return paths
 
 
 @sexp.handler("instances")
@@ -126,38 +135,46 @@ class Instances(sexp.SExp):
   """Tracks instances of a sheet or symbol"""
 
   @sexp.uses("project")
-  def paths(self, project=None):
-    """Returns a dict of instance to path elements"""
-    if "project" not in self:
-      return {}
+  def paths(self, project=None, diffs=None):
+    """Returns a dict of instance to path elements, including added/removed."""
+    # conveniently resolve ~project
     if isinstance(project, sexp.SExp):
       project = project[0]
-    ret = {}
-    for proj in self["project"]:
-      if not project:
-        project = proj[0]
-      if proj[0] not in ("", project) or "path" not in proj:
-        continue
-      for inst in proj["path"]:
-        assert inst[0] not in ret
-        ret[inst[0]] = inst
-    return ret
+    # Disregard diffs on additions and removals
+    # Added get precedence
+    added, _removed = self.added_and_removed(diffs, Project)
+    all_projects = [a.v for a in added] + (
+      self["project"] if "project" in self else []
+    )
+    paths = {}
+    # Named projects get precedence
+    for prj in all_projects:
+      project = project or prj.name
+      for path in prj.paths(project, diffs):
+        paths.setdefault(path.path, path)
+    # Check for buggy unnamed projects
+    for prj in all_projects:
+      for path in prj.paths(project, diffs):
+        paths.setdefault(path.path, path)
+    return paths
 
   def instancedata(self, project, uuid, field, diffs):
     # Disregard diffs on additions and removals
     added, _removed = self.added_and_removed(diffs, Project)
     data = None
     # Prioritize added data, mainly for project matching if project is unknown
-    all_projects = added + (
-      [(p, None) for p in self["project"]] if "project" in self else []
+    all_projects = [a.v for a in added] + (
+      self["project"] if "project" in self else []
     )
-    # Named results get precedence
-    for prj, _add_c in all_projects:
+    # Named projects get precedence
+    for prj in all_projects:
+      project = project or prj.name
       newdata = prj.instancedata(project, uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
     # Check for buggy unnamed projects
-    for prj, _add_c in all_projects:
+    for prj in all_projects:
+      project = project or prj.name
       newdata = prj.instancedata("", uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
@@ -169,16 +186,22 @@ class Project(sexp.SExp):
   UNIQUE = "name"
   LITERAL_MAP = {"name": 1}
 
-  def instancedata(self, project, uuid, field, diffs):
-    if project is not None and project != self[0]:
-      return None
+  @property
+  def name(self):
+    return self[0]
+
+  def paths(self, project, diffs):
+    """Returns all known paths, whether added/modified/removed."""
+    if project is not None and project != self.name:
+      return []
     # Disregard diffs on additions and removals
     added, _removed = self.added_and_removed(diffs, Path)
+    return [a.v for a in added] + (self["path"] if "path" in self else [])
+
+  def instancedata(self, project, uuid, field, diffs):
     data = None
     # Order shouldn't matter since there should only be one match
-    for path, _add_c in added + (
-      [(p, None) for p in self["path"]] if "path" in self else []
-    ):
+    for path in self.paths(project, diffs):
       newdata = path.instancedata(uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
@@ -190,23 +213,25 @@ class Path(sexp.SExp):
   UNIQUE = "path"
   LITERAL_MAP = {"path": 1}
 
+  @property
+  def path(self):
+    return self[0]
+
   def uuid(self, ref=None, generate=False):
     if ref and not isinstance(ref, (tuple, list)):
       ref = [ref]
     if not ref:
-      return self[0]
+      return self.path
     return f"{self[0]}/{'/'.join(r.uuid(generate=generate) for r in ref)}"
 
   def instancedata(self, uuid, field, diffs):
-    if uuid != self[0]:
+    if uuid != self.path:
       return None
     # Disregard diffs on additions and removals
     added, _removed = self.added_and_removed(diffs, sexp.SExp.get_class(field))
     data = None
     # Order shouldn't matter since there should only be one match
-    for d, _add_c in added + (
-      [(d, None) for d in self[field]] if field in self else []
-    ):
+    for d in [a.v for a in added] + (self[field] if field in self else []):
       newdata = d.param(diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
@@ -721,7 +746,9 @@ class TextBox(Drawable):
       # halve the right margin to account for character spacing
       wrapwidth = Param(lambda s, m: s[0] - m[0] - m[2] / 2, size, margins)
       unwrapped = Param(lambda t: variables.expand(subcontext, t), raw_text)
-      args["text"] = Param(TextBox.wrap_text, svg, unwrapped, size, wrapwidth)
+      args["text"] = Param(
+        TextBox.wrap_text, svg, unwrapped, args.get("textsize", 0), wrapwidth
+      )
       # symbols have Y inverted, so compensate by swapping the vjust calcs.
       # svg will handle the rest
       vjust = ("bottom", "top") if is_symbol else ("top", "bottom")
@@ -917,13 +944,21 @@ class Field(Drawable):
     svg.text(**args)
 
   @staticmethod
-  def getprop(parent, name, default=None):
-    if "property" not in parent:
-      return default
-    for p in parent["property"]:
-      if p.name == name:
-        return p.value
-    return default
+  def getprop(parent, name, diffs=None, default=None):
+    if isinstance(name, Param):
+      return Param(Field.getprop, parent, name, diffs, default=default)
+    added, removed = parent.added_and_removed(diffs, Field)
+    param = default
+    if "property" in parent:
+      for prop in parent["property"]:
+        if prop.name == name:
+          param = prop.param(
+            diffs, "value", with_remove_c=removed.get(id(prop)), default=param
+          )
+    added = [dp for dp in added if dp.v.name == name]
+    if added:
+      param = Param.adds(added, param)
+    return param
 
 
 @sexp.handler("image")
@@ -986,7 +1021,7 @@ def mirrored(pos, mirror):
   else:
     x, y = pos, 0
   if mirror == "y":
-    return (x, y)
+    return (-x, y)
   elif mirror:
     return (x, -y)
   return (x, y)
@@ -996,6 +1031,14 @@ def transformed(pos, rot=0, mirror=False, translate=None):
   if any(isinstance(x, Param) for x in (pos, rot, mirror, translate)):
     return Param(transformed, pos, rot, mirror, translate)
   return translated(mirrored(rotated(pos, rot), mirror), translate)
+
+
+def transformed_pin(pinpos, rot, mirror, sym_pos):
+  # Transforms pins into schematic coordinates
+  # y and rot are negative since symbols have inverted y
+  if any(isinstance(x, Param) for x in (pinpos, rot, mirror, sym_pos)):
+    return Param(transformed_pin, pinpos, rot, mirror, sym_pos)
+  return transformed((pinpos[0], -pinpos[1]), -rot, mirror, sym_pos)
 
 
 def main(argv):

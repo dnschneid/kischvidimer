@@ -152,7 +152,9 @@ class Variables:
       return ""
     elif isinstance(context, str):
       if len(context) == 36:  # kicad/19623
-        return min(c for c in self._contexts if c.endswith(context))
+        return min(
+          (c for c in self._contexts if c.endswith(context)), default=None
+        )
       return context
     elements = [""]
     for c in context:

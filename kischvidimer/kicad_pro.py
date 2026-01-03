@@ -172,7 +172,7 @@ class KicadPro(Comparable):
       assert len(pages[relpath]) == 1
       pages[relpath] += (sch,)
       for path, sheet in sch.get_sheets(self.project):
-        filepath = sch.relpath(sheet.file)
+        filepath = sch.relpath(sheet.file(None).v)
         relpath = os.path.relpath(filepath, projdir)
         if relpath not in pages:
           to_load.append(filepath)
@@ -280,9 +280,9 @@ class KicadPro(Comparable):
       sch = pages[file][-1]
       for sheet in sch["sheet"]:
         if sheet.uuid() == sheetuuid:
-          name.append(sheet.name)
+          name.append(sheet.name(None).v)
           file = os.path.dirname(file)
-          file = f"{file}/{sheet.file}" if file else sheet.file
+          file = f"{file}/{sheet.file(None).v}" if file else sheet.file(None).v
           break
       else:
         return None

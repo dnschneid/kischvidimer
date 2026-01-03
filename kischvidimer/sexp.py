@@ -152,6 +152,14 @@ class SExp(Comparable):
       return cls(data)
     return SExp.get_class(data[0], cls)(data)
 
+  @classmethod
+  def basic(cls, *name, istuple=False):
+    @handler(*name)
+    class BasicSExp(cls):
+      LITERAL_MAP = {name[0]: (1, -1) if istuple else 1}
+
+    return BasicSExp
+
   @staticmethod
   def get_class(atm, default=None):
     ret = getattr(handler, "_handlers", {}).get(Atom(atm), default)
@@ -214,7 +222,7 @@ class SExp(Comparable):
   def __repr__(self):
     return dump(self)
 
-  def param(self, diffs, key=None, base=None, default=None):
+  def param(self, diffs, key=None, base=None, default=None, with_remove_c=None):
     """Convenience function to return a param even if no diffs are available.
     If key isn't provided, uses the first key in LITERAL_MAP.
     If base isn't provided, uses LITERAL_MAP to pull the data if no diffs.
@@ -239,15 +247,16 @@ class SExp(Comparable):
           end -= 1
         if end >= start:
           base = tuple(self._sexp[start : end + 1])
-    return TargetDict.param(diffs, self, key, base, default=default)
+    return TargetDict.param(
+      diffs, self, key, base, default=default, with_remove_c=with_remove_c
+    )
 
   def getparam(self, atom, diffs=None, default=None, key=None):
     """Returns a Param for data of a unique subsexp, handling add/removes.
     It's generally better to make these subsexps Modifiers, if applicable.
     """
     item = self.get(atom)
-    if is_atom(item, recurse=False):
-      return Param(default)
+    assert not is_atom(item, recurse=False), f"atom '{atom}' is not a subsexp"
     if item is None:
       options = Diff.Group(None)
     else:
@@ -413,7 +422,7 @@ class SExp(Comparable):
     return self._sexp
 
   def yes(self, diffs=None):
-    return Param(lambda d: d is None or is_atom(d, "yes"), self.param(diffs))
+    return self.param(diffs).map(lambda d: d is None or bool(is_atom(d, "yes")))
 
   @property
   def ancestry(self):

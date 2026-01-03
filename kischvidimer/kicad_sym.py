@@ -57,6 +57,11 @@ def alternate_disambiguator(s):
   return AlternateInst(s)
 
 
+Name = sexp.SExp.basic("name")
+Number = sexp.SExp.basic("number")
+Offset = sexp.SExp.basic("offset")
+
+
 class PinDef(Drawable):
   """pins in a symbol definition"""
 
@@ -84,11 +89,11 @@ class PinDef(Drawable):
     return Param(
       lambda a, n: a or n,
       self.alternate(diffs, context),
-      self["name"][0].param(diffs),
+      self.getparam("name", diffs),
     )
 
   def num(self, diffs, context):
-    return self["number"][0].param(diffs)
+    return self.getparam("number", diffs)
 
   def get_type_style(self, diffs, context):
     # FIXME: diffs
@@ -159,7 +164,7 @@ class PinDef(Drawable):
     rot = self["at"][0].rot(diffs)
     semiunrot = Param(lambda r: r % 180 - r, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
-    length = Param.ify(self.get("length"), 0, diffs)
+    length = self.getparam("length", diffs, 0)
 
     svg.gstart(pos=pos, rotate=rot, path=num, hidden=self.hide(diffs))
 
@@ -403,6 +408,16 @@ class SymbolBody(Drawable):
     return int(self[0].rpartition("_")[-1])
 
 
+@sexp.handler("power")
+class Power(sexp.SExp):
+  """Tag that a symbol is a power symbol. Sometimes has data."""
+
+  LITERAL_MAP = {"type": 1}
+
+  def param(self, diffs, key=None):
+    return super().param(diffs, key).map(lambda t: t or "global")
+
+
 class SymbolDef(sexp.SExp):
   """A single library symbol entity, either in a library or cache"""
 
@@ -410,7 +425,11 @@ class SymbolDef(sexp.SExp):
   UNIQUE = "libname"
 
   def __str__(self):
-    return f"libsymbol '{self[0]}'"
+    return f"libsymbol '{self.libname}'"
+
+  @property
+  def libname(self):
+    return self[0]
 
   def fillnetlist(self, netlister, diffs, context, unit, variant):
     for body in self._get_bodies(diffs, context, unit, variant).v:
@@ -458,7 +477,7 @@ class SymbolDef(sexp.SExp):
     return pins
 
   def get_con_pin_coords(self, diffs, context, unit, variant=1):
-    # Returns a set of coordinates where unconnected markers can appear
+    # Returns untransformed coordinates where unconnected markers can appear
     # FIXME: diffs?
     pins = set()
     for body in self._get_bodies(diffs, context, unit, variant).v:
@@ -469,7 +488,7 @@ class SymbolDef(sexp.SExp):
           not pin.hide(diffs).v
           and pin.get_type_style(diffs, context)[0].v != "no_connect"
         ):
-          pins.update(pin.pts(diffs, context).v)
+          pins.add(pin["at"][0].pos(diffs).v)
     return pins
 
   def show_unit(self, diffs, context):
@@ -500,9 +519,10 @@ class SymbolDef(sexp.SExp):
         "hide": False,
       },
     }
+    # FIXME: diffs (support add/remove of pin_names/pin_numbers)
     if "pin_names" in self:
-      cfg["name"]["xoffset"] = Param.ify(
-        self["pin_names"][0].get("offset"), defx, diffs
+      cfg["name"]["xoffset"] = self["pin_names"][0].getparam(
+        "offset", diffs, defx
       )
       cfg["name"]["hide"] = self["pin_names"][0].has_yes("hide", diffs)
     if "pin_numbers" in self:
@@ -585,23 +605,30 @@ class SymLib(sexp.SExp):
   def __str__(self):
     return "library"
 
-  def symbols(self):
-    return {s[0]: s for s in self["symbol"]}
+  def _symbols(self):
+    # only used by main()
+    return {s.libname: s for s in self["symbol"]}
 
-  def symbol(self, name):
-    for s in self["symbol"]:
-      if s[0] == name:
+  def symbol(self, name, diffs=None):
+    # Looks up a symbol by name. Returns a symbol even if the symbol was added
+    # or removed. They are returned as normal to avoid rendering glitches.
+    # FIXME: handle the case where two diffs add the same symbol
+    if isinstance(name, Param):
+      return name.map(lambda n: self.symbol(n, diffs))
+    added, _removed = self.added_and_removed(diffs, SymbolDef)
+    for s in (self["symbol"] if "symbol" in self else []) + added:
+      if s.libname == name:
         return s
     return None
 
-  def sym_hash(self, name, cache=True):
+  def sym_hash(self, name, diffs, cache=True):
     """calculates and returns the hash for a symbol, keeping track of the hash
     for later lookup. The hash is an integer.
     If cache is true, assumes the symbol library hasn't been modified.
     Returns 0 if the symbol cannot be found
     """
     self._hashcache = getattr(self, "_hashcache", {})
-    sym = self.symbol(name)
+    sym = self.symbol(name, diffs)
     if sym is None:
       return 0
     if cache and hasattr(sym, "_hashcache"):
@@ -635,9 +662,9 @@ def main(argv):
     "context": (data[0],),
   }
   if len(argv) > 2:
-    sym = data[0].symbols()[argv[2]]
+    sym = data[0]._symbols()[argv[2]]
   else:
-    sym = random.choice(list(data[0].symbols().values()))
+    sym = random.choice(list(data[0]._symbols().values()))
   params["unit"] = (
     int(argv[3])
     if len(argv) > 3
