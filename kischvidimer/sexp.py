@@ -265,7 +265,7 @@ class SExp(Comparable):
         *(dp if dp.c else dp.v for dp in item.param(diffs, key))
       )
     added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
-    options += (FakeDiff(c, new=item.param().v) for item, c in added)
+    options += (FakeDiff(c, new=item.param(diffs).v) for item, c in added)
     options += (FakeDiff(c, old=options[0]) for c in removed.values())
     return Param(options, default=default)
 
@@ -384,12 +384,16 @@ class SExp(Comparable):
     added = [
       d.forsvg()
       for d in difflist
-      if d.is_add and d.is_instance(cls) and not d.is_instance(skipcls)
+      if d.is_add
+      and (not cls or d.is_instance(cls))
+      and not (skipcls and d.is_instance(skipcls))
     ]
     removed = {
       d.old_id: d.forsvg()[1]
       for d in difflist
-      if d.is_rm and d.is_instance(cls)
+      if d.is_rm
+      and (not cls or d.is_instance(cls))
+      and not (skipcls and d.is_instance(skipcls))
     }
     return added, removed
 
