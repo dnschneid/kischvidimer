@@ -122,7 +122,7 @@ class PinDef(Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs, context):
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     for c in reversed(context):
       if hasattr(c, "transform_pin"):
         pos = c.transform_pin(pos, diffs)
@@ -160,7 +160,7 @@ class PinDef(Drawable):
 
     name = self.name(diffs, context)
     num = self.num(diffs, context)
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     rot = self["at"][0].rot(diffs)
     semiunrot = Param(lambda r: r % 180 - r, rot)  # restricts to 0 or 90
     mirror = Param(lambda r: 1 if r in (0, 90) else -1, rot)
@@ -488,7 +488,7 @@ class SymbolDef(sexp.SExp):
           not pin.hide(diffs).v
           and pin.get_type_style(diffs, context)[0].v != "no_connect"
         ):
-          pins.add(pin["at"][0].pos(diffs).v)
+          pins.add(pin["at"][0].pos(diffs, relative=True).v)
     return pins
 
   def show_unit(self, diffs, context):

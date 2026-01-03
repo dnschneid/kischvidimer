@@ -302,7 +302,7 @@ class Coord(sexp.SExp):
     for parent in self.ancestry:
       # Table elements have their position as the first cell's.
       if parent.type == "cells":
-        return parent.pos(diffs)
+        return parent.pos()
       # TODO: if we do this, rendering needs to be updated
       # # Arcs, rects, etc are relative to their start pos
       # if self.type in ("start", "mid", "end"):
@@ -312,7 +312,7 @@ class Coord(sexp.SExp):
       #   return parent["xy"][0].data[:2]
       at = parent.get("at")
       if at is not None and at is not self:
-        return at.pos(diffs)
+        return at.pos()
     return None
 
   @property
@@ -504,7 +504,9 @@ class Polyline(Drawable):
   @sexp.uses("pts")
   def pts(self, diffs=None):
     # FIXME: diffs
-    return Param.array(*(xy.pos(diffs) for xy in self["pts"][0]["xy"]))
+    return Param.array(
+      *(xy.pos(diffs, relative=True) for xy in self["pts"][0]["xy"])
+    )
 
   def fillsvg(self, svg, diffs, draw, context, tag=None):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
@@ -570,9 +572,9 @@ class Arc(Drawable):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
     args = {
-      "start": self["start"][0].pos(diffs),
-      "mid": self["mid"][0].pos(diffs),
-      "stop": self["end"][0].pos(diffs),
+      "start": self["start"][0].pos(diffs, relative=True),
+      "mid": self["mid"][0].pos(diffs, relative=True),
+      "stop": self["end"][0].pos(diffs, relative=True),
       "color": "device" if context[-1].type == "symbol" else "notes",
       "thick": "wire",
     }
@@ -605,7 +607,7 @@ class Circle(Drawable):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
     args = {
-      "pos": self["center"][0].pos(diffs),
+      "pos": self["center"][0].pos(diffs, relative=True),
       "radius": self["radius"][0].param(diffs),
       "color": "device" if context[-1].type == "symbol" else "notes",
     }
@@ -634,8 +636,8 @@ class Rectangle(Drawable):
     if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
       return
     args = {
-      "pos": self["start"][0].pos(diffs),
-      "end": self["end"][0].pos(diffs),
+      "pos": self["start"][0].pos(diffs, relative=True),
+      "end": self["end"][0].pos(diffs, relative=True),
       "color": "device" if context[-1].type == "symbol" else "notes",
     }
     args["fill"] = f"{args['color']}_background"
@@ -664,7 +666,7 @@ class Text(Drawable):
       return
     args = {
       "text": text,
-      "pos": self["at"][0].pos(diffs),
+      "pos": self["at"][0].pos(diffs, relative=True),
       "rotate": self["at"][0].rot(diffs),
       "textcolor": "device" if context[-1].type == "symbol" else "notes",
     }
@@ -679,7 +681,7 @@ class TextBox(Drawable):
   LITERAL_MAP = {"text": 1}
 
   def __str__(self):
-    pos, size = self.pos_size()
+    pos, size = self.pos_size(None)
     descr = self.type.replace("_", " ")
     if size.v[0] ** 2 + size.v[1] ** 2 > 100**2:
       descr = f"large {descr}"
@@ -971,7 +973,7 @@ class Image(Drawable):
     args = {}
     self.fillsvgargs(args, diffs, context)
     svg.image(
-      pos=self["at"][0].pos(diffs),
+      pos=self["at"][0].pos(diffs, relative=True),
       data=self["data"][0].b64(diffs),
       **args,
     )

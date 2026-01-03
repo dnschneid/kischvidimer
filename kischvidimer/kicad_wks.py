@@ -65,7 +65,7 @@ def xy_from_corners(xy, gravity, corners=None):
 
 def coord_from_corners(coord, corners, diffs):
   return xy_from_corners(
-    coord.pos(diffs),
+    coord.pos(diffs, relative=True),
     coord.gravity(diffs),
     corners,
   )

@@ -123,7 +123,7 @@ class Junction(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs))
+    return Param.array(self["at"][0].pos(diffs, relative=True))
 
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
@@ -131,7 +131,7 @@ class Junction(HasUUID, Drawable):
     #        Can this be resolved?
     if not draw & Drawable.DRAW_FG_PG:
       return
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     is_bus = Netlister.n(context).get_node_count(context, pos, is_bus=True) > 0
     args = {
       "radius": sexp.Decimal("0.915") / 2,
@@ -156,14 +156,14 @@ class NoConnect(Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs))
+    return Param.array(self["at"][0].pos(diffs, relative=True))
 
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
     xys = (
       self["at"][0]
-      .pos(diffs)
+      .pos(diffs, relative=True)
       .map(
         lambda p, sz: (
           (p[0] - sz, p[1] - sz),
@@ -275,7 +275,7 @@ class Label(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs))
+    return Param.array(self["at"][0].pos(diffs, relative=True))
 
   def get_text_offset(self, diffs, context, is_field):
     if self.type == "label":
@@ -424,7 +424,7 @@ class BusEntry(Drawable):
 
   @sexp.uses("at", "size")
   def pts(self, diffs=None):
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     size = self.getparam("size", diffs)
     return Param(
       lambda p, s: (p, (p[0] + s[0], p[1] + s[1])),
@@ -468,10 +468,10 @@ class NetclassFlag(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs))
+    return Param.array(self["at"][0].pos(diffs, relative=True))
 
   def fillsvg(self, svg, diffs, draw, context):
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     svg.gstart(pos=pos)  # tag=svg.getuid(self))
     args = None
     if draw & (Drawable.DRAW_FG | Drawable.DRAW_FG_PG):
@@ -534,6 +534,10 @@ class NetclassFlag(HasUUID, Drawable):
 @sexp.handler("table")
 class Table(Drawable):
   """Top table instance; defines extra properties at the table level."""
+
+  def __str__(self):
+    pos = self["cells"][0].pos()
+    return f"{self.type} at ({pos.v[0]}, {pos.v[1]})"
 
   def fillsvg(self, svg, diffs, draw, context):
     pos = self["cells"][0].pos(diffs)
@@ -748,7 +752,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
     dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
-    sym_pos = self["at"][0].pos(diffs)
+    sym_pos = self["at"][0].pos(diffs, relative=True)
     svg.gstart(pos=sym_pos, path=self.uuid(generate=True))
     if subdraw:
       # FIXME: diffs, of course
@@ -995,7 +999,7 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
 
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs, of course
-    pos = self["at"][0].pos(diffs)
+    pos = self["at"][0].pos(diffs, relative=True)
     dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
 
     svg.gstart(pos=pos, path=self.uuid(generate=True))
