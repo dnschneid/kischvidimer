@@ -553,9 +553,9 @@ function applyDiffCheckChange(diff, operation, applyExclusions) {
 
   if (operation != diff.checked) {
     diff.checked = operation;
-    let elems = getAnimationElement(diff.id);
+    let elems = getAnimationElements(diff.id);
     if (elems) {
-      setAnimation(elems);
+      elems.forEach(setAnimation);
     }
   }
 
@@ -564,12 +564,12 @@ function applyDiffCheckChange(diff, operation, applyExclusions) {
   }
 }
 
-function getAnimationElement(name) {
-  if (svgPage.getElementsByClassName(name)[0]) {
-    return svgPage.getElementsByClassName(name)[0].parentNode;
-  } else {
+function getAnimationElements(name) {
+  let elems = svgPage.getElementsByClassName(name);
+  if (!elems) {
     return false;
   }
+  return Array.from(elems).map((e) => e.parentNode);
 }
 
 function getDiffRow(diff) {
