@@ -38,14 +38,14 @@ class Page:
 
   def __init__(self, names, pages):
     self.names = names
-    self.schs = [p[1] for p in pages]
-    self.insts = [p[0] for p in pages]
+    self.schs = [p[1] if p else None for p in pages]
+    self.insts = [p[0] if p else None for p in pages]
 
   def sch(self):
-    return self.schs[0]
+    return next(s for s in self.schs if s is not None)
 
   def instances(self):
-    return self.insts[0]
+    return next(i for i in self.insts if i is not None)
 
   def dispname(self):
     names = self.names
@@ -129,7 +129,14 @@ class Schematic:
     # 2. zip the pages values for the keys
     # 3. handle the ([(uuid, path), ...], sch) in Page
     # 4. add added/deleted flags to Page?
-    pages = [Page([n], [p]) for n, p in pagesets[0].items()]
+    pages = []
+    for n in set(pagesets[0].keys()).union(*(p.keys() for p in pagesets[1:])):
+      ns = [
+        n if n in p else Page.PAGENAME_DELETED if i else Page.PAGENAME_CREATED
+        for i, p in enumerate(pagesets)
+      ]
+      pages.append(Page(ns, [p.get(n) for p in pagesets]))
+
     if p:
       p.incr().write()
 
