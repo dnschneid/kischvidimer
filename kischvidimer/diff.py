@@ -196,7 +196,7 @@ class Param:
         if isinstance(arg, Param):
           arg = arg.get(i)
         elif isinstance(arg, Diff.Group):
-          diff_i = min(len(arg), i)
+          diff_i = min(len(arg) - 1, i)
           arg = arg[diff_i]
           if isinstance(arg, Diff):
             arg = arg.forsvg()
