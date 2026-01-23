@@ -160,8 +160,11 @@ class Schematic:
     projs[0].fillnetlist(
       netlister, None, pagesets[0], p=p
     )  # only netlist the base
-    for pageset in pagesets:
-      projs[0].fillvars(variables, None, pageset, netlister=netlister, p=p)
+    for i, pageset in enumerate(pagesets):
+      # Only fill in netlist-related variables for the base
+      projs[i].fillvars(
+        variables, None, pageset, netlister=None if i else netlister, p=p
+      )
 
     ver = git.get_version(projdir, self._revs[0])
     ver += time.strftime(" (%Y-%m-%d %H:%M)")

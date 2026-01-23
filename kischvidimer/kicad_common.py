@@ -445,13 +445,16 @@ class Drawable(ModifierRoot, sexp.SExp):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
     context = context + (self,)
+    # Can't query netlister for new objects, since they aren't in it.
+    # Check the type name to avoid circular imports.
+    new_context = tuple(c for c in context if not hasattr(c, "netlister"))
     added, removed = self.added_and_removed(diffs, Drawable)
     for subdraw in Drawable.DRAW_SEQUENCE:
       if draw & subdraw:
         # new stuff!
         for item, c in added:
           svg.gstart(hidden=FakeDiff(c, old=True, new=False).param())
-          item.fillsvg(svg, diffs, subdraw, context)
+          item.fillsvg(svg, diffs, subdraw, new_context)
           svg.gend()
         # existing stuff, maybe removed
         for item in self.data:
