@@ -329,7 +329,9 @@ def config_env_vars():
     for configfile in os.listdir(configdir):
       if configfile.lower() == "kicad_common.json":
         config = json.load(open(os.path.join(configdir, configfile)))
-        envvars.update(config.get("environment", {}).get("vars", {}).items())
+        envvars.update(
+          ((config.get("environment") or {}).get("vars") or {}).items()
+        )
         break
   return envvars
 
