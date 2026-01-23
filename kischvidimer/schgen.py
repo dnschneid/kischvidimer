@@ -105,13 +105,14 @@ class Schematic:
     projs = []
     worksheets = []
     pagesets = []
+    p.set_val(0).set_max(len(self._revs)).set_incr_max_mult(4)
     for rev in self._revs:
-      p.set_text("Loading " + self._proj)
-      p.set_incr_max_mult(4).set_val(0).set_max(1).write().incr()
+      p.set_text("Loading " + self._proj).write().incr()
       f = git.open_rb(self._proj, rev)
       projs.append(kicad_pro.kicad_pro(f, fname=self._proj))
       pagesets.append(projs[-1].get_pages(self._proj, rev, p))
       worksheets.append(projs[-1].get_worksheet(rev, p))
+      p.set_incr_max_mult(2)
 
     if p:
       p.set_text("Processing hierarchy").set_incr_max_mult().incr_max(2).write()
@@ -156,8 +157,10 @@ class Schematic:
       vcshash = "no hash"
     variables.define(variables.GLOBAL, "VCSHASH", vcshash)
     variables.define(variables.GLOBAL, "VCSSHORTHASH", vcshash[:8])
+    projs[0].fillnetlist(
+      netlister, None, pagesets[0], p=p
+    )  # only netlist the base
     for pageset in pagesets:
-      projs[0].fillnetlist(netlister, None, pageset, p=p)
       projs[0].fillvars(variables, None, pageset, netlister=netlister, p=p)
 
     ver = git.get_version(projdir, self._revs[0])
