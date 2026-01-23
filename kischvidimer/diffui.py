@@ -204,22 +204,25 @@ class DiffUI:
 
     def add_to_index(toc, depth=0):
       for inst in toc:
-        ui_page = self._pages[self._pagemap[id(inst["sch"])]]
-        toc_page_map.append(ui_page)
-        page_name = html_mod.escape(inst["name"])
-        self.schematic_index["pages"].append(
-          {
-            "id": ui_page.id,
-            "pn": inst["page"],
-            "inst": inst["uuid"],
-            "name": page_name,
-            "depth": depth,
-            "box": tuple(map(int, ui_page.svg.get_viewbox(with_wks=True))),
-            "contentbox": tuple(
-              map(int, ui_page.svg.get_viewbox(with_wks=False))
-            ),
-          }
-        )
+        page_file = self._pagemap.get(id(inst["sch"]))
+        # might be None if the page is excluded e.g. due to lack of diffs
+        if page_file is not None:
+          ui_page = self._pages[page_file]
+          toc_page_map.append(ui_page)
+          page_name = html_mod.escape(inst["name"])
+          self.schematic_index["pages"].append(
+            {
+              "id": ui_page.id,
+              "pn": inst["page"],
+              "inst": inst["uuid"],
+              "name": page_name,
+              "depth": depth,
+              "box": tuple(map(int, ui_page.svg.get_viewbox(with_wks=True))),
+              "contentbox": tuple(
+                map(int, ui_page.svg.get_viewbox(with_wks=False))
+              ),
+            }
+          )
         add_to_index(inst.get("children", []), depth + 1)
 
     if self._toc is None:
@@ -279,6 +282,10 @@ class DiffUI:
           self.schematic_index["pins"].setdefault(pin_name, []).append(
             [i, pin_num]
           )
+
+    # Clean up netmap for pages that don't exist (e.g., due to not having diffs)
+    for k in [k for k in netmap if isinstance(k, str)]:
+      del netmap[k]
 
   def addpage(self, name, page, instances, safediffs, conflicts):
     p = Page(
@@ -568,7 +575,7 @@ class DiffUI:
         min(self._mode, DiffUI.MODE_MERGE)
       ]
     ] * is_app
-    if self._pages:
+    if self._pages and self.schematic_index["pages"]:
       firstpageid = self.schematic_index["pages"][0]["id"]
       for p in self._pages:
         if p.id == firstpageid:

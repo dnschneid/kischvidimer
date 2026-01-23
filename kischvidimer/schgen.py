@@ -267,9 +267,9 @@ def main(argv):
     "--worksheet",
     help="override the page border specified in the project",
   )
-  # parser.add_argument(
-  #  "-d", "--diff", action="store_true", help="only render pages with changes"
-  # )
+  parser.add_argument(
+    "-d", "--diff", action="store_true", help="only render pages with changes"
+  )
   # parser.add_argument(
   #  "-c", "--conflicts-ok", action="store_true", help="ignore conflict markers"
   # )
@@ -303,7 +303,7 @@ def main(argv):
     )
 
   # Diff flags
-  # sch.diff = args.diff
+  sch.diff = args.diff
   # FIXME: conflict marker handling
   # if args.conflicts_ok:
   #  conflicts_ok = (kicad_sch.kicad_sch.FileError,)
