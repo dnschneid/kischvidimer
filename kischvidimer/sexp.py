@@ -262,7 +262,10 @@ class SExp(Comparable):
       options = Diff.Group(None)
     else:
       options = Diff.Group(
-        *(dp if dp.c else dp.v for dp in item.param(diffs, key))
+        *(
+          FakeDiff(dp.c, new=dp.v) if dp.c else dp.v
+          for dp in item.param(diffs, key)
+        )
       )
     added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
     options += (FakeDiff(c, new=item.param(diffs).v) for item, c in added)
@@ -447,7 +450,9 @@ class SExp(Comparable):
     elif item is None:
       options = Diff.Group(False)
     else:
-      options = Diff.Group(*(dp if dp.c else dp.v for dp in item.yes(diffs)))
+      options = Diff.Group(
+        *(FakeDiff(dp.c, new=dp.v) if dp.c else dp.v for dp in item.yes(diffs))
+      )
     added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
     options += (
       FakeDiff(c, old=options[0], new=item.yes().v) for item, c in added
