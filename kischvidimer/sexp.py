@@ -25,6 +25,7 @@ and the code has been optimized to use regexes where possible.
 import gc
 import re
 import sys
+from copy import deepcopy
 from decimal import Decimal
 from string import whitespace
 
@@ -222,6 +223,17 @@ class SExp(Comparable):
 
   def __repr__(self):
     return dump(self)
+
+  def __deepcopy__(self, memo):
+    """Don't copy parent info, but regenerate it"""
+    is_deepcopy_root = not memo
+    new = type(self)(deepcopy(self._sexp, memo))
+    # Trigger reparenting at the base of the new tree.
+    # This check fails if deepcopy() is called on a non-SExp that contains an
+    # SExp, but we assume only Diff uses deepcopy and thus this won't happen.
+    if is_deepcopy_root:
+      new.reparent(self.parent)
+    return new
 
   def param(self, diffs, key=None, base=None, default=None, with_remove_c=None):
     """Convenience function to return a param even if no diffs are available.
