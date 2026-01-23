@@ -119,7 +119,7 @@ class Junction(HasUUID, Drawable):
 
   def fillnetlist(self, netlister, diffs, context):
     # TODO: at some point, confirm that there's only one valid net/bus
-    self.netbuses = netlister.add_junction(context, self)
+    netlister.add_junction(context, self)
 
   @sexp.uses("at")
   def pts(self, diffs=None):
@@ -152,7 +152,7 @@ class NoConnect(Drawable):
   """no_connect"""
 
   def fillnetlist(self, netlister, diffs, context):
-    self.netbuses = netlister.add_nc(context, self)
+    netlister.add_nc(context, self)
 
   @sexp.uses("at")
   def pts(self, diffs=None):
@@ -183,7 +183,7 @@ class Wire(HasUUID, Polyline):
   """wire or bus"""
 
   def fillnetlist(self, netlister, diffs, context):
-    self.netbus = netlister.add_wire(context, self)
+    netlister.add_wire(context, self)
 
   def fillsvg(self, svg, diffs, draw, context):
     super().fillsvg(svg, diffs, draw, context, tag=svg.getuid(self))
@@ -208,7 +208,7 @@ class Label(HasUUID, Drawable):
   BUS_RE = re.compile(r"(?<![_~^$]){(?!slash})(.+)}|\[(\d+)[.][.](\d+)\]")
 
   def fillnetlist(self, netlister, diffs, context):
-    self.netbus = netlister.add_label(context, self)
+    netlister.add_label(context, self)
 
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs).v
@@ -420,7 +420,7 @@ class BusEntry(Drawable):
 
   def fillnetlist(self, netlister, diffs, context):
     # TODO: at some point confirm there's exactly one bus and one net
-    self.netbuses = netlister.add_busentry(context, self)
+    netlister.add_busentry(context, self)
 
   @sexp.uses("at", "size")
   def pts(self, diffs=None):
@@ -963,7 +963,7 @@ class PinSheet(Label):
   LITERAL_MAP = {"name": 1, "shape": 2}
 
   def fillnetlist(self, netlister, diffs, context):
-    self.netbus = netlister.add_sheetpin(context, self)
+    netlister.add_sheetpin(context, self)
 
   def shape(self, diffs=None):
     return self.param(diffs, "shape")

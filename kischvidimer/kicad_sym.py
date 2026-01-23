@@ -134,7 +134,7 @@ class PinDef(Drawable):
     return self.has_yes("hide", diffs)
 
   def fillnetlist(self, netlister, diffs, context):
-    self.netbus = netlister.add_sympin(context, self)
+    netlister.add_sympin(context, self)
 
   @sexp.uses(
     "clock",
