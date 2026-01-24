@@ -820,7 +820,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
             .v,
             lib,
           )
-        return lib.symbol(lib_id).v.show_unit(diffs, context)
+        return lib.symbol(lib_id, diffs).v.show_unit(diffs, context)
 
     return Param(True)
 
