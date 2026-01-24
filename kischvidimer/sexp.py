@@ -296,6 +296,11 @@ class SExp(Comparable):
       that = other.comp_sexp
       if index < len(this) and index < len(that) and this[index] == that[index]:
         return 0
+      # While we *could* generate a diff when an identifier changes (e.g., a
+      # property or symlib getting renamed but not otherwise changed), this
+      # makes lookups and matching a *lot* more complicated.
+      # So disallow for now; these changes instead become rm + add.
+      return None
     # Use the Comparable implementation, which will sum up the number of
     # differences returned by diff
     return super().distance(other, fast, diffparam)
