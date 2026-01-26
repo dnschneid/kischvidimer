@@ -17,6 +17,7 @@ Common classes and routines for handling sexp-based kicad files
 """
 
 import math
+import operator as op
 import os
 import sys
 from decimal import Decimal
@@ -751,8 +752,11 @@ class TextBox(Drawable):
       # halve the right margin to account for character spacing
       wrapwidth = Param(lambda s, m: s[0] - m[0] - m[2] / 2, size, margins)
       unwrapped = Param(lambda t: variables.expand(subcontext, t), raw_text)
+      textwidth = Param(
+        op.mul, args.get("textsize", 0), args.get("textscale", 1)
+      )
       args["text"] = Param(
-        TextBox.wrap_text, svg, unwrapped, args.get("textsize", 0), wrapwidth
+        TextBox.wrap_text, svg, unwrapped, textwidth, wrapwidth
       )
       # symbols have Y inverted, so compensate by swapping the vjust calcs.
       # svg will handle the rest

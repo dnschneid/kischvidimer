@@ -797,6 +797,7 @@ class Svg:
     prop=None,
     pos=None,
     textsize=None,
+    textstretch=None,
     textcolor=None,
     justify=None,
     vjustify=None,
@@ -819,6 +820,7 @@ class Svg:
     italic = Param(lambda i: "oblique 14deg" if i else "oblique 0deg", italic)
     kisize = Param(lambda s: self.textsize(s, False), textsize)
     emsize = Param(lambda s: self.textsize(s, True), textsize)
+    textstretch = Param(textstretch, default=1)
     textcolor, opacity = self._color(textcolor, "notes")
     if not opacity.reduce(any) or hidden.reduce(all):
       return
@@ -872,6 +874,8 @@ class Svg:
       or len(icon) > 1
       or icon.reduce(any)
       or len(url) > 1
+      or textstretch.reduce(any, lambda s: s != 1)
+      or len(textstretch) > 1
     ):
       needsgroup = True
       self.gstart(pos=pos, rotate=rotate, hidden=hidden)
@@ -885,7 +889,8 @@ class Svg:
       (1 + t.v.count("\n")) * emsize.get(i).v for i, t in enumerate(text)
     )
     twidth = max(
-      Svg.calcwidth(t.v, kisize.get(i).v) for i, t in enumerate(text)
+      Svg.calcwidth(t.v, kisize.get(i).v, textstretch.get(i).v)
+      for i, t in enumerate(text)
     )
     # Reference: gr_text.cpp: reg=size/8, demibold=size/6, bold=size/5
     thick = max(s.v * Svg.FONT_HEIGHT / 5 for s in kisize)
@@ -924,7 +929,13 @@ class Svg:
       + self.attr("font-style", italic, "oblique 0deg")
       + self.attr("font-weight", bold, "400")
       + self.attr("text-anchor", anchor, "start")
-      + self.attr("transform", mirror.map(lambda m: "scale(-1 1)" * m))
+      + self.attr(
+        "transform",
+        mirror.map(
+          lambda m, s: f"scale({float(-s if m else s):.4g} 1)", textstretch
+        ),
+        "scale(1 1)",
+      )
       + Svg._tagattr(tag)
       + ([f'prop="{prop}"'] if prop and isinstance(prop, str) else [])
     ).hascontents()
@@ -1291,7 +1302,7 @@ class Svg:
   _ENCODE_BLOCKS_RE = re.compile(r"[_^~]\{((?:[^{}]|\{[^}]*\})*)\}")
 
   @staticmethod
-  def calcwidth(text, textsize, font="newstroke"):
+  def calcwidth(text, textsize, textstretch=1, font="newstroke"):
     # Load the font map
     widthmap = Svg.FONT_WIDTH_CACHE.get(font) if font else {}
     if widthmap is None:
@@ -1322,19 +1333,20 @@ class Svg:
       text = text[1]
     elif "\n" in text:
       return max(
-        Svg.calcwidth(line, textsize, font) for line in text.split("\n")
+        Svg.calcwidth(line, textsize, textstretch, font)
+        for line in text.split("\n")
       )
 
     # Process formatted blocks and then remove from the string
     width = 0
     for m in Svg._ENCODE_BLOCKS_RE.finditer(text):
-      width += Svg.calcwidth(m, 1, font)
+      width += Svg.calcwidth(m, 1, font=font)
     text = Svg._ENCODE_BLOCKS_RE.sub("", text)
 
     # Handle the remaining string
     width += sum(widthmap.get(c, 1) for c in text)
 
-    return width * float(textsize)
+    return width * float(textsize) * float(textstretch)
 
   @staticmethod
   def encode(text):

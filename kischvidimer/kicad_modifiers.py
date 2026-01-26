@@ -152,13 +152,16 @@ class Size(Modifier):
       args["textsize"] = Param(
         lambda d: d[0] or None, p, default=args.get("textsize")
       )
+      args["textstretch"] = Param(
+        lambda d: d[1] / d[0] if len(d) > 1 and d[0] else None,
+        p,
+        default=args.get("textstretch"),
+      )
     else:
       args["size"] = Param(p, default=args.get("size"))
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
-    if self.is_textsize:
-      assert len(set(self.data)) == 1, "unexpected multidimensional font size"
 
 
 @sexp.handler("color")
