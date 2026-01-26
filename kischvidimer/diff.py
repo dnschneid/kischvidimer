@@ -79,9 +79,9 @@ class Comparable(ABC):
     """
     return False
 
-  def param(self, diffs, key, base):
+  def param(self, diffs, key, base=None, default=None, with_remove_c=None):
     """Convenience function to return a param even if no diffs are available."""
-    return TargetDict.param(diffs, self, key, base)
+    return TargetDict.param(diffs, self, key, base, default, with_remove_c)
 
 
 class Param:
