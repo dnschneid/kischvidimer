@@ -104,11 +104,11 @@ class Modifier(sexp.SExp):
           args[param] = self.param(diffs, key, default=args.get(param))
 
   @classmethod
-  def basic(cls, name, arg=None, istuple=False):
+  def basic(cls, name, arg=False, istuple=False):
     @sexp.handler(name)
     class BasicModifier(cls):
       LITERAL_MAP = {name: (1, -1) if istuple else 1}
-      ARG_MAP = {name: arg or name}
+      ARG_MAP = {name: name if arg is False else arg}
 
     return BasicModifier
 
