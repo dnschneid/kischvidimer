@@ -763,8 +763,8 @@ class TextBox(Drawable):
       vjust = ("bottom", "top") if is_symbol else ("top", "bottom")
       args["pos"] = Param(
         lambda p, s, m, j, vj: (
-          p[0]
-          + (
+          float(p[0])
+          + float(
             m[0] if j == "left" else s[0] - m[2] if j == "right" else s[0] / 2
           ),
           p[1]
