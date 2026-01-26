@@ -115,7 +115,7 @@ class HasInstanceData(sexp.SExp):
     added, _removed = self.added_and_removed(diffs, Instances)
     data = None
     # Earlier results take precedence
-    for instances in (self["instances"] if "instances" in self else []) + added:
+    for instances in self.getsubs("instances") + added:
       newdata = instances.instancedata(project, uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
@@ -126,7 +126,7 @@ class HasInstanceData(sexp.SExp):
     added, _removed = self.added_and_removed(diffs, Instances)
     paths = {}
     # Added results get overridden (preexisting ones take precedence)
-    for instances in added + (self["instances"] if "instances" in self else []):
+    for instances in added + self.getsubs("instances"):
       paths.update(instances.paths(project, diffs))
     return paths
 
@@ -144,9 +144,7 @@ class Instances(sexp.SExp):
     # Disregard diffs on additions and removals
     # Added get precedence
     added, _removed = self.added_and_removed(diffs, Project)
-    all_projects = [a.v for a in added] + (
-      self["project"] if "project" in self else []
-    )
+    all_projects = [a.v for a in added] + self.getsubs("project")
     paths = {}
     # Named projects get precedence
     for prj in all_projects:
@@ -164,9 +162,7 @@ class Instances(sexp.SExp):
     added, _removed = self.added_and_removed(diffs, Project)
     data = None
     # Prioritize added data, mainly for project matching if project is unknown
-    all_projects = [a.v for a in added] + (
-      self["project"] if "project" in self else []
-    )
+    all_projects = [a.v for a in added] + self.getsubs("project")
     # Named projects get precedence
     for prj in all_projects:
       project = project or prj.name
@@ -197,7 +193,7 @@ class Project(sexp.SExp):
       return []
     # Disregard diffs on additions and removals
     added, _removed = self.added_and_removed(diffs, Path)
-    return [a.v for a in added] + (self["path"] if "path" in self else [])
+    return [a.v for a in added] + self.getsubs("path")
 
   def instancedata(self, project, uuid, field, diffs):
     data = None
@@ -958,12 +954,11 @@ class Field(Drawable):
       return Param(Field.getprop, parent, name, diffs, default=default)
     added, removed = parent.added_and_removed(diffs, Field)
     param = default
-    if "property" in parent:
-      for prop in parent["property"]:
-        if prop.name == name:
-          param = prop.param(
-            diffs, "value", with_remove_c=removed.get(id(prop)), default=param
-          )
+    for prop in parent.getsubs("property"):
+      if prop.name == name:
+        param = prop.param(
+          diffs, "value", with_remove_c=removed.get(id(prop)), default=param
+        )
     added = [dp for dp in added if dp.v.name == name]
     if added:
       param = Param.adds(added, param)

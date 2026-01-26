@@ -263,14 +263,13 @@ class Label(HasUUID, Drawable):
     members = [m for m in bus.group(1).split(" ") if m]
     if len(members) == 1:
       for c in reversed(context):
-        if "bus_alias" in c:
-          for ba in c["bus_alias"]:
-            if ba[0] == members[0]:
-              members = ba["members"][0].data
-              break
-          else:
-            continue
-          break
+        for ba in c.getsubs("bus_alias"):
+          if ba[0] == members[0]:
+            members = ba["members"][0].data
+            break
+        else:
+          continue
+        break
     return [(prefix, m, f"{prefix}{m}{suffix}") for m in members]
 
   @sexp.uses("at")
@@ -1073,9 +1072,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
 
   @property
   def paper(self):
-    if "paper" in self:
-      return self["paper"][0][0]
-    return "A4"
+    return self.get("paper", "A4")[0]
 
   # Stuff for diffui
   def initsch(self, fname=None):
@@ -1168,7 +1165,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     """Returns a list of tuples of (path, sheetref)"""
     # FIXME: includes adds from from diffs
     added, _removed = self.added_and_removed(diffs, Sheet)
-    alls = [a.v for a in added] + (self["sheet"] if "sheet" in self else [])
+    alls = [a.v for a in added] + self.getsubs("sheet")
     sheets = []
     for sheet in alls:
       sheets.extend((p, sheet) for p in sheet.paths(project).values())
@@ -1178,7 +1175,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     # returns a dict mapping refdes to dict of properties
     # Context should include project and variables, ideally
     added, _removed = self.added_and_removed(diffs, SymbolInst)
-    alls = [a.v for a in added] + (self["symbol"] if "symbol" in self else [])
+    alls = [a.v for a in added] + self.getsubs("symbol")
     context += (Path.new(instance), self)
     comps = {}
     for sym in alls:

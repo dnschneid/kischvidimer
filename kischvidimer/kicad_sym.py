@@ -496,13 +496,13 @@ class SymbolDef(sexp.SExp):
 
   def num_units(self, diffs, context):
     return Param(
-      lambda s: max(b.unit for b in s["symbol"]) if "symbol" in s else 0,
+      lambda s: max((b.unit for b in s.getsubs("symbol")), default=0),
       self._sym(diffs, context),
     )
 
   def num_variants(self, diffs, context):
     return Param(
-      lambda s: max(b.variant for b in s["symbol"]) if "symbol" in s else 0,
+      lambda s: max((b.variant for b in s.getsubs("symbol")), default=0),
       self._sym(diffs, context),
     )
 
@@ -616,9 +616,7 @@ class SymLib(sexp.SExp):
     if isinstance(name, Param):
       return name.map(lambda n: self.symbol(n, diffs))
     added, _removed = self.added_and_removed(diffs, SymbolDef)
-    for s in (self["symbol"] if "symbol" in self else []) + [
-      a.v for a in added
-    ]:
+    for s in self.getsubs("symbol") + [a.v for a in added]:
       if s.libname == name:
         return s
     return None

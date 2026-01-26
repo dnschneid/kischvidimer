@@ -54,9 +54,8 @@ class KicadPro(Comparable):
     context = self.context()
     # Collect bus aliases so that all pages can use them
     for _filename, (_instances, sch) in pages.items():
-      if "bus_alias" in sch:
-        for ba in sch["bus_alias"]:
-          context[0].add(ba)
+      for ba in sch.getsubs("bus_alias"):
+        context[0].add(ba)
     # Starting with v10, bus aliases are stored in the kicad_pro
     pro_aliases = self.json.get("schematic", {}).get("bus_aliases", {})
     for name, members in pro_aliases.items():

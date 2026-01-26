@@ -508,6 +508,9 @@ class SExp(Comparable):
       return SExp.init([atm, default_data])
     return default
 
+  def getsubs(self, atm):
+    return self._subs.get(Atom(atm), [])
+
   def add(self, item, i=None):
     i = i or len(self._sexp)
     if isinstance(item, SExp):
