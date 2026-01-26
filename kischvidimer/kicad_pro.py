@@ -163,8 +163,7 @@ class KicadPro(Comparable):
         continue
       # Handle the root page, whose path is self-defined by uuid
       if relpath not in pages:
-        root_path = sch.root_path
-        assert root_path is not None
+        assert sch.is_root()
         pages[relpath] = (
           [(kicad_sch.Path.new(""), kicad_sch.Sheet.fake(sch))],
         )
