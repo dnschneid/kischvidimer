@@ -579,7 +579,8 @@ class DiffUI:
       firstpageid = self.schematic_index["pages"][0]["id"]
       for p in self._pages:
         if p.id == firstpageid:
-          title.append(p.title)
+          if p.title:
+            title.append(p.title)
           break
     if self.title:
       title.append(self.title)
