@@ -149,9 +149,7 @@ class Size(Modifier):
   def fillsvgargs(self, args, diffs, context):
     p = self.param(diffs)
     if self.is_textsize:
-      args["textsize"] = Param(
-        lambda d: d[0], p, default=args.get("textsize")
-      )
+      args["textsize"] = Param(lambda d: d[0], p, default=args.get("textsize"))
       args["textstretch"] = Param(
         lambda d: d[1] / d[0] if len(d) > 1 and d[0] else None,
         p,
