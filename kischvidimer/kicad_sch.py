@@ -123,7 +123,7 @@ class Junction(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs, relative=True))
+    return Param.array(self["at"][0].pos(diffs, relative=False))
 
   @sexp.uses("diameter")
   def fillsvg(self, svg, diffs, draw, context):
@@ -156,7 +156,7 @@ class NoConnect(Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs, relative=True))
+    return Param.array(self["at"][0].pos(diffs, relative=False))
 
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
@@ -191,7 +191,7 @@ class Wire(HasUUID, Polyline):
       pts = self.pts(diffs)
       # FIXME: not the correct color?
       color = Param.only_for_base(pts, "wire", "none")
-      for pos in pts.v:
+      for pos in Param.multi(2, pts):
         if Netlister.n(context).get_node_count(context, pos) == 1:
           draw_uc_at(svg, pos, color=color)
 
@@ -274,7 +274,7 @@ class Label(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs, relative=True))
+    return Param.array(self["at"][0].pos(diffs, relative=False))
 
   def get_text_offset(self, diffs, context, is_field):
     if self.type == "label":
@@ -423,7 +423,7 @@ class BusEntry(Drawable):
 
   @sexp.uses("at", "size")
   def pts(self, diffs=None):
-    pos = self["at"][0].pos(diffs, relative=True)
+    pos = self["at"][0].pos(diffs, relative=False)
     size = self.getparam("size", diffs)
     return Param(
       lambda p, s: (p, (p[0] + s[0], p[1] + s[1])),
@@ -434,8 +434,7 @@ class BusEntry(Drawable):
   def fillsvg(self, svg, diffs, draw, context):
     if not draw & Drawable.DRAW_FG:
       return
-    # FIXME: diffs!
-    pts = self.pts(diffs).v
+    pts = Param.multi(2, self.pts(diffs))
     args = {
       "p1": pts[0],
       "p2": pts[1],
@@ -467,7 +466,7 @@ class NetclassFlag(HasUUID, Drawable):
 
   @sexp.uses("at")
   def pts(self, diffs=None):
-    return Param.array(self["at"][0].pos(diffs, relative=True))
+    return Param.array(self["at"][0].pos(diffs, relative=False))
 
   def fillsvg(self, svg, diffs, draw, context):
     pos = self["at"][0].pos(diffs, relative=True)
@@ -1048,7 +1047,7 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
         ),
       )
 
-    svg.gend()  # path
+    svg.gend()  # path, pos
 
   @sexp.uses("dnp")
   def dnp(self, diffs=None):

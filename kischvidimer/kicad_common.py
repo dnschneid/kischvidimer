@@ -505,7 +505,7 @@ class Polyline(Drawable):
   def pts(self, diffs=None):
     # FIXME: diffs
     return Param.array(
-      *(xy.pos(diffs, relative=True) for xy in self["pts"][0]["xy"])
+      *(xy.pos(diffs, relative=False) for xy in self["pts"][0]["xy"])
     )
 
   def fillsvg(self, svg, diffs, draw, context, tag=None):
