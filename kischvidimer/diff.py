@@ -208,11 +208,11 @@ class Param:
       assert self._func or len(args) == 1
       val = self._func(*args) if self._func else args[0]
       if val is None and self._default is not None:
-        if isinstance(self._default, Param):
-          val, classes = self._default.get(i)
-          svgclasses.update(classes)
-        else:
-          val = self._default
+        val = self._default
+      # If we ended up with a Param, flatten it
+      if isinstance(val, Param):
+        val, classes = val.get(i)
+        svgclasses.update(classes)
       self._evalcache[i] = ret = DiffParam(v=val, c=svgclasses)
     else:
       ret = self._evalcache[i]
