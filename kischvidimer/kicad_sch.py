@@ -329,15 +329,20 @@ class Label(HasUUID, Drawable):
       # FIXME: diffs
       args = {
         "textsize": Param(1.27),
+        "color": Param(
+          lambda b, t: (
+            "bus"
+            if b
+            else "loclabel"
+            if t == "label"
+            else "sheetlabel"
+            if t == "pin"
+            else f"{t[:4]}label"
+          ),
+          self.bus(diffs, context),
+          self.type,
+        ),
       }
-      if self.bus(diffs, context).v:
-        args["color"] = "bus"
-      elif self.type == "label":
-        args["color"] = "loclabel"
-      elif self.type == "pin":
-        args["color"] = "sheetlabel"
-      else:
-        args["color"] = f"{self.type[:4]}label"
       self.fillsvgargs(args, diffs, context)
     if draw & Drawable.DRAW_FG:
       rot = self["at"][0].rot(diffs)
@@ -810,16 +815,8 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       if c.type == "kicad_sch":
         lib = c.get_symbol_lib(diffs, context)
         lib_id = self.lib_id(diffs, context)
-        # TODO: n x m diffs :(
-        if len(lib_id) > 1:
-          return lib_id.map(
-            lambda lib_id, lib: lib.symbol(lib_id, diffs)
-            .show_unit(None, context)
-            .v,
-            lib,
-          )
-        return lib.symbol(lib_id, diffs).v.show_unit(diffs, context)
-
+        symbols = lib_id.map(lambda lib_id, lib: lib.symbol(lib_id, diffs), lib)
+        return symbols.map(lambda s: s.show_unit(diffs, context))
     return Param(True)
 
   def rot(self, diffs=None):
@@ -872,11 +869,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     lib = context[-1].get_symbol_lib(diffs, context)
     lib_id = self.lib_id(diffs, context)
     sym = lib.symbol(lib_id, diffs)
-    # TODO: n x m diffs :(
-    if len(sym) > 1:
-      power_type = sym.map(lambda s: s.getparam("power", None).v)
-    else:
-      power_type = sym.v.getparam("power", None)
+    power_type = sym.map(lambda s: s.getparam("power", None))
     if power_type.is_empty:
       return power_type  # effectively Param(None)
     netprefix = power_type.map(
