@@ -168,7 +168,7 @@ class Svg:
     # Apply the stack of transformations back-to-front
     pos = (float(pos[0]), float(self.y(pos[1])))
     for batch in self._transforms[::-1]:
-      for transform in batch[::-1]:
+      for transform in batch[:0:-1]:
         if transform[0] == "translate":
           pos = (pos[0] + transform[1], pos[1] + transform[2])
         elif transform[0] == "scale":
@@ -200,7 +200,7 @@ class Svg:
   def _prune(self, force=False):
     """Returns true if the element should be pruned."""
     return (self.prune or force) and any(
-      t[0][0] == "hide" for t in self._transforms if t
+      t[1][0] == "hide" for t in self._transforms if t and len(t) > 1
     )
 
   def add(self, line):
@@ -321,7 +321,7 @@ class Svg:
     tag=None,
   ):
     """Starts a group, optionally with coordinate offset."""
-    transform = []
+    transform = [0]  # first entry is the number of g tags
     hidden = Param.ify(hidden, False)
     path = Param.ify(path, "")
     if hidden.reduce(all):
@@ -343,68 +343,60 @@ class Svg:
       mirror,
     )
     filt = Param(lambda f: f"url(#{f})" if f else "", filt)
+    transform_attr = []
     if not prune and pos.reduce(any, lambda p: p != (0, 0)):
       transform.append(
         ("translate", float(pos[0].v[0]), float(self.y(pos[0].v[1])))
       )
-      self.add(
-        ["<g"]
-        + Svg._tagattr(tag)
-        + self.attr("p", path, "")
-        + self.attr(
+      transform_attr.append(
+        (
           "translate",
           Param(lambda p: (Svg.tounit(p[0]), Svg.tounit(self.y(p[1]))), pos),
         )
-        + self.attr("opacity", opacity, True)
-        + self.attr("filter", filt)
-      ).hascontents()
-      path = Param("")
-      opacity = Param(True)
-      filt = Param("")
+      )
     if not prune and mirror.reduce(any, lambda m: m != (1, 1)):
       transform.append(("scale",) + mirror[0].v)
-      self.add(
-        ["<g"]
-        + Svg._tagattr(tag)
-        + self.attr("p", path, "")
-        + self.attr("scale", mirror)
-        + self.attr("opacity", opacity, True)
-        + self.attr("filter", filt)
-      ).hascontents()
-      path = Param.ify("")
-      opacity = Param.ify(1)
-      filt = Param.ify("")
+      transform_attr.append(("scale", mirror))
     if not prune and rotate.reduce(any):
       transform.append(("rotate", -rotate[0].v))
+      transform_attr.append(("rotate", Param(op.neg, rotate)))
+    # identify and avoid empty g's
+    if (
+      not prune
+      and not transform_attr
+      and opacity.reduce(all)
+      and not path.reduce(any)
+      and not tag
+      and not filt.reduce(any)
+    ):
+      transform.append(("noop",))
+    else:
+      # combine all the transforms if possible
+      combined_transform = []
+      extra_transforms = len(transform_attr)
+      for i, (t, p) in enumerate(transform_attr):
+        if len(p) != 1:
+          extra_transforms = i
+          break
+        val = p.v
+        if not isinstance(val, (tuple, list)):
+          val = (val,)
+        combined_transform.append(f"{t}({','.join(map(str, val))})")
+      transform[0] += 1
       self.add(
         ["<g"]
         + Svg._tagattr(tag)
+        + prune
         + self.attr("p", path, "")
-        + self.attr("rotate", Param(op.neg, rotate))
+        + self.attr("transform", Param(" ".join(combined_transform)))
         + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
       ).hascontents()
-      path = Param.ify("")
-      opacity = Param.ify(1)
-      filt = Param.ify("")
-    if prune or not transform:
-      if (
-        not prune
-        and opacity.reduce(all)
-        and not path.reduce(any)
-        and not tag
-        and not filt.reduce(any)
-      ):
-        transform.append(("noop",))
-      else:
-        self.add(
-          ["<g"]
-          + Svg._tagattr(tag)
-          + prune
-          + self.attr("p", path, "")
-          + self.attr("opacity", opacity, True)
-          + self.attr("filter", filt)
-        ).hascontents()
+      assert not self.data or self.data[-1] != "<g>", "empty <g> tag generated"
+      # Spit out the remaining transforms, somewhat inefficiently (for diffs)
+      for t, p in transform_attr[extra_transforms:]:
+        transform[0] += 1
+        self.add(["<g"] + self.attr(t, p)).hascontents()
     self._rotatestate.append(rotate)
     self._mirrorstate.append(mirror)
 
@@ -416,11 +408,11 @@ class Svg:
     self._rotatestate.pop()
     prune = self._prune()
     transforms = self._transforms.pop()
-    if prune or transforms and transforms[0][0] == "noop":
+    gcount = transforms[0]
+    if prune or not gcount:
       return not prune
     # If all that's between this end tag and the start tag are a bunch of
     # animations, delete the whole set
-    gcount = max(1, len(transforms))
     for d in self.data[-1::-1]:
       if d.startswith("<g"):
         while self.data and not self.data.pop().startswith("<g"):
@@ -943,6 +935,7 @@ class Svg:
     # textContent will be inaccurate.
     self._extend_current_line = True
     # FIXME: clean up this janky way of collecting pin names/numbers
+    # FIXME: once cleaned up, can prune empty text from rendering entirely
     if prop and isinstance(prop, int) and prop < Svg.PROP_LABEL:
       pintext = "\n".join(t.v for t in text)
       if not self.pin_text or len(self.pin_text[-1]) == 3:
