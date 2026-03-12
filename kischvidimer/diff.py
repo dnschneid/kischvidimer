@@ -17,19 +17,18 @@ import argparse
 import importlib
 import os
 import sys
-from abc import ABC, abstractmethod
 from collections import namedtuple
 from copy import deepcopy
 
 DiffParam = namedtuple("DiffParam", ["v", "c"])
 
 
-class Comparable(ABC):
+class Comparable:
   """Superclass that simplifies implementation of comparables."""
 
-  @abstractmethod
   def __eq__(self, other):
     """Checks for equality, ideally quickly."""
+    raise NotImplementedError
 
   def sortkey(self):
     """Default implementation of sortkey is just the string representation."""
@@ -59,7 +58,6 @@ class Comparable(ABC):
     diff = self.diff(other, diffparam)
     return None if diff is None else len(diff)
 
-  @abstractmethod
   def apply(self, key, data):
     """Applies a single difference. apply(d) for d in diff(other) => other
     Return an error string if the patch could not be applied due to conflict.
@@ -250,6 +248,8 @@ class Param:
     Function will be passed all of the versions as an iterable.
     If innerfunc is provided, apply to each value before passing to func.
     """
+    if self._lencache == 1:
+      return func((innerfunc(self.v) if innerfunc else self.v,))
     return func(innerfunc(x.v) if innerfunc else x.v for x in self)
 
   @staticmethod
