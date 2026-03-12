@@ -186,6 +186,7 @@ class SExp(Comparable):
       self._sexp = data._sexp
       self._subs = data._subs
       self._atoms = data._atoms
+      self._has_type = data._has_type
       return
     self._sexp = data or []
     self._subs = {}
