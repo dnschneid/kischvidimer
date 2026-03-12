@@ -124,8 +124,9 @@ class Param:
         # Copy-through
         self._args = args[0]._args
       else:
-        assert not any(isinstance(a, list) for a in args), "ambiguous arg type"
-        assert not any(isinstance(a, Diff) for a in args), "arg not Diff.Group"
+        assert not any(isinstance(a, (list, Diff)) for a in args), (
+          "ambiguous arg type or arg not Diff.Group"
+        )
         self._args = args
       self._func = func
     self._default = default
@@ -187,7 +188,7 @@ class Param:
       for j in range(*i.indices(len(self))):
         ret.append(self[j])
       return ret
-    if not (0 <= i < len(self)):
+    if not (0 <= i < self._lencache):
       raise IndexError(i)
     if i not in self._evalcache:
       args = []
@@ -232,7 +233,7 @@ class Param:
 
   def get(self, i):
     """Clamps i to the last diff in the set."""
-    return self.__getitem__(min(len(self) - 1, i))
+    return self.__getitem__(min(self._lencache - 1, i))
 
   def __len__(self):
     return self._lencache
@@ -276,7 +277,8 @@ class Diff:
     def __init__(self, *entries):
       if len(entries) == 1 and isinstance(entries[0], Diff):
         entries = (entries[0]._data[0], entries[0])
-      assert all(isinstance(e, Diff) for e in entries[1:]), entries
+      if len(entries) > 1:
+        assert all(isinstance(e, Diff) for e in entries[1:]), entries
       super().__init__(entries)
 
   # datatypes:
@@ -577,6 +579,8 @@ class TargetDict(dict):
 
   def param(self, target, key, base, default=None, with_remove_c=None):
     diffs = None if self is None else self.get(target, key)
+    if not diffs and not with_remove_c:
+      return Param(base, default=default)
     remove_d = (FakeDiff(with_remove_c, old=base),) if with_remove_c else ()
     return Param(Diff.Group(base, *(diffs or ())), *remove_d, default=default)
 
