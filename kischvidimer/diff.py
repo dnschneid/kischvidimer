@@ -87,39 +87,27 @@ class Param:
 
   def __init__(self, func, *args, default=None):
     """Tracks a lazy-eval parameter, based on constants, diffs, or other Params.
-    func  -- a function to lazy-apply to args, or a constant value for the Param
-    *args -- one or more arguments, Params, or list[Diff]s.
-             The resulting svg class is a union of any diffs included.
-    default -- returned whenever there is no value or a function returns None
+
+    Forms (most common first):
+      Param(value)            -- constant (fast path; _evalcache=None)
+      Param(func, a, b, ...)  -- lazy function application over Param/const args
+      Param(param)            -- shallow copy (shared _evalcache)
+      Param(diff_group)       -- deferred diff evaluation
+      Param(None, default=X)  -- same as Param(X)
+      Param(param, default=X) -- re-wrap with a new default
+
+    default -- substituted whenever a value is or evaluates to None.
     """
-    assert callable(func) == bool(args), "missing either function or args"
-    if func is None and not args:
-      # Inverted case where there's no initial value but there is a default
-      func = default
-      default = None
-    if isinstance(func, Param) and (
-      default is None or default == func._default
-    ):
-      # Shallow copy, since Param operations are idempotent
-      assert not args
-      self._args = func._args
-      self._func = func._func
-      self._lencache = func._lencache
-      self._evalcache = func._evalcache
-      self._default = func._default
-      return
-    if not args:
-      assert not isinstance(func, Diff)
-      self._args = [func]
-      self._func = None
-    else:
+    # --- Param(func, *args): lazy function application ---
+    if args:
+      assert callable(func), "missing function for args"
       if (
         len(args) == 1
         and isinstance(args[0], Param)
         and not args[0]._func
         and args[0]._default is None
       ):
-        # Copy-through
+        # Copy-through: unwrap a trivial wrapper Param to get its raw args
         self._args = args[0]._args
       else:
         assert not any(isinstance(a, (list, Diff)) for a in args), (
@@ -127,6 +115,55 @@ class Param:
         )
         self._args = args
       self._func = func
+      self._default = default
+      self._lencache = 1
+      for arg in self._args:
+        if isinstance(arg, (Param, Diff.Group)):
+          self._lencache = max(self._lencache, len(arg))
+      if isinstance(default, (Param, Diff.Group)):
+        self._lencache = max(self._lencache, len(default))
+      self._evalcache = {}
+      return
+
+    # --- No-args forms below ---
+
+    # Param(None, default=X) is equivalent to Param(X)
+    if func is None:
+      func = default
+      default = None
+
+    # --- Param(param, ...): copy or re-wrap ---
+    if isinstance(func, Param):
+      if default is None or default == func._default:
+        # Shallow copy -- shares the same _evalcache, since Param is idempotent
+        self._args = func._args
+        self._func = func._func
+        self._lencache = func._lencache
+        self._evalcache = func._evalcache
+        self._default = func._default
+        return
+      # Re-wrap with a different default: unwrap constants to their raw value
+      if func._evalcache is None:
+        func = func._args[0]
+      # Non-constant Params fall through to the slow path as a Diff.Group/Param
+
+    # --- Param(value): constant (common) ---
+    if not isinstance(func, (Diff, Param, Diff.Group)):
+      if func is None and default is not None:
+        func = default
+      else:
+        assert not callable(func), "missing args to go with function"
+      self._args = (func,)
+      self._func = None
+      self._lencache = 1
+      self._default = default
+      self._evalcache = None  # sentinel for constant-value Param
+      return
+
+    # --- Param(diff_group) or Param(non-constant-param-with-new-default) ---
+    assert not isinstance(func, Diff)
+    self._args = [func]
+    self._func = None
     self._default = default
     self._lencache = 1
     for arg in self._args:
@@ -176,6 +213,8 @@ class Param:
     cs = {c for diff in param for c in diff.c}
     return FakeDiff(cs, old=base_value, new=diff_value).param()
 
+  _EMPTY_CLASSES = frozenset()  # optimization to avoid creating empty sets
+
   def __getitem__(self, i):
     """Indexes into the diffs and returns a DiffParam of (value, svgclassset).
     raises IndexError if the index is out of bounds.
@@ -188,9 +227,12 @@ class Param:
       return ret
     if not (0 <= i < self._lencache):
       raise IndexError(i)
+    if self._evalcache is None:
+      # Constant fast path -- no diffs, no function
+      return DiffParam(self._args[0], Param._EMPTY_CLASSES)
     if i not in self._evalcache:
       args = []
-      svgclasses = set()
+      svgclasses = None
       for arg in self._args:
         if isinstance(arg, Param):
           arg = arg.get(i)
@@ -201,7 +243,13 @@ class Param:
             arg = arg.forsvg()
         if isinstance(arg, DiffParam):
           args.append(arg.v)
-          svgclasses.update({arg.c} if isinstance(arg.c, str) else arg.c)
+          if arg.c:
+            if svgclasses is None:
+              svgclasses = set()
+            if isinstance(arg.c, str):
+              svgclasses.add(arg.c)
+            else:
+              svgclasses.update(arg.c)
         else:
           args.append(arg)
       assert self._func or len(args) == 1
@@ -211,8 +259,13 @@ class Param:
       # If we ended up with a Param, flatten it
       if isinstance(val, Param):
         val, classes = val.get(i)
-        svgclasses.update(classes)
-      self._evalcache[i] = ret = DiffParam(v=val, c=svgclasses)
+        if classes:
+          if svgclasses is None:
+            svgclasses = set()
+          svgclasses.update(classes)
+      self._evalcache[i] = ret = DiffParam(
+        v=val, c=svgclasses or Param._EMPTY_CLASSES
+      )
     else:
       ret = self._evalcache[i]
     return ret
@@ -220,6 +273,8 @@ class Param:
   @property
   def v(self):
     """Convenience getter for code that doesn't care about diffs."""
+    if self._evalcache is None:
+      return self._args[0]
     return self[0].v
 
   @property
