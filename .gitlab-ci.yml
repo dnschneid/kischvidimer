@@ -18,12 +18,12 @@ pre-commit:
 
 pages:
   cache:
-    key: demos-9.0
+    key: demos-10.0
     paths:
       - demos/
   before_script:
     - mkdir -p demos public
-    - test -d demos/kicad-9.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/9.0/kicad-9.0.tar.gz?path=demos' | tar -xzC demos
+    - test -d demos/kicad-10.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/10.0/kicad-10.0.tar.gz?path=demos' | tar -xzC demos
     - pip install fonttools
   script:
     - find demos -name '*.kicad_pro' -not -regex '.*/simulation/.*' | while read -r pro; do

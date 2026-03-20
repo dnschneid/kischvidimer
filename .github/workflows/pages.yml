@@ -28,12 +28,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: demos
-          key: kicad8-demos
+          key: kicad10-demos
       - name: Download demos
         if: steps.cache-demos.outputs.cache-hit != 'true'
         run: |
           mkdir -p demos
-          test -d demos/kicad-8.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/8.0/kicad-8.0.tar.gz?path=demos' | tar -xzC demos
+          test -d demos/kicad-10.0-demos || curl -fL 'https://gitlab.com/kicad/code/kicad/-/archive/10.0/kicad-10.0.tar.gz?path=demos' | tar -xzC demos
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
