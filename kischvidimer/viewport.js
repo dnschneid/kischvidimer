@@ -28,6 +28,8 @@ let pz = null;
 let hammer = null;
 let panCounter = 0;
 let originalViewBox = null;
+let ghostAfterElems = [];
+let ghostBeforeElems = [];
 
 export function init() {
   Tooltip.init();
@@ -183,10 +185,10 @@ export function loadPage(pageIndex) {
         );
       }
       // increase opacity of ghost pages as they approach the boundary
-      Array.from(svgPage.getElementsByClassName("ghostafter")).forEach((g) => {
+      ghostAfterElems.forEach((g) => {
         g.style.filter = `opacity(${Math.max(Math.exp((panYExtents[0] - y) / panPageHysteresis), 0.2)})`;
       });
-      Array.from(svgPage.getElementsByClassName("ghostbefore")).forEach((g) => {
+      ghostBeforeElems.forEach((g) => {
         g.style.filter = `opacity(${Math.max(Math.exp((y - panYExtents[1]) / panPageHysteresis), 0.2)})`;
       });
     },
@@ -259,6 +261,10 @@ export function createGhostPages(pageIndex) {
 
   // Append to SVG
   svgPage.firstElementChild.firstElementChild.appendChild(ghostSvg);
+
+  // Cache ghost page elements for use in onPan
+  ghostAfterElems = Array.from(svgPage.getElementsByClassName("ghostafter"));
+  ghostBeforeElems = Array.from(svgPage.getElementsByClassName("ghostbefore"));
 }
 
 function addGhostPage(
