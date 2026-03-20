@@ -216,9 +216,9 @@ export function selectInstance(container, inst) {
   Array.from(container.getElementsByClassName("instance")).forEach((anim) => {
     if (inst === undefined || anim.classList.contains(inst)) {
       anim.parentNode.removeAttribute("opacity");
-      anim.outerHTML = "";
+      anim.remove();
     } else {
-      anim.parentNode.outerHTML = "";
+      anim.parentNode.remove();
     }
   });
 }
