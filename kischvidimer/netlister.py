@@ -545,7 +545,6 @@ class Netlister:
     is_unique = False
     symuuid = None
     power_net = None
-    pins = None
     jumper_dupe_pins = None
     jumper_pin_groups = None
     for i, c in enumerate(reversed(context)):
@@ -561,12 +560,14 @@ class Netlister:
         show_unit = c.show_unit(None, sym_context).v
         variant = c.variant(None, sym_context).v
         power_net = c.power_net(None, sym_context, self.netprefix).v
-        pins = symbol_def.get_pins(None, context, variant=variant).v
+        nonunique_pins = symbol_def.get_nonunique_pins(
+          None, context, variant=variant
+        )
         break
-    name = pin.name(None, context).v
+    name = pin.getparam("name", None).v
     number = pin.num(None, context).v
     pintype = pin.get_type_style(None, context)[0].v
-    is_unique = len(pins[name]) == 1
+    is_unique = name not in nonunique_pins
     # FIXME: alternates can cause electrical type of hidden pin to be power
     # input (or not). does that still make it a power net?
     is_pwr = pin.hide().v and pintype == "power_in"

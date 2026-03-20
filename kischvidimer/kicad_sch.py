@@ -698,20 +698,16 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   def get_alternates(self, diffs, context):
     # TODO: redo alternates system.  SymbolInst.get_alternates is only used by
     # svg.instantiate (to generate the instance hash) and by PinDef.alternate
-    # (lookup by pin number). netlister uses SymbolDef.get_pins which exists
-    # only to check if a pin name is unique, considering alternates. All of this
-    # is slow/requires caching and doesn't support diffs. Plus the unique check
-    # isn't even sufficient if alternates span pages.
-    # Instead, only have two entries in the symbol library: one with all pins at
-    # their default configuration and another with none of the alternate-enabled
-    # pins rendered. When rendering a unit with any alternates (across any
-    # diff), use the latter type and manually render all of the alternate pins.
+    # (lookup by pin number). netlister uses SymbolDef.get_nonunique_pins
+    # which only checks base pin name uniqueness (no alternates dependency).
+    # get_alternates is still slow/requires caching and doesn't support diffs.
+    # Instead, only have two entries in the symbol library: one with all pins
+    # at their default configuration and another with none of the
+    # alternate-enabled pins rendered. When rendering a unit with any
+    # alternates (across any diff), use the latter type and manually render
+    # all of the alternate pins.
     # This may require updates to the javascript code for mouseovers, although
     # that could be helpful to show the original pin name for alternates.
-    # Netlister should track fallback names and select the fallback if it turns
-    # out there are collisions. Then delete SymbolInst.get_alternates and
-    # SymboldDef.get_pins and only feature a lookup_alternate func for one pin
-    # at a time.
     # Until then, just don't support diffs.
     if not diffs and hasattr(self, "_get_alternates_cache"):
       return self._get_alternates_cache

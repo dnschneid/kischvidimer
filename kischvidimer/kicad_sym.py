@@ -448,33 +448,27 @@ class SymbolDef(sexp.SExp):
       for field in properties.values():
         field.fillsvg(svg, diffs, draw_props, context + (self,))
 
-  def get_pins(self, diffs, context, variant=1):
-    # Returns a dict of pin names and a list of pin numbers for each name
-    # FIXME: we don't have sufficient context if there are alternates on units
-    #        across multiple pages
-    cacheentry = None
-    if not diffs:
-      # cache per refdes, as a simple way of handling alternates.
-      if not hasattr(self, "_get_pins_cache"):
-        self._get_pins_cache = {}
-      for c in reversed(context):
-        if hasattr(c, "refdes"):
-          cacheentry = c.refdes(None, context).v
-          break
-      if cacheentry in self._get_pins_cache:
-        return self._get_pins_cache[cacheentry]
-    pins = {}
+  def get_nonunique_pins(self, diffs, context, variant=1):
+    # Returns a set of base pin names that appear on more than one pin.
+    # FIXME: diffs not handled; cache assumes base revision's pin names
+    if not hasattr(self, "_nonunique_pins_cache"):
+      self._nonunique_pins_cache = {}
+    variant_v = variant.v if isinstance(variant, Param) else variant
+    if variant_v in self._nonunique_pins_cache:
+      return self._nonunique_pins_cache[variant_v]
+    seen = set()
+    nonunique = set()
     for body in self._get_bodies(diffs, context, variant=variant).v:
       if "pin" not in body:
         continue
       for pin in body["pin"]:
-        name = pin.name(diffs, context).v  # FIXME: diffs
-        num = pin.num(diffs, context).v  # FIXME: diffs
-        pins.setdefault(name, []).append(num)
-    pins = Param(pins)
-    if cacheentry is not None:
-      self._get_pins_cache[cacheentry] = pins
-    return pins
+        name = pin.getparam("name", diffs).v
+        if name in seen:
+          nonunique.add(name)
+        else:
+          seen.add(name)
+    self._nonunique_pins_cache[variant_v] = nonunique
+    return nonunique
 
   def get_con_pin_coords(self, diffs, context, unit, variant=1):
     # Returns untransformed coordinates where unconnected markers can appear
