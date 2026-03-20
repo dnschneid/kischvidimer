@@ -1147,10 +1147,17 @@ class Svg:
         if i == len(name) - 1:
           return False
         continue
+      symbounds = symsvg._bounds
       if symsvg.data:
-        self.add(
-          ["<use", f'href="#{name[i].v}"'] + self.attr_opacity(name, i=i)
-        ).nocontents()
+        useattrs = ["<use", f'href="#{name[i].v}"']
+        if symbounds:
+          useattrs += [
+            f'x="{Svg.tounit(symbounds[0])}"',
+            f'y="{Svg.tounit(symbounds[1])}"',
+            f'width="{Svg.tounit(symbounds[2] - symbounds[0])}"',
+            f'height="{Svg.tounit(symbounds[3] - symbounds[1])}"',
+          ]
+        self.add(useattrs + self.attr_opacity(name, i=i)).nocontents()
         self.generic_text.extend(
           (self.metadata_context, t) for _, t in symsvg.generic_text
         )
@@ -1158,7 +1165,6 @@ class Svg:
           (self.metadata_context,) + t[1:] for t in symsvg.pin_text
         )
         self.glyphs.update(symsvg.glyphs)
-        symbounds = symsvg._bounds
         if bounds:
           bounds.append(FakeDiff(name[i].c, old=bounds[0], new=symbounds))
         else:
@@ -1458,7 +1464,16 @@ class Svg:
     for name, symsvg in self.symbols.items():
       if symsvg is None or not symsvg.data:
         continue
-      svg.append(f'<symbol id="{name}" overflow="visible">')
+      symattrs = f'<symbol id="{name}"'
+      if symsvg._bounds:
+        b = symsvg._bounds
+        symattrs += (
+          f' viewBox="{Svg.tounit(b[0])},{Svg.tounit(b[1])}'
+          f',{Svg.tounit(b[2] - b[0])},{Svg.tounit(b[3] - b[1])}"'
+        )
+      else:
+        symattrs += ' overflow="visible"'
+      svg.append(symattrs + ">")
       svg += symsvg.data
       svg.append("</symbol>")
     svg += self.data or Svg._get_placeholder().data
