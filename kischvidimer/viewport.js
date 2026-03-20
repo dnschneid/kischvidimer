@@ -75,10 +75,16 @@ export function init() {
     evt.target.addEventListener("touchend", onTouchEnd);
   });
 
+  let pendingMouseMove = null;
   svgPage.onmousemove = function (evt) {
-    Tooltip.onSvgMouseMove(evt);
     // store the mouse event in case we need to emulate mousedown on ghost transition
     svgPage.mouseEvent = evt;
+    if (pendingMouseMove === null) {
+      pendingMouseMove = requestAnimationFrame(() => {
+        pendingMouseMove = null;
+        Tooltip.onSvgMouseMove(svgPage.mouseEvent);
+      });
+    }
   };
   svgPage.onmouseout = function () {
     if (!Tooltip.isfixed()) {
