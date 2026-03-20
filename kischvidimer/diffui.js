@@ -22,6 +22,7 @@ import * as Util from "util";
 import * as Viewport from "viewport";
 
 let svgPage = null;
+let pendingMouseoverTarget = null;
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
 let xprobe = null;
@@ -108,16 +109,27 @@ document.addEventListener("DOMContentLoaded", () => {
     if (Viewport.Tooltip.isfixed() || e.buttons) {
       return;
     }
-    let result = lookupElem(e.target);
-    if (
-      (result.type === "net" && result.value !== "GND") ||
-      result.type === "bus" ||
-      (result.type === "component" && result.data)
-    ) {
-      displayTooltip(result, false);
-    } else {
-      Viewport.Tooltip.hide(true);
+    svgPage.mouseoverCancelled = false;
+    if (pendingMouseoverTarget === null) {
+      requestAnimationFrame(() => {
+        let target = pendingMouseoverTarget;
+        pendingMouseoverTarget = null;
+        if (svgPage.mouseoverCancelled) {
+          return;
+        }
+        let result = lookupElem(target);
+        if (
+          (result.type === "net" && result.value !== "GND") ||
+          result.type === "bus" ||
+          (result.type === "component" && result.data)
+        ) {
+          displayTooltip(result, false);
+        } else {
+          Viewport.Tooltip.hide(true);
+        }
+      });
     }
+    pendingMouseoverTarget = e.target;
   };
   svgPage.onmouseup = function (e) {
     if (e.button === 3) {

@@ -84,9 +84,11 @@ export function init() {
     if (!Tooltip.isfixed()) {
       Tooltip.hide(true);
     }
+    svgPage.mouseoverCancelled = true;
   };
   svgPage.onmousedown = function () {
     Tooltip.hide();
+    svgPage.mouseoverCancelled = true;
   };
   svgPage.oncontextmenu = function (e) {
     e.preventDefault();
