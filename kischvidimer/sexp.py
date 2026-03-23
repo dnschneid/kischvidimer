@@ -265,7 +265,7 @@ class SExp(Comparable):
       diffs, self, key, base, default=default, with_remove_c=with_remove_c
     )
 
-  def getparam(self, atom, diffs=None, default=None, key=None):
+  def getparam(self, atom, diffs=None, default=None, key=None, cls=None):
     """Returns a Param for data of a unique subsexp, handling add/removes.
     It's generally better to make these subsexps Modifiers, if applicable.
     """
@@ -280,7 +280,7 @@ class SExp(Comparable):
           for dp in item.param(diffs, key)
         )
       )
-    added, removed = self.added_and_removed(diffs, SExp.get_class(atom))
+    added, removed = self.added_and_removed(diffs, cls or SExp.get_class(atom))
     options += (FakeDiff(c, new=item.param(diffs).v) for item, c in added)
     options += (FakeDiff(c, old=options[0]) for c in removed.values())
     return Param(options, default=default)

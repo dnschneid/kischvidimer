@@ -21,9 +21,20 @@ import re
 import subprocess
 from xml.sax.saxutils import escape
 
-from . import bmp, jpeg, png, themes
+from . import bmp, jpeg, png, sexp, themes
 from .diff import Diff, DiffParam, FakeDiff, Param
 from .kicad_common import Drawable
+
+
+class AlternateContext(sexp.SExp):
+  """Context entry providing a fixed alternates dict."""
+
+  def __init__(self, alternates_param):
+    super().__init__([])
+    self._alternates = alternates_param
+
+  def get_alternates(self, diffs, context):
+    return self._alternates
 
 
 class Svg:
@@ -1037,12 +1048,15 @@ class Svg:
     Returns a Param of the bounds if the symbol was successfully instantiated;
     otherwise you should draw something yourself.
     """
-    # FIXME: this is a terrible hack for alternates, and doesn't support diffs
-    alternates = ""
+    # Build a diff-aware alternates hash for the cache key
     if context and hasattr(context[-1], "get_alternates"):
-      alternates = context[-1].get_alternates(None, context).v
-      alternates = "\n".join(f"{n}={a}" for n, a in sorted(alternates.items()))
-      alternates = f"{hash(alternates):x}"
+      alternates_param = context[-1].get_alternates(diffs, context)
+      alternates_hash = alternates_param.map(
+        lambda a: f"{hash(tuple(sorted(a.items()))):x}"
+      )
+    else:
+      alternates_param = Param({})
+      alternates_hash = Param("")
     lib = Param(lib)
     lib_id = Param(lib_id)
     unit = Param(unit, default=1)
@@ -1064,21 +1078,21 @@ class Svg:
       *self._rotatestate,
     )
     name = Param(
-      lambda lib, lib_id, unit, variant, rotate, mirror: (
+      lambda lib, lib_id, unit, variant, rotate, mirror, alts: (
         ":".join(
           (
             "symbol",
             f"{lib.sym_hash(lib_id, diffs):x}",
             str(unit),
             str(variant),
-            alternates,
+            alts,
             str(rotate // 90),
             "m" * mirror,
             f"{draw:x}",
           )
         )
       ),
-      *(lib, lib_id, unit, variant, rotate, mirror),
+      *(lib, lib_id, unit, variant, rotate, mirror, alternates_hash),
     )
     for i in range(len(name)):
       if name[i].v in self.symbols:
@@ -1095,12 +1109,18 @@ class Svg:
       symsvg._rotatestate = [rotate.get(i).v]
       symsvg.push_invert_y()
       symsvg.colormap = self.colormap
-      # FIXME: diffs
+      # Inject this variant's alternates into the context
+      variant_alts = alternates_param.get(i).v
+      variant_context = context or ()
+      if variant_alts is not None:
+        variant_context = variant_context + (
+          AlternateContext(Param(variant_alts)),
+        )
       sym.fillsvg(
         symsvg,
-        diffs,
+        None,
         draw,
-        context or (),
+        variant_context,
         unit=int(params[2]),
         variant=int(params[3]),
       )

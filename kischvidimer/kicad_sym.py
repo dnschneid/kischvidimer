@@ -24,7 +24,7 @@ import sys
 from decimal import Decimal
 
 from . import sexp, svg
-from .diff import Param
+from .diff import FakeDiff, Param
 from .kicad_common import Drawable, rotated, translated
 from .kicad_modifiers import HasModifiers
 
@@ -96,23 +96,43 @@ class PinDef(Drawable):
     return self.getparam("number", diffs)
 
   def get_type_style(self, diffs, context):
-    # FIXME: diffs
-    target = self
-    # FIXME: alternate can have diffs too
-    alternate = self.alternate(diffs, context).v
-    if alternate is not None:
-      for alt in self["alternate"]:
-        if alternate == alt[0]:
-          target = alt
-          break
-      # TODO: what to do when alternate is not found?
-    return (target.param(diffs, "type"), target.param(diffs, "style"))
+    alternate = self.alternate(diffs, context)
+    added, removed = self.added_and_removed(diffs, AlternateDef)
+    base_type = self.param(diffs, "type")
+    base_style = self.param(diffs, "style")
+
+    def _resolve(alt_name):
+      if alt_name is not None:
+        for alt in self.getsubs("alternate"):
+          if isinstance(alt, AlternateDef) and alt_name == alt[0]:
+            rm_c = removed.get(id(alt))
+            if rm_c is not None:
+              return (
+                FakeDiff(
+                  rm_c, old=alt.param(diffs, "type").v, new=base_type.v
+                ).param(),
+                FakeDiff(
+                  rm_c, old=alt.param(diffs, "style").v, new=base_style.v
+                ).param(),
+              )
+            return (alt.param(diffs, "type"), alt.param(diffs, "style"))
+        for a in added:
+          if alt_name == a.v[0]:
+            return (
+              FakeDiff(
+                a.c, old=base_type.v, new=a.v.param(diffs, "type").v
+              ).param(),
+              FakeDiff(
+                a.c, old=base_style.v, new=a.v.param(diffs, "style").v
+              ).param(),
+            )
+        # alternate not found; fall through to default
+      return (base_type, base_style)
+
+    return Param.multi(2, lambda a: _resolve(a), alternate)
 
   @sexp.uses("alternate")
   def alternate(self, diffs, context):
-    # FIXME: diffs
-    if "alternate" not in self:
-      return Param(None)
     num = self["number"][0][0]
     for c in reversed(context):
       if hasattr(c, "get_alternates"):

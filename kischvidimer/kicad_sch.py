@@ -18,7 +18,7 @@ import re
 import sys
 
 from . import kicad_sym, kicad_wks, sexp, svg
-from .diff import Param
+from .diff import FakeDiff, Param
 from .kicad_common import (
   Drawable,
   Field,
@@ -700,7 +700,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     # svg.instantiate (to generate the instance hash) and by PinDef.alternate
     # (lookup by pin number). netlister uses SymbolDef.get_nonunique_pins
     # which only checks base pin name uniqueness (no alternates dependency).
-    # get_alternates is still slow/requires caching and doesn't support diffs.
+    # get_alternates is still slow/requires caching.
     # Instead, only have two entries in the symbol library: one with all pins
     # at their default configuration and another with none of the
     # alternate-enabled pins rendered. When rendering a unit with any
@@ -708,21 +708,43 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     # all of the alternate pins.
     # This may require updates to the javascript code for mouseovers, although
     # that could be helpful to show the original pin name for alternates.
-    # Until then, just don't support diffs.
-    if not diffs and hasattr(self, "_get_alternates_cache"):
-      return self._get_alternates_cache
-    if "pin" not in self:
-      return Param({})
+    cache_key = id(diffs)
+    if not hasattr(self, "_get_alternates_cache"):
+      self._get_alternates_cache = {}
+    if cache_key in self._get_alternates_cache:
+      return self._get_alternates_cache[cache_key]
+    added, removed = self.added_and_removed(diffs, PinInst)
     context = context + (self,)
-    alternates = {}
-    for pin in self["pin"]:
-      alternate = pin.get_alternate(diffs, context)
-      if alternate is not None:
-        alternates[pin.number] = alternate.v
-    alternates_param = Param(alternates)
-    if not diffs:
-      self._get_alternates_cache = alternates_param
-    return alternates_param
+    nums = []
+    alt_params = []
+    for pin in self["pin"] if "pin" in self else ():
+      rm_c = removed.get(id(pin))
+      if rm_c is not None:
+        alt = pin.get_alternate(None, context)
+        if alt is not None:
+          nums.append(pin.number)
+          alt_params.append(FakeDiff(rm_c, old=alt.v).param())
+      else:
+        alternate = pin.get_alternate(diffs, context)
+        if alternate is not None:
+          nums.append(pin.number)
+          alt_params.append(alternate)
+    for pin, add_c in added:
+      alt = pin.get_alternate(None, context)
+      if alt is not None:
+        nums.append(pin.number)
+        alt_params.append(FakeDiff(add_c, new=alt.v).param())
+    if not alt_params:
+      result = Param({})
+    else:
+      result = Param(
+        lambda *alts, nums=nums: {
+          num: a for num, a in zip(nums, alts) if a is not None
+        },
+        *alt_params,
+      )
+    self._get_alternates_cache[cache_key] = result
+    return result
 
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
@@ -938,7 +960,7 @@ class PinInst(HasUUID, sexp.SExp):
 
   @sexp.uses("alternate")
   def get_alternate(self, diffs, context):
-    return self.getparam("alternate", diffs)
+    return self.getparam("alternate", diffs, cls=kicad_sym.AlternateInst)
 
 
 kicad_sym.PinInst = PinInst
