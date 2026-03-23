@@ -566,11 +566,12 @@ class Netlister:
         break
     name = pin.getparam("name", None).v
     number = pin.num(None, context).v
+    # pintype reflects the alternate's type if one is selected
     pintype = pin.get_type_style(None, context)[0].v
     is_unique = name not in nonunique_pins
-    # FIXME: alternates can cause electrical type of hidden pin to be power
-    # input (or not). does that still make it a power net?
-    is_pwr = pin.hide().v and pintype == "power_in"
+    is_pwr = pintype == "power_in" and (
+      power_net or pin.hide().v  # legacy: hidden power_in on non-power symbols
+    )
     is_nc = pintype == "no_connect"
     # If name is not empty, include unit letter if there's more than one
     if ref and show_unit and name and name != "~":
