@@ -401,10 +401,10 @@ export function searchText(query) {
 
 /// DIFF FUNCTIONS
 function initDiffs() {
-  // Initialize empty diffs
-  forEachPage((p) => {
-    if (!index.diffs[p.id]) {
-      index.diffs[p.id] = [];
+  // Initialize empty diffs keyed by numeric page index
+  forEachPage((p, i) => {
+    if (!index.diffs[i]) {
+      index.diffs[i] = [];
     }
   });
 }
