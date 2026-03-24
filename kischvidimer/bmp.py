@@ -200,15 +200,22 @@ def to_png(f):
 
 
 def main(argv):
-  infile = sys.stdin.buffer
-  outfile = sys.stdout.buffer
   if len(sys.argv) == 2:
     infile = sys.argv[1]
-    outfile = open(sys.argv[1].rpartition(".")[0] + ".png", "wb")
+    outpath = sys.argv[1].rpartition(".")[0] + ".png"
   elif len(sys.argv) >= 3:
     infile = sys.argv[1]
-    outfile = open(sys.argv[2], "wb")
-  outfile.write(to_png(infile))
+    outpath = sys.argv[2]
+  else:
+    infile = sys.stdin.buffer
+    outpath = None
+  data = to_png(infile)
+  if outpath:
+    with open(outpath, "wb") as f:
+      f.write(data)
+  else:
+    sys.stdout.buffer.write(data)
+  return 0
 
 
 if __name__ == "__main__":

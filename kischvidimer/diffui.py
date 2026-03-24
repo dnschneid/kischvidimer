@@ -712,20 +712,21 @@ class DiffUI:
   def _launch_ui(self, server):
     try:
       chrome, shell = self._get_chrome_cmd()
-      self._uiprocess = subprocess.Popen(
-        chrome
-        + (
-          f"--user-data-dir={self._tempdir}",
-          "--renderer-process-limit=1",
-          "--disable-extensions",
-          "--no-proxy-server",
-          "--disable-component-extensions-with-background-pages",
-          f"--app=http://localhost:{server.server_address[1]}",
-        ),
-        shell=shell,
-        stderr=subprocess.STDOUT,
-        stdout=open(os.path.join(self._tempdir, "chrome.log"), "wb"),
-      )
+      with open(os.path.join(self._tempdir, "chrome.log"), "wb") as chromeout:
+        self._uiprocess = subprocess.Popen(
+          chrome
+          + (
+            f"--user-data-dir={self._tempdir}",
+            "--renderer-process-limit=1",
+            "--disable-extensions",
+            "--no-proxy-server",
+            "--disable-component-extensions-with-background-pages",
+            f"--app=http://localhost:{server.server_address[1]}",
+          ),
+          shell=shell,
+          stderr=subprocess.STDOUT,
+          stdout=chromeout,
+        )
     except FileNotFoundError as e:
       sys.stderr.write(f"ERROR: {e}\n")
       server.shutdown()
@@ -812,9 +813,11 @@ def main(argv):
     raise Exception("conflicting diffs selected")
   for i in range(len(paths) // count):
     base_schs[i].set_timestamp(time.strftime("%c"))
-    base_schs[i].write(
-      open(paths[i * 4 + 3], "wb") if count == 4 else sys.stdout.buffer
-    )
+    if count == 4:
+      with open(paths[i * 4 + 3], "wb") as f:
+        base_schs[i].write(f)
+    else:
+      base_schs[i].write(sys.stdout.buffer)
 
 
 if __name__ == "__main__":
