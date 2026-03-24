@@ -43,4 +43,9 @@ if __name__ == "__main__":
     import cProfile
 
     sys.exit(cProfile.run("main(sys.argv)", sort="cumulative"))
-  sys.exit(main(sys.argv))
+  ret = main(sys.argv)
+  # there's lots of objects to clean up; just flush files and hard quit
+  sys.stdout.flush()
+  sys.stderr.flush()
+  os.sync()
+  os._exit(ret)
