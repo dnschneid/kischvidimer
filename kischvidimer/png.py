@@ -36,8 +36,16 @@ def getsize_mm(d):
       h = int.from_bytes(d[offset + 12 : offset + 16], "big")
     elif hdrtyp == b"pHYs":
       if d[offset + 16] == 1:  # meter
-        mm_per_x = 1000 / int.from_bytes(d[offset + 8 : offset + 12], "big")
-        mm_per_y = 1000 / int.from_bytes(d[offset + 12 : offset + 16], "big")
+        # Match KiCad/wxWidgets DPI pipeline: px/m is truncated to int px/cm,
+        # then converted to PPI via round(dpcm * 2.54), then mm/px = 25.4/PPI.
+        # This is a bug in KiCad. wxWidgets stores px/cm as a float, but KiCad
+        # queries it as an integer, truncating fractional values
+        # (e.g. 5669 px/m -> 56 px/cm instead of 56.69).
+        # FIXME(kicad#23575): tie this behavior to the document version
+        dpcm_x = int.from_bytes(d[offset + 8 : offset + 12], "big") // 100
+        dpcm_y = int.from_bytes(d[offset + 12 : offset + 16], "big") // 100
+        mm_per_x = 25.4 / round(dpcm_x * 2.54)
+        mm_per_y = 25.4 / round(dpcm_y * 2.54)
     offset += hdrlen + 12
   return (w * mm_per_x, h * mm_per_y)
 
