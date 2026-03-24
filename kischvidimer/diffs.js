@@ -243,12 +243,63 @@ function setAnimation(page) {
     if (anim.classList[0] !== "instance") {
       anim.setAttribute("fill", "freeze");
       anim.beginElement();
-      anim.setAttribute(
-        "dur",
-        diffMap[anim.classList[0]].checked ? "1s" : "indefinite",
-      );
+      anim.setAttribute("dur", isAnimChecked(anim) ? "1s" : "indefinite");
     }
   });
+  updateDiffWarning();
+}
+
+function isAnimChecked(anim) {
+  // An animation with multiple diff classes triggers if at least half are checked
+  let total = 0;
+  let checked = 0;
+  for (let cls of anim.classList) {
+    if (cls in diffMap) {
+      total++;
+      if (diffMap[cls].checked) {
+        checked++;
+      }
+    }
+  }
+  return checked * 2 >= total;
+}
+
+function updateDiffWarning() {
+  let titleDiv = document.querySelector("#animationtoolbox .mdl-card__title");
+  let warning = document.getElementById("diffwarning");
+
+  // Collect the set of diff IDs that are checked
+  let checkedDiffs = new Set();
+  DB.forEachDiff(DB.CUR, (diffPair) => {
+    for (let diffs of diffPair) {
+      for (let diff of diffs) {
+        if (diff.checked) {
+          checkedDiffs.add(diff.id);
+        }
+      }
+    }
+  });
+
+  // Collect the set of diff IDs required by triggered animations
+  let triggeredDiffs = new Set();
+  if (svgPage) {
+    svgPage.querySelectorAll("animate,animateTransform").forEach((anim) => {
+      if (anim.classList[0] !== "instance" && isAnimChecked(anim)) {
+        for (let cls of anim.classList) {
+          if (cls in diffMap) {
+            triggeredDiffs.add(cls);
+          }
+        }
+      }
+    });
+  }
+
+  // Compare: warn if checked set !== triggered set
+  let mismatch =
+    checkedDiffs.size !== triggeredDiffs.size ||
+    [...checkedDiffs].some((d) => !triggeredDiffs.has(d));
+  titleDiv.style.backgroundColor = mismatch ? "#fff3cd" : "";
+  warning.style.display = mismatch ? "inline" : "none";
 }
 
 export function applyAnimationColorWorkaround(theme) {
