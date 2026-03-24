@@ -764,10 +764,10 @@ class Svg:
     scale = Param.ify(scale, 1)
 
     image, width, height = Param.multi(3, self._image, data)
-    width = Param(lambda w, s: round(w * float(s)), width, scale)
-    height = Param(lambda h, s: round(h * float(s)), height, scale)
+    width = Param(lambda w, s: w * float(s), width, scale)
+    height = Param(lambda h, s: h * float(s), height, scale)
     pos = Param(
-      lambda p, w, h: (p[0] - w // 2, p[1] - h // 2),
+      lambda p, w, h: (float(p[0]) - w / 2, float(p[1]) - h / 2),
       pos,
       width,
       height,

@@ -28,26 +28,22 @@ def getsize_mm(d):
   mm_per_x = mm_per_y = 25.4 / 300
   pos = 2
   while pos < len(d):
-    pos += 2 + int.from_bytes(d[pos + 2 : pos + 4], "big")
     if d[pos : pos + 2] in (b"\xff\xc0", b"\xff\xc1", b"\xff\xc2", b"\xff\xc3"):
-      w = int.from_bytes(d[pos + 5 : pos + 7], "big")
-      h = int.from_bytes(d[pos + 7 : pos + 9], "big")
+      h = int.from_bytes(d[pos + 5 : pos + 7], "big")
+      w = int.from_bytes(d[pos + 7 : pos + 9], "big")
     elif (
       d[pos : pos + 2] == b"\xff\xe0" and d[pos + 4 : pos + 9] == b"JFIF\x00"
     ):
-      if d[pos + 11] == 1:
-        factor = 25.4
-      elif d[pos + 11] == 2:
-        factor = 10
-      else:
-        continue
-      mm_per_x = factor / int.from_bytes(d[pos + 12 : pos + 14], "big")
-      mm_per_y = factor / int.from_bytes(d[pos + 14 : pos + 16], "big")
+      if d[pos + 11] in (1, 2):
+        factor = 25.4 if d[pos + 11] == 1 else 10
+        mm_per_x = factor / int.from_bytes(d[pos + 12 : pos + 14], "big")
+        mm_per_y = factor / int.from_bytes(d[pos + 14 : pos + 16], "big")
     elif (
       d[pos : pos + 2] == b"\xff\xe1" and d[pos + 4 : pos + 9] == b"Exif\x00"
     ):
       # TODO: it's complicated to extract the density from exif...
       pass
+    pos += 2 + int.from_bytes(d[pos + 2 : pos + 4], "big")
   return (w * mm_per_x, h * mm_per_y)
 
 
