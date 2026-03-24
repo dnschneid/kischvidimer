@@ -75,26 +75,39 @@ export function init() {
     evt.target.addEventListener("touchend", onTouchEnd);
   });
 
-  let pendingMouseMove = null;
   svgPage.onmousemove = function (evt) {
     // store the mouse event in case we need to emulate mousedown on ghost transition
     svgPage.mouseEvent = evt;
-    if (pendingMouseMove === null) {
-      pendingMouseMove = requestAnimationFrame(() => {
-        pendingMouseMove = null;
-        Tooltip.onSvgMouseMove(svgPage.mouseEvent);
+    if (!svgPage.pendingMouseMove) {
+      svgPage.pendingMouseMove = requestAnimationFrame(() => {
+        svgPage.pendingMouseMove = null;
+        if (svgPage.mouseEvent) {
+          Tooltip.onSvgMouseMove(svgPage.mouseEvent);
+        }
       });
     }
   };
   svgPage.onmouseout = function () {
+    if (svgPage.pendingMouseMove) {
+      cancelAnimationFrame(svgPage.pendingMouseMove);
+      svgPage.pendingMouseMove = null;
+    }
+    if (svgPage.pendingMouseover) {
+      cancelAnimationFrame(svgPage.pendingMouseover);
+      svgPage.pendingMouseover = null;
+      svgPage.pendingMouseoverTarget = null;
+    }
     if (!Tooltip.isfixed()) {
       Tooltip.hide(true);
     }
-    svgPage.mouseoverCancelled = true;
   };
   svgPage.onmousedown = function () {
     Tooltip.hide();
-    svgPage.mouseoverCancelled = true;
+    if (svgPage.pendingMouseover) {
+      cancelAnimationFrame(svgPage.pendingMouseover);
+      svgPage.pendingMouseover = null;
+      svgPage.pendingMouseoverTarget = null;
+    }
   };
   svgPage.oncontextmenu = function (e) {
     e.preventDefault();
@@ -168,6 +181,10 @@ export function loadPage(pageIndex) {
       Tooltip.hide();
       // we never want to emulate mousedown on ghost transition caused by zooming
       svgPage.mouseEvent = null;
+      if (svgPage.pendingMouseMove) {
+        cancelAnimationFrame(svgPage.pendingMouseMove);
+        svgPage.pendingMouseMove = null;
+      }
     },
     onPan: function (c) {
       panCounter++;

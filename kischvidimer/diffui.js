@@ -22,7 +22,6 @@ import * as Util from "util";
 import * as Viewport from "viewport";
 
 let svgPage = null;
-let pendingMouseoverTarget = null;
 
 let xprobeEndpoint = "http://localhost:4241/xprobe";
 let xprobe = null;
@@ -109,14 +108,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (Viewport.Tooltip.isfixed() || e.buttons) {
       return;
     }
-    svgPage.mouseoverCancelled = false;
-    if (pendingMouseoverTarget === null) {
-      requestAnimationFrame(() => {
-        let target = pendingMouseoverTarget;
-        pendingMouseoverTarget = null;
-        if (svgPage.mouseoverCancelled) {
-          return;
-        }
+    if (!svgPage.pendingMouseoverTarget) {
+      svgPage.pendingMouseover = requestAnimationFrame(() => {
+        let target = svgPage.pendingMouseoverTarget;
+        svgPage.pendingMouseoverTarget = null;
+        svgPage.pendingMouseover = null;
         let result = lookupElem(target);
         if (
           (result.type === "net" && result.value !== "GND") ||
@@ -129,7 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     }
-    pendingMouseoverTarget = e.target;
+    svgPage.pendingMouseoverTarget = e.target;
   };
   svgPage.onmouseup = function (e) {
     if (e.button === 3) {
