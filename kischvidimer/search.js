@@ -137,30 +137,83 @@ export function clickedPageLink(elem, e) {
   elem.classList.add("selectedsearch");
 }
 
+function jumpToNearestResult(forward) {
+  // Find the first result link on or after (or before) the current page,
+  // across all result pages, and jump to that result page + link.
+  let curPage = DB.curPageIndex;
+  // Build a flat list of (resultIndex, pageIndex) across all results
+  let candidates = [];
+  for (let i = 0; i < results.length; i++) {
+    for (let p of results[i].pages) {
+      candidates.push({ resultIndex: i, pageIndex: p });
+    }
+  }
+  if (!candidates.length) return 0;
+  // Sort by page proximity: pages on/after current first, then by page index
+  let target;
+  if (forward) {
+    let onOrAfter = candidates.filter((c) => c.pageIndex >= curPage);
+    if (onOrAfter.length) {
+      onOrAfter.sort((a, b) => a.pageIndex - b.pageIndex);
+      target = onOrAfter[0];
+    } else {
+      target = candidates[0];
+    }
+  } else {
+    let onOrBefore = candidates.filter((c) => c.pageIndex <= curPage);
+    if (onOrBefore.length) {
+      onOrBefore.sort((a, b) => b.pageIndex - a.pageIndex);
+      target = onOrBefore[0];
+    } else {
+      target = candidates[candidates.length - 1];
+    }
+  }
+  // Switch to the result page containing this result
+  let targetResultPage = Math.floor(target.resultIndex / resultsPerPage);
+  if (targetResultPage !== resultPage) {
+    resultPage = targetResultPage;
+    populateMatches();
+  }
+  // Find the matching link in the rendered results
+  let searchResults = getResultLinks();
+  let targetPageName = DB.pageName(target.pageIndex);
+  let targetRef = escape(results[target.resultIndex].display);
+  let idx = searchResults.findIndex((r) => {
+    let href = r.getAttribute("href").substring(1);
+    return href === `${targetPageName},${targetRef}`;
+  });
+  return idx !== -1 ? idx : 0;
+}
+
 export function onEnterKey(e) {
   let searchResults = getResultLinks();
-  if (!searchResults.length) {
+  if (!searchResults.length && !results.length) {
     return;
   }
   let nextLinkToFocus = null;
   let selectedLinks = searchResults.filter((r) =>
     r.classList.contains("selectedsearch"),
   );
-  let nextIndex =
-    searchResults.indexOf(selectedLinks[0]) + (e.shiftKey ? -1 : 1);
-  if (nextIndex == searchResults.length) {
-    // wrap to next page
+  let nextIndex;
+  if (!selectedLinks.length && e.ctrlKey) {
+    // Ctrl+Enter with no selection: start at or after the current page
+    nextIndex = jumpToNearestResult(!e.shiftKey);
+    searchResults = getResultLinks();
+  } else {
+    nextIndex = searchResults.indexOf(selectedLinks[0]) + (e.shiftKey ? -1 : 1);
+  }
+  if (nextIndex >= searchResults.length) {
+    // wrap to next result page
     cycleResultPage(1);
     searchResults = getResultLinks();
     nextIndex = 0;
-  } else if (nextIndex == -1) {
-    // wrap to previous page
+  } else if (nextIndex < 0) {
+    // wrap to previous result page
     cycleResultPage(-1);
     searchResults = getResultLinks();
     nextIndex = searchResults.length - 1;
   }
-  nextLinkToFocus =
-    searchResults[nextIndex > -1 ? nextIndex : searchResults.length - 1];
+  nextLinkToFocus = searchResults[nextIndex];
   clickedPageLink(nextLinkToFocus, { detail: 1 });
   // scroll the selected result into view
   nextLinkToFocus.scrollIntoView({
