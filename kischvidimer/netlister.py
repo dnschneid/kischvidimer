@@ -333,7 +333,8 @@ class Instance(namedtuple("Instance", ["instance"])):
         path = c
       elif c.type == "sheet":
         sheet = c
-    instance = path.uuid(sheet)
+    # Standalone files have no instance path; treat them as the root
+    instance = path.uuid(sheet) if path else "/"
     if include_uuid:
       # Include the last context item's UUID in the path
       for c in reversed(context):
