@@ -438,6 +438,19 @@ class Drawable(ModifierRoot, sexp.SExp):
     pos = at.pos().v
     return f"{self.type} at ({pos[0]}, {pos[1]})"
 
+  def __init__(self, data=None):
+    super().__init__(data)
+    # Drop the private flag so that literals line up; it stays in _atoms
+    flag = self._sexp[1] if len(self._sexp) > 1 else None
+    if isinstance(flag, sexp.Atom) and flag == "private":
+      del self._sexp[1]
+
+  @property
+  def editor_only(self):
+    """Private shapes and text are symbol editor notes, which KiCad doesn't
+    draw in schematics."""
+    return sexp.Atom("private") in self._atoms
+
   def fillsvg(self, svg, diffs, draw=DRAW_ALL, context=None):
     if not isinstance(context, tuple):
       context = () if context is None else (context,)
@@ -450,12 +463,14 @@ class Drawable(ModifierRoot, sexp.SExp):
       if draw & subdraw:
         # new stuff!
         for item, c in added:
+          if item.editor_only:
+            continue
           svg.gstart(hidden=FakeDiff(c, old=True, new=False).param())
           item.fillsvg(svg, diffs, subdraw, new_context)
           svg.gend()
         # existing stuff, maybe removed
         for item in self.data:
-          if isinstance(item, Drawable):
+          if isinstance(item, Drawable) and not item.editor_only:
             rm_c = removed.get(id(item))
             if rm_c:
               svg.gstart(hidden=FakeDiff(rm_c, old=False, new=True).param())
@@ -916,6 +931,9 @@ class Field(Drawable):
 
   UNIQUE = "name"
   LITERAL_MAP = {"name": 1, "value": 2}
+
+  # Unlike private shapes and text, KiCad still draws private fields
+  editor_only = False
 
   def __str__(self):
     return f"{self.type} '{self.name}'"
