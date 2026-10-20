@@ -635,7 +635,7 @@ class Cells(Drawable):
     xs = set()
     count = 0
     for cell in self["table_cell"]:
-      pos = cell["at"].pos(relative=relative).v
+      pos = cell["at"][0].pos(relative=relative).v
       if pos[0] <= coord[0] and pos[1] <= coord[1]:
         xs.add(pos[0])
         count += 1

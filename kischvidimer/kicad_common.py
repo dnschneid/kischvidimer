@@ -919,8 +919,8 @@ class TableCell(TextBox):
     if self.type != other.type:
       return None
     # Consider cells the same if they are the same row+column
-    thispos = self["at"][0].pos(relative=True)
-    thatpos = other["at"][0].pos(relative=True)
+    thispos = self["at"][0].pos(relative=True).v
+    thatpos = other["at"][0].pos(relative=True).v
     thisrc = self.parent.to_row_col(thispos, relative=True)
     thatrc = other.parent.to_row_col(thatpos, relative=True)
     return abs(thisrc[0] - thatrc[0]) + abs(thisrc[1] - thatrc[1])
