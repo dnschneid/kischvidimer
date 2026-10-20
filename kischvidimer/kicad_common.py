@@ -235,6 +235,54 @@ class Path(sexp.SExp):
     return data
 
 
+@sexp.handler("variant")
+class Variant(sexp.SExp):
+  """Design variant overrides of a symbol or sheet instance.
+  (variant (name "X") (dnp yes) (in_bom no) (field (name "F") (value "V")) ...)
+  """
+
+  UNIQUE = False
+  LITERAL_MAP = {}
+
+  def __str__(self):
+    return f"{self.type} '{self.name}'"
+
+  @property
+  @sexp.uses("name")
+  def name(self):
+    return self["name"][0][0] if "name" in self else ""
+
+  def distance(self, other, fast, diffparam):
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
+      return None
+    # Renaming a variant is treated as a remove + add
+    return 0 if self.name == other.name else None
+
+
+@sexp.handler("field")
+class VariantField(sexp.SExp):
+  """Field override within a variant: (field (name "F") (value "V"))"""
+
+  UNIQUE = False
+  LITERAL_MAP = {}
+
+  def __str__(self):
+    return f"{self.type} '{self.name}'"
+
+  @property
+  def name(self):
+    return self["name"][0][0] if "name" in self else ""
+
+  def distance(self, other, fast, diffparam):
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
+      return None
+    return 0 if self.name == other.name else None
+
+
+Value = sexp.SExp.basic("value")  # variant field value, legacy instance value
+SymbolOverride = sexp.SExp.basic("symbol_override")  # variant alternate symbol
+
+
 @sexp.handler("version")
 class Version(sexp.SExp):
   """File version"""

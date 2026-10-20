@@ -663,9 +663,13 @@ ColumnWidths = sexp.SExp.basic("column_widths", istuple=True)  # table params
 RowHeights = sexp.SExp.basic("row_heights", istuple=True)  # table params
 
 Cols = HasYes.handler("cols")  # table border params
-Dnp = HasYes.handler("dnp")  # SymbolInst/Sheet
+Dnp = HasYes.handler("dnp")  # SymbolInst/Sheet/Variant
+ExcludeFromSim = HasYes.handler("exclude_from_sim")  # SymbolInst/Sheet/Variant
 External = HasYes.handler("external")  # table border params
 Header = HasYes.handler("header")  # table border params
+InBom = HasYes.handler("in_bom")  # SymbolInst/Sheet/Variant
+InPosFiles = HasYes.handler("in_pos_files")  # SymbolInst/Variant
+OnBoard = HasYes.handler("on_board")  # SymbolInst/Sheet/Variant
 Rows = HasYes.handler("rows")  # table border params
 
 
