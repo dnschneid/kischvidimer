@@ -3,6 +3,7 @@
 
 *.egg-info
 .*.swp
+.claude/
 /uv.lock
 __pycache__/
 _version.py
