@@ -153,9 +153,10 @@ class KicadPro(Comparable):
       if p:
         p.set_text(f"Loading {rev + ':' if rev else ''}{relpath}").write()
       f = git.open_rb(filepath, rev)
-      sch = kicad_sch.kicad_sch(f, filepath)
-      if sch is None:
-        msg = f"Unable to load {rev + ':' if rev else ''}{relpath}"
+      try:
+        sch = kicad_sch.kicad_sch(f, filepath)
+      except kicad_sch.UnsupportedFileError as e:
+        msg = f"Unable to load {rev + ':' if rev else ''}{relpath}: {e.reason}"
         if p:
           p.msg(msg)
         else:

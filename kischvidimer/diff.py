@@ -912,7 +912,8 @@ def main(argv):
   Exits with code 0 if the files are the same, 1 if there are differences.
   """
 
-  from .kicad_common import Drawable
+  from .kicad_common import Drawable, UnsupportedFileError, Version
+  from .kicad_sym import SymLib
   from .sexp import parse
   from .svg import Svg
 
@@ -957,10 +958,16 @@ def main(argv):
       invert_y = True
     mod = importlib.import_module(ext, __package__)
     with open(path) as f:
-      if ext[1:] in mod.__dict__:
-        parsed = mod.__dict__[ext[1:]](f, fname=path)
-      else:
-        parsed = parse(f.read())[0]
+      try:
+        if ext[1:] in mod.__dict__:
+          parsed = mod.__dict__[ext[1:]](f, fname=path)
+        else:
+          parsed = parse(f.read())[0]
+          if ext == ".kicad_sym":
+            Version.check(parsed, SymLib, "KiCad symbol library", path)
+      except UnsupportedFileError as e:
+        print(e, file=sys.stderr)
+        return 2
       if sels and "(" in sels[0]:
         parsed = eval(f"parsed.{sels[0]}")
       elif sels and sels[0].startswith("["):

@@ -249,6 +249,30 @@ class Version(sexp.SExp):
   def is_supported(self):
     return self.MIN_VERSION <= self.data[0] <= self.MAX_VERSION
 
+  @staticmethod
+  def check(root, cls, what, fname=None):
+    """Raises UnsupportedFileError unless root is a cls (described by what)
+    with a supported file version."""
+    if not isinstance(root, cls):
+      raise UnsupportedFileError(fname, f"not a {what}")
+    if "version" not in root:
+      raise UnsupportedFileError(fname, "missing KiCad file version")
+    version = root["version"][0]
+    if not version.is_supported:
+      raise UnsupportedFileError(
+        fname,
+        f"unsupported KiCad file version {version.data[0]} "
+        f"(supported: {Version.MIN_VERSION}-{Version.MAX_VERSION})",
+      )
+
+
+class UnsupportedFileError(Exception):
+  """Raised when loading a file kischvidimer cannot handle"""
+
+  def __init__(self, fname, reason):
+    super().__init__(f"{fname or '<stdin>'}: {reason}")
+    self.reason = reason
+
 
 @sexp.handler("data")
 class Data(sexp.SExp):

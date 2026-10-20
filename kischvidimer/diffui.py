@@ -791,9 +791,14 @@ def main(argv):
   ui = DiffUI(mode=count)
   base_schs = []
   for i in range(0, len(paths), count):
-    schs = [
-      sch_mod.kicad_sch(open(p, "rb"), p) for p in paths[i : i + min(count, 3)]
-    ]
+    try:
+      schs = [
+        sch_mod.kicad_sch(open(p, "rb"), p)
+        for p in paths[i : i + min(count, 3)]
+      ]
+    except sch_mod.UnsupportedFileError as e:
+      sys.stderr.write(f"{e}\n")
+      return 2
     instances = [s.inferred_instances() for s in schs]
     base_schs.append(schs[0])
     conflicts = []

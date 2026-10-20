@@ -26,7 +26,9 @@ from .kicad_common import (
   HasUUID,
   Path,
   Polyline,
+  UnsupportedFileError,
   Variables,
+  Version,
   rotated,
   transformed_pin,
   unit_to_alpha,
@@ -1224,6 +1226,7 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
 
 
 # Set kicad_sch.data_filter_func to be able to change sch files as they load
+# Raises UnsupportedFileError if the file can't be handled
 def kicad_sch(f, fname=None):
   data = f.read()
   if isinstance(data, bytes):
@@ -1231,11 +1234,9 @@ def kicad_sch(f, fname=None):
   if hasattr(kicad_sch, "data_filter_func"):
     data = kicad_sch.data_filter_func(data)
   data = sexp.parse(data)
-  if isinstance(data[0], KicadSch):
-    data[0].initsch(fname)
-    if "version" in data[0] and data[0]["version"][0].is_supported:
-      return data[0]
-  return None
+  Version.check(data[0], KicadSch, "KiCad schematic", fname)
+  data[0].initsch(fname)
+  return data[0]
 
 
 def draw_dnp(dnp, svg, bounds):
@@ -1282,7 +1283,11 @@ def main(argv):
   s = svg.Svg(theme="default")
   path = argv[1] if len(argv) > 1 else None
   with open(path) if path else sys.stdin as f:
-    data = kicad_sch(f, path)
+    try:
+      data = kicad_sch(f, path)
+    except UnsupportedFileError as e:
+      print(e, file=sys.stderr)
+      return 1
   variables = Variables()
   data.fillvars(variables, None, None)
   data.fillsvg(s, None, Drawable.DRAW_ALL, variables.context())

@@ -25,7 +25,13 @@ from decimal import Decimal
 
 from . import sexp, svg
 from .diff import FakeDiff, Param
-from .kicad_common import Drawable, rotated, translated
+from .kicad_common import (
+  Drawable,
+  UnsupportedFileError,
+  Version,
+  rotated,
+  translated,
+)
 from .kicad_modifiers import HasModifiers
 
 
@@ -669,6 +675,11 @@ def main(argv):
   path = argv[1] if len(argv) > 1 else None
   with open(path) if path else sys.stdin as f:
     data = sexp.parse(f.read())
+  try:
+    Version.check(data[0], SymLib, "KiCad symbol library", path)
+  except UnsupportedFileError as e:
+    print(e, file=sys.stderr)
+    return 1
   params = {
     "svg": s,
     "diffs": None,
