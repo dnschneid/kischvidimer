@@ -1174,11 +1174,12 @@ class Svg:
       width,
       height,
     )
-    # FIXME: this seems really broken for diffs
-    for i in range(max(map(len, (data, pos, scale)))):
-      self._update_bounds(
-        pos[i].v, (pos[i].v[0] + width[i].v, pos[i].v[1] + height[i].v)
-      )
+    for i in range(len(pos)):
+      p, w, h = pos[i].v, width.get(i).v, height.get(i).v
+      self._update_bounds(p, (p[0] + w, p[1] + h))
+    # Image data can't be animated, so output one image per version of the
+    # data, and animate the rest (position, size) on each.
+    for i in range(len(data)):
       self.add(
         ["<image", f'href="{image.get(i).v}"']
         + self.attr("x", pos.map(self.getx), 0, i)
