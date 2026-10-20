@@ -175,6 +175,12 @@ class Instances(sexp.SExp):
       newdata = prj.instancedata("", uuid, field, diffs)
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
+    # KiCad matches instances by path alone, so fall back to other projects
+    if data is None:
+      for prj in all_projects:
+        newdata = prj.instancedata(prj.name, uuid, field, diffs)
+        if newdata and not newdata.is_empty:
+          return newdata
     return data
 
 
