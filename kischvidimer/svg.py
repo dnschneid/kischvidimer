@@ -393,17 +393,20 @@ class Svg:
         if not isinstance(val, (tuple, list)):
           val = (val,)
         combined_transform.append(f"{t}({','.join(map(str, val))})")
-      transform[0] += 1
-      self.add(
-        ["<g"]
-        + Svg._tagattr(tag)
+      attrs = (
+        Svg._tagattr(tag)
         + prune
         + self.attr("p", path, "")
         + self.attr("transform", Param(" ".join(combined_transform)))
         + self.attr("opacity", opacity, True)
         + self.attr("filter", filt)
-      ).hascontents()
-      assert not self.data or self.data[-1] != "<g>", "empty <g> tag generated"
+      )
+      # Skip the outer g if the first transform differs between diffs and
+      # there is nothing else to put on it.
+      if attrs or self._animate:
+        transform[0] += 1
+        self.add(["<g"] + attrs).hascontents()
+        assert not self.data or self.data[-1] != "<g>", "empty <g> generated"
       # Spit out the remaining transforms, somewhat inefficiently (for diffs)
       for t, p in transform_attr[extra_transforms:]:
         transform[0] += 1
@@ -560,6 +563,87 @@ class Svg:
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + Svg._tagattr(tag)
     ).nocontents()
+
+  def ellipse(
+    self,
+    pos=None,
+    rx=None,
+    ry=None,
+    rotate=None,
+    start=None,
+    end=None,
+    color=None,
+    fill=None,
+    thick=None,
+    pattern=None,
+    tag=None,
+  ):
+    """Renders an ellipse, or an elliptical arc if start and end are provided.
+    rotate is the angle of the rx axis in degrees, clockwise on-screen.
+    start and end are parametric angles in degrees, also clockwise on-screen.
+    The center and rotation are applied as separate transforms of a group so
+    that diffs of each parameter animate a distinct attribute.
+    """
+    pos = Param.ify(pos, (0, 0))
+    rx = Param(rx)
+    ry = Param(ry)
+    rotate = Param.ify(rotate, 0)
+    if any(r.v < 0 for r in rx) or any(r.v < 0 for r in ry):
+      raise Exception("negative radius")
+    color, opacity = self._color(color, "notes")
+    fill, fillopacity = self._fill(fill, color, opacity)
+    if not opacity.reduce(any) and not fillopacity.reduce(any):
+      return
+    thick = Svg._thick(thick)
+    pattern = Param(Svg.pattern, pattern, thick)
+    # gstart rotates counter-clockwise, so negate
+    self.gstart(pos=pos, rotate=rotate.map(op.neg))
+    # Local coordinates are y-down regardless of _invert_y; the bounding box is
+    # symmetric, so it does not matter.
+    for sx, sy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+      self._update_bounds(
+        (sx * float(rx[0].v), sy * float(ry[0].v)), thick=thick[0].v
+      )
+    if start is None:
+      shape = ["<ellipse"] + self.attr("rx", rx, 0) + self.attr("ry", ry, 0)
+    else:
+      d = Param(Svg._ellipse_arc_d, rx, ry, start, end)
+      shape = ["<path"] + self.attr("d", d)
+    self.add(
+      shape
+      + self.attr("stroke", color)
+      + self.attr("stroke-dasharray", pattern)
+      + self.attr("stroke-opacity", opacity, 1, convert=False)
+      + self.attr("fill", fill, "none")
+      + self.attr("fill-opacity", fillopacity, 1, convert=False)
+      + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + Svg._tagattr(tag)
+    ).nocontents()
+    self.gend()
+
+  @staticmethod
+  def _ellipse_arc_d(rx, ry, start, end):
+    """Returns path data for an unrotated elliptical arc centered at the origin.
+    Follows SHAPE_ELLIPSE::sweepRange: the arc sweeps from start to end with
+    increasing angle, wrapping if end < start, and is a full ellipse if the
+    sweep is at least 360 degrees.
+    """
+    rx, ry = float(rx), float(ry)
+    start, end = math.radians(start), math.radians(end)
+    if abs(end - start) >= 2 * math.pi:
+      end = start + 2 * math.pi
+    elif end < start:
+      end += 2 * math.pi
+    # Always split into two halves, which avoids needing the large-arc flag,
+    # handles full ellipses, and keeps the path structure constant so that
+    # diffs animate smoothly.
+    pts = (
+      (rx * math.cos(t), ry * math.sin(t))
+      for t in (start, (start + end) / 2, end)
+    )
+    pts = [f"{Svg.tounit(x)} {Svg.tounit(y)}" for x, y in pts]
+    radii = f"{Svg.tounit(rx)} {Svg.tounit(ry)} 0 0 1"
+    return f"M {pts[0]} A {radii} {pts[1]} A {radii} {pts[2]}"
 
   @staticmethod
   def c_r_la(a, b, c):
@@ -1078,18 +1162,16 @@ class Svg:
       *self._rotatestate,
     )
     name = Param(
-      lambda lib, lib_id, unit, variant, rotate, mirror, alts: (
-        ":".join(
-          (
-            "symbol",
-            f"{lib.sym_hash(lib_id, diffs):x}",
-            str(unit),
-            str(variant),
-            alts,
-            str(rotate // 90),
-            "m" * mirror,
-            f"{draw:x}",
-          )
+      lambda lib, lib_id, unit, variant, rotate, mirror, alts: ":".join(
+        (
+          "symbol",
+          f"{lib.sym_hash(lib_id, diffs):x}",
+          str(unit),
+          str(variant),
+          alts,
+          str(rotate // 90),
+          "m" * mirror,
+          f"{draw:x}",
         )
       ),
       *(lib, lib_id, unit, variant, rotate, mirror, alternates_hash),

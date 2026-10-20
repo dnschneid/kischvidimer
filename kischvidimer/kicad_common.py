@@ -620,6 +620,62 @@ class Circle(Drawable):
     svg.circle(**args)
 
 
+MajorRadius = sexp.SExp.basic("major_radius")  # ellipse rx
+MinorRadius = sexp.SExp.basic("minor_radius")  # ellipse ry
+RotationAngle = sexp.SExp.basic("rotation_angle")  # ellipse rotation
+StartAngle = sexp.SExp.basic("start_angle")  # ellipse_arc start
+EndAngle = sexp.SExp.basic("end_angle")  # ellipse_arc end
+
+
+@sexp.handler("ellipse")
+class Ellipse(Drawable):
+  """Graphical ellipse.
+  Angles are in degrees in KiCad's internal y-down space, so are clockwise
+  on-screen, even in symbol libraries where the center's y is inverted.
+  """
+
+  def __str__(self):
+    center = self["center"][0].pos().v
+    radius = max(self["major_radius"][0][0], self["minor_radius"][0][0])
+    descr = self.type.replace("_", " ")
+    if radius > 100:
+      descr = f"large {descr}"
+    return f"{descr} at ({center[0]}, {center[1]})"
+
+  def ellipseargs(self, diffs):
+    # Defaults match SCH_IO_KICAD_SEXPR_PARSER::parseEllipseBody
+    return {
+      "pos": self["center"][0].pos(diffs, relative=True),
+      "rx": self.getparam("major_radius", diffs, 1),
+      "ry": self.getparam("minor_radius", diffs, 1),
+      "rotate": self.getparam("rotation_angle", diffs, 0),
+    }
+
+  def fillsvg(self, svg, diffs, draw, context):
+    if not draw & (Drawable.DRAW_BG | Drawable.DRAW_FG):
+      return
+    args = self.ellipseargs(diffs)
+    args["color"] = "device" if context[-1].type == "symbol" else "notes"
+    args["fill"] = f"{args['color']}_background"
+    self.fillsvgargs(args, diffs, context)
+    if not draw & Drawable.DRAW_FG:
+      args["thick"] = 0
+    if not self.draw_body(draw, args):
+      args["fill"] = "none"
+    svg.ellipse(**args)
+
+
+@sexp.handler("ellipse_arc")
+class EllipseArc(Ellipse):
+  """Graphical elliptical arc. Fills render as a chord, as when plotted."""
+
+  def ellipseargs(self, diffs):
+    args = super().ellipseargs(diffs)
+    args["start"] = self.getparam("start_angle", diffs, 0)
+    args["end"] = self.getparam("end_angle", diffs, 90)
+    return args
+
+
 @sexp.handler("rectangle")
 class Rectangle(Drawable):
   """Graphical rectangle"""
