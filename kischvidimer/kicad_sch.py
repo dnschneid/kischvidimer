@@ -617,12 +617,18 @@ class Table(Drawable):
 class TableLines(Drawable):
   UNIQUE = True
 
+  def __str__(self):
+    return self.type
+
 
 @sexp.handler("cells")
 class Cells(Drawable):
   """Contains all the cells of a table. Actual cells look like TextBoxes."""
 
   UNIQUE = True
+
+  def __str__(self):
+    return self.type
 
   def pos(self, diffs=None):
     """Return the top-left cell location."""
@@ -641,7 +647,7 @@ class Cells(Drawable):
       if pos[0] <= coord[0] and pos[1] <= coord[1]:
         xs.add(pos[0])
         count += 1
-    return count // len(xs), len(xs) - 1
+    return count // len(xs) - 1, len(xs) - 1
 
 
 Reference = sexp.SExp.basic("reference")  # Instance data reference
