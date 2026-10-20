@@ -129,7 +129,9 @@ class SExp(Comparable):
 
   # Indicates that only one of these SExps should appear in a context
   # Specifying a literal name will enforce uniqueness across LITERAL_MAP[name]
-  UNIQUE = True  # True by default since there a lot of singular data classes
+  # True by default since there are a lot of singular data classes. Only applies to
+  # registered handlers; unhandled tokens may repeat and are matched by content.
+  UNIQUE = True
 
   # If not UNIQUE, indicates that the order must be maintained
   # FIXME: actually use this somehow
@@ -199,7 +201,7 @@ class SExp(Comparable):
     self._has_type = self._sexp and isinstance(self._sexp[0], Atom)
     # Assert that UNIQUE is accurate
     for atm, items in self._subs.items():
-      unique = items[0].UNIQUE
+      unique = items[0].unique
       if unique is True:
         assert len(items) == 1, f"duplicate {atm} entries"
       elif unique:
@@ -289,10 +291,10 @@ class SExp(Comparable):
     """Enforces uniqueness by type; should be overridden for other purposes."""
     if not isinstance(other, SExp) or self.type != other.type:
       return None
-    if self.UNIQUE is True:
+    if self.unique is True:
       return 0
-    if self.UNIQUE:
-      index = self.LITERAL_MAP.get(self.UNIQUE, self.UNIQUE)
+    if self.unique:
+      index = self.LITERAL_MAP.get(self.unique, self.unique)
       this = self.comp_sexp
       that = other.comp_sexp
       if index < len(this) and index < len(that) and this[index] == that[index]:
@@ -425,6 +427,11 @@ class SExp(Comparable):
     return hash(
       tuple((s.hash(),) if isinstance(s, SExp) else s for s in self._sexp)
     )
+
+  @property
+  def unique(self):
+    """UNIQUE, except unhandled tokens are never assumed to be unique."""
+    return self.UNIQUE if type(self) is not SExp else False
 
   @property
   def type(self):
