@@ -19,6 +19,7 @@ import sys
 
 from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
+from .kicad_common import variant_context
 
 DEFAULT_LICENSE_HEADER = (
   "Proprietary to its author and all rights are reserved to that "
@@ -35,6 +36,7 @@ class KicadPro(Comparable):
     if data_filter_func is not None:
       data = data_filter_func(data if isinstance(data, str) else data.decode())
     self.json = json.loads(data)
+    self.variant = ""  # active design variant; "" is the base design
 
   @property
   def project(self):
@@ -44,9 +46,39 @@ class KicadPro(Comparable):
   def variables(self):
     return self.json.get("text_variables", {})
 
+  def get_variable(self, name, default=None):
+    """Returns a project text variable, matching the name case-insensitively."""
+    for v in self.variables:
+      if v.lower() == name.lower():
+        return self.variables[v]
+    return default
+
+  @property
+  def variants(self):
+    """Returns a dict of variant names defined in the project to descriptions.
+    Schematics can reference additional variants; see variant_names."""
+    variants = self.json.get("schematic", {}).get("variants") or []
+    return {
+      v["name"]: v.get("description", "") for v in variants if "name" in v
+    }
+
+  @property
+  def default_variant(self):
+    """The variant to render unless overridden, from the DEFAULT_VARIANT
+    project text variable. None if not specified."""
+    return self.get_variable("DEFAULT_VARIANT")
+
+  def variant_names(self, pages):
+    """Returns the set of all known variant names, from the project and the
+    schematic pages. Mirrors SCHEMATIC::LoadVariants."""
+    names = set(self.variants)
+    for _instances, sch in pages.values():
+      names.update(sch.variant_names())
+    return names
+
   def context(self):
     s = sexp.SExp.init([sexp.Atom("~project"), self.project])
-    return (s,)
+    return (s,) + variant_context(self.variant)
 
   def fillnetlist(self, netlister, diffs, pages=None, p=None):
     if not pages:
@@ -85,6 +117,12 @@ class KicadPro(Comparable):
     variables.define(variables.GLOBAL, "PROJECTNAME", self.project)
     for key, value in self.variables.items():
       variables.define(variables.GLOBAL, key, value)
+    # Variant variables take precedence over project text variables
+    variables.define(variables.GLOBAL, "VARIANT", self.variant)
+    variables.define(variables.GLOBAL, "VARIANTNAME", self.variant)
+    variables.define(
+      variables.GLOBAL, "VARIANT_DESC", self.variants.get(self.variant, "")
+    )
     if not pages:
       return
     pgcount = sum(len(i) for i, _ in pages.values())
@@ -120,10 +158,7 @@ class KicadPro(Comparable):
     return open(licpath).read()
 
   def get_license_header(self):
-    for v in self.variables:
-      if v.lower() == "license_header":
-        return self.variables[v]
-    return DEFAULT_LICENSE_HEADER
+    return self.get_variable("license_header", DEFAULT_LICENSE_HEADER)
 
   def get_pages(self, projfile, rev, p):
     """Returns a dict mapping filenames to a tuple of ([instances], kicad_sch).

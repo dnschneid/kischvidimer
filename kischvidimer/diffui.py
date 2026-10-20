@@ -34,7 +34,7 @@ from io import BytesIO
 
 from . import git, themes
 from .diff import FakeDiff, TargetDict, applylists, threeway
-from .kicad_common import Drawable, Variables
+from .kicad_common import Drawable, Variables, variant_context
 from .kicad_pro import DEFAULT_LICENSE_HEADER
 from .netlister import Netlister
 from .svg import Svg
@@ -54,6 +54,7 @@ class Page:
     uidtable,
     symbols,
     worksheet,
+    variant="",
   ):
     self.sch = page
     self.title = page.title or ""
@@ -79,6 +80,9 @@ class Page:
     if proj:
       self.context += proj.context()
     else:
+      self.context += variant_context(variant)
+      variables.define(variables.GLOBAL, "VARIANT", variant)
+      variables.define(variables.GLOBAL, "VARIANTNAME", variant)
       page.fillvars(variables, diffs, self.context)
       # FIXME: fill in placeholder netlist
     self.id = self.svg.vars.get("~pageid", f"page{self.svg.getuid(self)}")
@@ -149,6 +153,7 @@ class DiffUI:
     license_header=None,
     mode=MODE_MERGE,
     verbosity=0,
+    variant="",
   ):
     gc.disable()
     self.title = title
@@ -170,6 +175,7 @@ class DiffUI:
     self._response = None
     self._worksheet = worksheet
     self._verbosity = verbosity
+    self._variant = variant or ""
     self.schematic_index = None
 
   def __del__(self):
@@ -300,6 +306,7 @@ class DiffUI:
       self._uidtable,
       self._symbols,
       self._worksheet,
+      self._variant,
     )
     self._pagemap[id(page)] = len(self._pages)
     self._pages.append(p)
@@ -587,6 +594,8 @@ class DiffUI:
     window_title = ": ".join(title)
     if self.ver:
       window_title += f" - {self.ver}"
+    elif self._variant:
+      window_title += f" [{self._variant}]"
 
     license_header = (
       self._license_header
@@ -638,7 +647,8 @@ class DiffUI:
     uidata = {
       "vers": git.get_version(srcdir),
       "schTitle": title[-1],
-      "schVers": self.ver,
+      "schVers": self.ver
+      or (f"Variant: {self._variant}" if self._variant else ""),
       "uiMode": self._mode,
       "diffIcon": (
         self._icon(f"{DiffUI.MODE_ICONS[self._mode]}.svg")
@@ -767,8 +777,9 @@ def main(argv):
 
   if len(argv) == 1 or argv[1] in ("-h", "--help"):
     sys.stderr.write("""Usage:
-  %s [-1|-2|-3|-4] base [ours [theirs [output]]] ...
+  %s [-1|-2|-3|-4] [--variant NAME] base [ours [theirs [output]]] ...
   Shows one or more pages, diffs or 3-way merges.
+  --variant renders the pages through the named design variant.
   If one kicad_sch is provided, or -1 is specfied, just renders the pages.
   If two kicad_schs are provided, or -2 is specified, renders an interactive
     diff for each pair of kicad_sch files.
@@ -779,6 +790,11 @@ def main(argv):
     but writes the resulting kicad_sch files to the fourth filename in the set.
   """)
     return 2 * (len(argv) == 1)
+  variant = ""
+  if "--variant" in argv[1:-1]:
+    i = argv.index("--variant")
+    variant = argv[i + 1]
+    argv = argv[:i] + argv[i + 2 :]
   if argv[1].startswith("-"):
     count = int(argv[1][1:])
     paths = argv[2:]
@@ -788,7 +804,7 @@ def main(argv):
   if count < 1 or count > 4 or len(paths) % count:
     sys.stderr.write("Invalid argument count\n")
     return 2
-  ui = DiffUI(mode=count)
+  ui = DiffUI(mode=count, variant=variant)
   base_schs = []
   for i in range(0, len(paths), count):
     try:

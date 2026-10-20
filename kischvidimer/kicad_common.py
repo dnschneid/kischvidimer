@@ -76,6 +76,21 @@ class HasUUID:
     return super().distance(other, fast, diffparam)
 
 
+def variant_context(name):
+  """Returns a context tuple selecting a design variant ("" for the base)."""
+  return (sexp.SExp.init([sexp.Atom("~variant"), name or ""]),)
+
+
+def active_variant(context):
+  """Returns the name of the design variant selected in the context.
+  Returns "" for the base design.
+  """
+  for c in reversed(context or ()):
+    if getattr(c, "type", None) == "~variant":
+      return c.data[0] if c.data else ""
+  return ""
+
+
 class HasInstanceData(sexp.SExp):
   """Sexp with instances->project->path->field/data"""
 

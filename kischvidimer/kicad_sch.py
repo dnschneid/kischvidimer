@@ -1199,6 +1199,17 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       sheets.extend((p, sheet) for p in sheet.paths(project).values())
     return sheets
 
+  def variant_names(self):
+    """Returns the set of variant names referenced by instances in this page.
+    Ignores project names and diffs."""
+    names = set()
+    for item in self.getsubs("symbol") + self.getsubs("sheet"):
+      for instances in item.getsubs("instances"):
+        for project in instances.getsubs("project"):
+          for path in project.getsubs("path"):
+            names.update(v.name for v in path.getsubs("variant"))
+    return names
+
   def get_components(self, context, instance, diffs=None):
     # returns a dict mapping refdes to dict of properties
     # Context should include project and variables, ideally

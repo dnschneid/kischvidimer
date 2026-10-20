@@ -80,12 +80,37 @@ class Page:
     return (diffs, conflicts)
 
 
+# Names that select the base design, unless a variant has that exact name
+BASE_VARIANT_NAMES = ("", "default", "< default >")
+
+
+def match_variant(name, known):
+  """Returns the known variant matching name ("" for the base design), or None
+  if there is no match. Prefers an exact match, and otherwise accepts a unique
+  case-insensitive match."""
+  if name in known:
+    return name
+  if name.strip().lower() in BASE_VARIANT_NAMES:
+    return ""
+  matches = [k for k in known if k.lower() == name.lower()]
+  if len(matches) == 1:
+    return matches[0]
+  return None
+
+
+def variant_file_token(name):
+  """Mirrors KiCad's GetVariantFileToken for use in filenames."""
+  return re.sub(r"[^\w.-]", "_", name)
+
+
 class Schematic:
   """Manages a single project with conflicts."""
 
   def __init__(self, proj):
     """Creates an empty project with no files."""
     self.diff = False
+    self.variant = None  # requested design variant; None for project default
+    self.resolved_variant = ""
     self._license = None
     self._license_header = None
     self._worksheet = None
@@ -95,6 +120,38 @@ class Schematic:
   def add_rev(self, rev):
     if rev not in self._revs:
       self._revs.append(rev)
+
+  def _resolve_variant(self, projs, names, p):
+    """Picks the variant to render from the command line, the newest
+    revision's DEFAULT_VARIANT project variable, or the base design."""
+    requested = self.variant
+    if requested is None:
+      defaults = [proj.default_variant for proj in projs]
+      requested = defaults[-1]
+      if requested is None:
+        return ""
+      others = {d for d in defaults[:-1] if d is not None and d != requested}
+      if others:
+        p.msg(
+          "WARNING: DEFAULT_VARIANT differs between revisions "
+          f"({', '.join(sorted(others))} vs {requested}); using {requested}"
+        )
+    known = set().union(*names)
+    variant = match_variant(requested, known)
+    if variant is None:
+      known_text = ", ".join(f"'{k}'" for k in sorted(known)) or "none"
+      if self.variant is not None:
+        raise GenSchError(
+          f"unknown variant '{requested}'; known variants: {known_text}"
+        )
+      p.msg(
+        f"WARNING: DEFAULT_VARIANT '{requested}' is not a known variant "
+        f"(known: {known_text}); rendering the base design"
+      )
+      return ""
+    if variant != requested and variant:
+      p.msg(f"WARNING: using variant '{variant}' for '{requested}'")
+    return variant
 
   def _genui(self, v=0):
     p = Progress(sys.stderr if v >= 0 else None)
@@ -113,6 +170,20 @@ class Schematic:
       pagesets.append(projs[-1].get_pages(self._proj, rev, p))
       worksheets.append(projs[-1].get_worksheet(rev, p))
       p.set_incr_max_mult(2)
+
+    # Use the same variant for all revisions, so that diffs compare like with
+    # like. Revisions that don't know the variant render the base design.
+    names = [proj.variant_names(ps) for proj, ps in zip(projs, pagesets)]
+    variant = self.resolved_variant = self._resolve_variant(projs, names, p)
+    for proj in projs:
+      proj.variant = variant
+    if variant:
+      for rev, revnames in zip(self._revs, names):
+        if variant not in revnames:
+          p.msg(
+            f"WARNING: variant '{variant}' is not defined in "
+            f"{rev or 'the working tree'}; rendering its base design"
+          )
 
     if p:
       p.set_text("Processing hierarchy").set_incr_max_mult().incr_max(2).write()
@@ -168,7 +239,13 @@ class Schematic:
 
     ver = git.get_version(projdir, self._revs[0])
     ver += time.strftime(" (%Y-%m-%d %H:%M)")
-    ver = " vs ".join(r or ver for r in self._revs)
+    ver = " vs ".join(
+      (r or ver)
+      + f" (no variant '{variant}')" * bool(variant and variant not in n)
+      for r, n in zip(self._revs, names)
+    )
+    if variant:
+      ver += f" · Variant: {variant}"
     title = self._proj.lstrip("./\\")
     if self.diff:
       title += " (only diffs)"
@@ -183,6 +260,7 @@ class Schematic:
       license_text=self._license,
       license_header=self._license_header,
       mode=len(self._revs),
+      variant=variant,
     )
     for page in pages:
       # FIXME: handle changing paths
@@ -212,7 +290,10 @@ class Schematic:
     if not path or path == "-":
       path = ""
     elif path[-1] in ("/", "\\") or os.path.isdir(path):
-      path = os.path.join(path, re.sub(r"[^\w.-]", "_", ui.title)) + ".html"
+      name = re.sub(r"[^\w.-]", "_", ui.title)
+      if self.resolved_variant:
+        name += f"_{variant_file_token(self.resolved_variant)}"
+      path = os.path.join(path, name) + ".html"
     if v >= 0:
       sys.stderr.write("Writing to %s\n" % (path or "stdout"))
     with sys.stdout.buffer if not path else open(path, "wb") as f:
@@ -273,6 +354,12 @@ def main(argv):
   parser.add_argument(
     "-d", "--diff", action="store_true", help="only render pages with changes"
   )
+  parser.add_argument(
+    "--variant",
+    metavar="NAME",
+    help="render a design variant, overriding the DEFAULT_VARIANT project "
+    'variable ("default" for the base design)',
+  )
   # parser.add_argument(
   #  "-c", "--conflicts-ok", action="store_true", help="ignore conflict markers"
   # )
@@ -307,6 +394,7 @@ def main(argv):
 
   # Diff flags
   sch.diff = args.diff
+  sch.variant = args.variant
   # FIXME: conflict marker handling
   # if args.conflicts_ok:
   #  conflicts_ok = (kicad_sch.kicad_sch.FileError,)
@@ -336,6 +424,9 @@ def main(argv):
     if not e.is_conflict:
       raise
     print(e, file=sys.stderr)
+  except GenSchError as e:
+    print(f"\nError: {e}", file=sys.stderr)
+    return 2
 
   return 0
 
