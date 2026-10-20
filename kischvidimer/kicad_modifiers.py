@@ -97,7 +97,11 @@ class Modifier(sexp.SExp):
         if self.VALUE_MAP:
           args[param] = Param(
             lambda v: self.VALUE_MAP.get(v, v),
-            self.param(diffs, key),
+            # Diffed multi-value literals are lists; make them hashable
+            Param(
+              lambda v: tuple(v) if isinstance(v, list) else v,
+              self.param(diffs, key),
+            ),
             default=args.get(param),
           )
         else:
@@ -202,6 +206,7 @@ class Type(Modifier):
   """parameter is different depending on the context of type."""
 
   LITERAL_MAP = {"type": 1}
+  HATCHES = ("hatch", "reverse_hatch", "cross_hatch")
 
   def reparent(self, new_parent):
     super().reparent(new_parent)
@@ -213,9 +218,20 @@ class Type(Modifier):
       self.VALUE_MAP = {
         "background": "device_background",
         "color": None,  # value will get filled in by Color
+        # The hatch masks the fill, whose color is set by Color, or else
+        # resolved by the shape; see Drawable.fillsvgargs
+        **dict.fromkeys(Type.HATCHES, "hatch"),
       }
     else:
       raise NotImplementedError(f"unexpected type parent {new_parent.type}")
+
+  def fillsvgargs(self, args, diffs, context):
+    super().fillsvgargs(args, diffs, context)
+    if self.parent.type == "fill":
+      args["hatch"] = Param(
+        lambda t: t if t in Type.HATCHES else None,
+        self.param(diffs, "type"),
+      )
 
 
 @sexp.handler("width")

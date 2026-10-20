@@ -492,6 +492,21 @@ class Drawable(ModifierRoot, sexp.SExp):
     )
     return draw & body_draw != 0
 
+  def fillsvgargs(self, args, diffs, context=None):
+    layer_color = args.get("color")
+    super().fillsvgargs(args, diffs, context)
+    hatch = args.pop("hatch", None)
+    if hatch is None:
+      return
+    # An unset hatch color is the layer color, not the stroke color. The
+    # hatch masks the fill and is sized by the stroke width.
+    args["fill"] = Param(
+      lambda f: layer_color if f == "hatch" else f, args["fill"]
+    )
+    args["hatch"] = Param(
+      lambda h, t: (h, t) if h else None, hatch, args.get("thick")
+    )
+
 
 @sexp.handler("polyline")
 class Polyline(Drawable):
@@ -792,7 +807,9 @@ class TextBox(Drawable):
       and self.type != "table_cell"
     ):
       rargs = {
-        x: args[x] for x in ("color", "fill", "thick", "pattern") if x in args
+        x: args[x]
+        for x in ("color", "fill", "thick", "pattern", "hatch")
+        if x in args
       }
       rargs["pos"] = pos
       rargs["width"], rargs["height"] = Param.multi(2, size)
@@ -836,7 +853,7 @@ class TextBox(Drawable):
         ),
         *(pos, size, margins, args.get("justify"), args.get("vjustify")),
       )
-      for unneeded in "color", "fill", "thick", "size", "pattern":
+      for unneeded in "color", "fill", "thick", "size", "pattern", "hatch":
         args.pop(unneeded, None)
       svg.text(**args)
 

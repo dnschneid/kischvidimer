@@ -128,7 +128,7 @@ class Svg:
     self.uidtable = None
     self.prune = True
     self.glyphs = set()
-    self.markers = {}  # line ending marker id -> definition
+    self.defs = {}  # shared definition (marker, mask) id -> definition
     self._extend_current_line = 0
     self._invert_y = []
     self._bounds = None
@@ -483,6 +483,7 @@ class Svg:
     fill=None,
     thick=None,
     pattern=None,
+    hatch=None,
     tag=None,
   ):
     pos = Param.ify(pos, (0, 0))
@@ -525,6 +526,7 @@ class Svg:
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
+      + self._hatch_attrs(hatch, fill)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + Svg._tagattr(tag)
     ).nocontents()
@@ -537,6 +539,7 @@ class Svg:
     fill=None,
     thick=None,
     pattern=None,
+    hatch=None,
     tag=None,
   ):
     pos = Param.ify(pos, (0, 0))
@@ -564,6 +567,7 @@ class Svg:
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
+      + self._hatch_attrs(hatch, fill)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + Svg._tagattr(tag)
     ).nocontents()
@@ -582,6 +586,7 @@ class Svg:
     pattern=None,
     start_marker=None,
     end_marker=None,
+    hatch=None,
     tag=None,
   ):
     """Renders an ellipse, or an elliptical arc if start and end are provided.
@@ -631,6 +636,7 @@ class Svg:
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
+      + self._hatch_attrs(hatch, fill)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + markers
       + Svg._tagattr(tag)
@@ -695,6 +701,7 @@ class Svg:
     pattern=None,
     start_marker=None,
     end_marker=None,
+    hatch=None,
   ):
     start = Param(start)
     stop = Param(stop)
@@ -753,6 +760,7 @@ class Svg:
       + self.attr("d", d)
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
+      + self._hatch_attrs(hatch, fill)
       + self.attr("stroke", color)
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
@@ -812,7 +820,7 @@ class Svg:
     back, hw = num(-length), num(width / 2)
     mid = f"le_{style}_{num(length)}_{num(width)}"
     mid += f"_{num(stroke)}" * bool(stroke)
-    if mid in self.markers:
+    if mid in self.defs:
       return f"url(#{mid})"
     # Closed shapes are filled; outlined if the ending has a stroke width.
     # Open arrows are stroked with the ending's stroke width or the line's.
@@ -836,7 +844,7 @@ class Svg:
         f'width="{num(length)}"',
         f'height="{num(width)}"',
       ]
-    self.markers[mid] = " ".join(
+    self.defs[mid] = " ".join(
       [
         f'<marker id="{mid}"',
         'markerUnits="strokeWidth"',
@@ -846,6 +854,48 @@ class Svg:
       + shape
       + paint
       + ["/></marker>"]
+    )
+    return f"url(#{mid})"
+
+  def _hatch_attrs(self, hatch, fill):
+    """Returns the mask attribute for a hatched fill; see hatch()."""
+    if hatch is None:
+      return []
+    mask = Param(
+      lambda h, f: self.hatch(*h) if h and f != "none" else "none",
+      hatch,
+      fill,
+    )
+    return self.attr("mask", mask, "none", convert=False)
+
+  def hatch(self, kind, thick):
+    """Maps a hatch kind and stroke width to a mask reference, defining the
+    mask if necessary. As in KiCad, the lines are half the stroke width and
+    intercept the axes every 40 line widths, anchored at the local origin.
+    The mask is colorless; paint comes from the masked fill.
+    """
+    thick = Svg.THICKNESS.get("wire" if thick is None else thick, thick)
+    # KiCad draws no hatch for negative widths; neither does an empty pattern
+    w = max(round(float(thick) * 10000) // 2, 0)  # KiCad schematic IU
+    mid = f"hatch_{kind[0]}_{w}"
+    if mid in self.defs:
+      return f"url(#{mid})"
+    s, h = 40 * w / 100, 20 * w / 100  # SVG units
+    # "/" lines on x+y=k*s and "\" lines on y-x=k*s, extended past the tile
+    # so that the corners join
+    d = {
+      "h": f"M{-h:g} {h:g}L{h:g} {-h:g}M0 {s:g}L{s:g} 0M{h:g} {s + h:g}"
+      f"L{s + h:g} {h:g}",
+      "r": f"M{-h:g} {h:g}L{h:g} {s + h:g}M0 0L{s:g} {s:g}M{h:g} {-h:g}"
+      f"L{s + h:g} {h:g}",
+    }
+    d["c"] = d["h"] + d["r"]
+    self.defs[mid] = (
+      f'<pattern id="{mid}_p" patternUnits="userSpaceOnUse" width="{s:g}"'
+      f' height="{s:g}"><path d="{d[kind[0]]}" stroke="#fff"'
+      f' stroke-width="{w / 100:g}"/></pattern><mask id="{mid}"><rect'
+      f' x="-1e6" y="-1e6" width="2e6" height="2e6" fill="url(#{mid}_p)"/>'
+      "</mask>"
     )
     return f"url(#{mid})"
 
@@ -882,6 +932,7 @@ class Svg:
     tag=None,
     start_marker=None,
     end_marker=None,
+    hatch=None,
   ):
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -897,6 +948,7 @@ class Svg:
       tag=tag,
       start_marker=start_marker,
       end_marker=end_marker,
+      hatch=hatch,
     )
 
   def bezier(
@@ -908,6 +960,7 @@ class Svg:
     pattern=None,
     start_marker=None,
     end_marker=None,
+    hatch=None,
   ):
     """Renders a bezier curve.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -922,6 +975,7 @@ class Svg:
       pattern=pattern,
       start_marker=start_marker,
       end_marker=end_marker,
+      hatch=hatch,
     )
 
   def _path(
@@ -936,6 +990,7 @@ class Svg:
     tag=None,
     start_marker=None,
     end_marker=None,
+    hatch=None,
   ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
@@ -987,6 +1042,7 @@ class Svg:
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + self._hatch_attrs(hatch, fill)
       + markers
       + Svg._tagattr(tag)
     ).nocontents()
@@ -1417,7 +1473,7 @@ class Svg:
           (self.metadata_context,) + t[1:] for t in symsvg.pin_text
         )
         self.glyphs.update(symsvg.glyphs)
-        self.markers.update(symsvg.markers)
+        self.defs.update(symsvg.defs)
         if bounds:
           bounds.append(FakeDiff(name[i].c, old=bounds[0], new=symbounds))
         else:
@@ -1713,10 +1769,10 @@ class Svg:
     )
     if self._has_animation:
       svg += self._auto_animate
-    # Add all line ending markers
-    if self.markers:
+    # Add all line ending markers and hatch masks
+    if self.defs:
       svg.append("<defs>")
-      svg += (self.markers[m] for m in sorted(self.markers))
+      svg += (self.defs[d] for d in sorted(self.defs))
       svg.append("</defs>")
     # Add all symbols
     for name, symsvg in self.symbols.items():
