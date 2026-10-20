@@ -617,7 +617,8 @@ class Arc(Drawable):
     }
     args["fill"] = f"{args['color']}_background"
     self.fillsvgargs(args, diffs, context)
-    if not self.draw_body(draw, args):
+    filled = Param(args["fill"]).reduce(any, lambda f: f and f != "none")
+    if filled and self.draw_body(draw, args):
       # Line endings are only drawn with the stroke, and as in KiCad, fills
       # stop at the base of closed line endings.
       bgargs = {k: v for k, v in args.items() if not k.endswith("_marker")}
