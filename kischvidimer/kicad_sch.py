@@ -460,6 +460,8 @@ class RuleArea(HasUUID, Drawable):
 class NetclassFlag(HasUUID, Drawable):
   """A net directive label"""
 
+  LITERAL_MAP = {"name": 1}
+
   def fillnetlist(self, netlister, diffs, context):
     # TODO: add netclass to location, fix nodecount, etc
     pass
