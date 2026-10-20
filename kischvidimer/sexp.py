@@ -129,8 +129,9 @@ class SExp(Comparable):
 
   # Indicates that only one of these SExps should appear in a context
   # Specifying a literal name will enforce uniqueness across LITERAL_MAP[name]
-  # True by default since there are a lot of singular data classes. Only applies to
-  # registered handlers; unhandled tokens may repeat and are matched by content.
+  # True by default since there are a lot of singular data classes. Only
+  # applies to registered handlers; unhandled tokens may repeat and are matched
+  # by content.
   UNIQUE = True
 
   # If not UNIQUE, indicates that the order must be maintained
