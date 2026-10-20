@@ -762,8 +762,14 @@ class Svg:
       ),
       *(start, stop, center, radius, largearc, fill),
     )
-    # FIXME: this is wrong but it doesn't really matter that much
-    self._update_bounds(start[0][0], stop[0][0], thick[0][0])
+    if mid is None:
+      # FIXME: this is wrong but it doesn't really matter that much
+      self._update_bounds(start[0].v, stop[0].v, thick[0].v)
+    else:
+      for pt in Svg._arc_extents(
+        start[0].v, mid[0].v, stop[0].v, fill[0].v != "none"
+      ):
+        self._update_bounds(pt, thick=thick[0].v)
     self.add(
       ["<path"]
       + self.attr("d", d)
@@ -776,6 +782,28 @@ class Svg:
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + self._marker_attrs(start_marker, end_marker, thick, start, stop)
     ).nocontents()
+
+  @staticmethod
+  def _arc_extents(start, mid, stop, wedge):
+    """Returns the points that bound a circular arc: its ends, the circle's
+    extremes that lie on the arc, and the center if the pie wedge is filled.
+    """
+    (cx, cy), r, _, _ = Svg.c_r_la(start, mid, stop)
+    if r >= 1e9:  # degenerate
+      return [start, stop]
+    pts = [start, stop] + [(cx, cy)] * wedge
+    (x0, y0), (x1, y1), mid = (
+      (float(x), float(y)) for x, y in (start, stop, mid)
+    )
+
+    def side(pt):
+      # Which side of the chord a point is on
+      return (x1 - x0) * (pt[1] - y0) - (y1 - y0) * (pt[0] - x0)
+
+    for pt in ((cx + r, cy), (cx - r, cy), (cx, cy + r), (cx, cy - r)):
+      if side(pt) * side(mid) > 0:
+        pts.append(pt)
+    return pts
 
   @staticmethod
   def _shorten_arc(start, mid, stop, depths):
