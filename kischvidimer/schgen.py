@@ -184,6 +184,20 @@ class Schematic:
             f"WARNING: variant '{variant}' is not defined in "
             f"{rev or 'the working tree'}; rendering its base design"
           )
+      # Alternate symbols live in libraries, which kischvidimer doesn't load
+      overrides = sorted(
+        {
+          o
+          for _i, sch in pagesets[-1].values()
+          for o in sch.variant_symbol_overrides(variant)
+        }
+      )
+      if overrides:
+        p.msg(
+          f"WARNING: variant '{variant}' uses alternate library symbols for "
+          + ", ".join(f"{ref} ({lib_id})" for ref, lib_id in overrides)
+          + "; showing the base symbols instead"
+        )
 
     if p:
       p.set_text("Processing hierarchy").set_incr_max_mult().incr_max(2).write()

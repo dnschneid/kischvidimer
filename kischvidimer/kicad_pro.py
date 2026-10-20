@@ -37,6 +37,8 @@ class KicadPro(Comparable):
       data = data_filter_func(data if isinstance(data, str) else data.decode())
     self.json = json.loads(data)
     self.variant = ""  # active design variant; "" is the base design
+    self._sheet_insts = {}  # page instance uuid -> (path, sheet)
+    self._sheet_flag_cache = {}
 
   @property
   def project(self):
@@ -68,6 +70,11 @@ class KicadPro(Comparable):
     project text variable. None if not specified."""
     return self.get_variable("DEFAULT_VARIANT")
 
+  @property
+  def show_dnp_markers(self):
+    drawing = self.json.get("schematic", {}).get("drawing", {})
+    return drawing.get("show_dnp_markers", True)
+
   def variant_names(self, pages):
     """Returns the set of all known variant names, from the project and the
     schematic pages. Mirrors SCHEMATIC::LoadVariants."""
@@ -78,7 +85,27 @@ class KicadPro(Comparable):
 
   def context(self):
     s = sexp.SExp.init([sexp.Atom("~project"), self.project])
+    s.kicad_pro = self
     return (s,) + variant_context(self.variant)
+
+  def sheet_flag(self, flag, uuid, context):
+    """Returns True if the flag is set on any sheet in the hierarchy of the
+    page instance uuid, for the active variant. Ignores diffs."""
+    key = (flag, uuid, self.variant)
+    if key not in self._sheet_flag_cache:
+      result = False
+      parts = uuid.split("/")
+      # Skip the root page, which doesn't have a sheet
+      for i in range(3, len(parts) + 1):
+        inst = self._sheet_insts.get("/".join(parts[:i]))
+        if inst is None:
+          continue
+        path, sheet = inst
+        if sheet.flag(flag, None, self.context() + (path,)).v:
+          result = True
+          break
+      self._sheet_flag_cache[key] = result
+    return self._sheet_flag_cache[key]
 
   def fillnetlist(self, netlister, diffs, pages=None, p=None):
     if not pages:
@@ -226,6 +253,12 @@ class KicadPro(Comparable):
       del pages[filepath][0][i : i + 1]
       if not pages[filepath][0]:
         del pages[filepath]
+    self._sheet_insts = {
+      path.uuid(sheet): (path, sheet)
+      for instances, _sch in pages.values()
+      for path, sheet in instances
+    }
+    self._sheet_flag_cache = {}
     return pages
 
   def get_worksheet(self, rev, p):

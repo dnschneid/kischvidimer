@@ -683,13 +683,11 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   def fillvars(self, variables, diffs, context):
     variables.define(context + (self,), "UNIT", self.unit(diffs, context, True))
     variables.define(context + (self,), "OP", "--")
+    define_flag_vars(self, variables, context)
+    footprint = self.field_text("Footprint", context).partition(":")
+    variables.define(context + (self,), "FOOTPRINT_LIBRARY", footprint[0])
+    variables.define(context + (self,), "FOOTPRINT_NAME", footprint[2])
     """ FIXME:
-    ${ref:DNP} -> "DNP" or ""
-    ${ref:EXCLUDE_FROM_BOARD} -> "Excluded from board" or ""
-    ${ref:EXCLUDE_FROM_BOM} -> "Excluded from BOM" or ""
-    ${ref:EXCLUDE_FROM_SIM} -> "Excluded from simulation" or ""
-    ${ref:FOOTPRINT_LIBRARY} -> footprint field (prior to colon if present)
-    ${ref:FOOTPRINT_NAME} -> footprint field, after colon. blank if no colon
     ${ref:NET_CLASS(<pin_number>)} -> net class of attached net to pin
     ${ref:NET_NAME(<pin_number>)} -> connection name of net attached to pin
     ${ref:PIN_NAME(<pin_number>)} -> name of the pin
@@ -788,11 +786,16 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     )
 
   def fillsvg(self, svg, diffs, draw, context):
+    # Symbols affected by the active variant are drawn per-instance
+    if self.variant_sensitive(diffs, context):
+      draw = Drawable.draw_as_pg(draw)
+      if not draw:
+        return
     # Decide what to draw
     subdraw = Drawable.DRAW_BG if draw & Drawable.DRAW_SYMBG else 0
     if draw & Drawable.DRAW_SYMFG:
       subdraw |= Drawable.DRAW_PINS | Drawable.DRAW_FG | Drawable.DRAW_TEXT
-    dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
+    dnp = self.dnp(diffs, context).map(lambda dnp: "dim" * dnp)
     sym_pos = self["at"][0].pos(diffs, relative=True)
     svg.gstart(pos=sym_pos, path=self.uuid(generate=True))
     if subdraw:
@@ -837,7 +840,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
             )
       svg.gend()  # dim
       if bounds and subdraw & Drawable.DRAW_FG:
-        draw_dnp(dnp, svg, bounds)
+        draw_dnp(dnp, svg, bounds, context)
       svg.gend()  # rot, mirror
     svg.gstart(filt=dnp)
     super().fillsvg(svg, diffs, draw, context)
@@ -869,8 +872,20 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       self.mirror(diffs),
     )
 
-  def dnp(self, diffs=None):
-    return self.has_yes("dnp", diffs)
+  def dnp(self, diffs=None, context=None):
+    """DNP state of the symbol itself for the active variant in context."""
+    return self.flag("dnp", diffs, context)
+
+  def field_text(self, name, context):
+    """Returns the unexpanded text of a field for the instance and variant in
+    context, or "" if the field doesn't exist. Ignores diffs.
+    """
+    context = context + (self,)
+    for prop in self.getsubs("property"):
+      if prop.name == name:
+        text = prop.variant_override(None, context).v
+        return prop.value if text is None else text
+    return ""
 
   def refdes(self, diffs, context):
     return HasInstanceData.lookup(
@@ -929,19 +944,36 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     #   chr(1): local uuid
     #   chr(2): lib_id
     #   chr(3): dnp
+    #   chr(4): excluded from BOM
+    #   chr(5): excluded from board
     props = {
       chr(1): self.uuid(generate=True),
       chr(2): self.lib_id(None, context).v,
       "Reference": self.refdes(None, context).v,
     }
-    if self.dnp().v:
-      props[chr(3)] = True
-    if "property" not in self:
-      return props["Reference"], props
+    # Flags follow the active variant and are inherited from parent sheets
+    for key, flag in (
+      (chr(3), "dnp"),
+      (chr(4), "exclude_from_bom"),
+      (chr(5), "exclude_from_board"),
+    ):
+      if self.inherited_flag(flag, context):
+        props[key] = True
     variables = Variables.v(context)
-    for prop in self["property"]:
-      name = prop.name
-      value = variables.expand(context + (self,), prop.value)
+    raw = {prop.name: prop.value for prop in self.getsubs("property")}
+    variant = self.variant_lookup(lambda v, d: v, None, context).v
+    if variant is not None:
+      # Overrides of fields the symbol lacks are still part of the BOM
+      raw.update(
+        (k, v)
+        for k, v in variant.fields().items()
+        if k not in Field.VARIANT_IMMUTABLE
+      )
+      alt_symbol = variant.symbol_override().v
+      if alt_symbol:
+        raw["Variant symbol (not shown)"] = alt_symbol
+    for name, text in raw.items():
+      value = variables.expand(context + (self,), text)
       if (
         name
         and name != "Reference"
@@ -1026,6 +1058,7 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
     return cls.new(sexp.SExp.init([sexp.Atom("uuid"), uuid]))
 
   def fillvars(self, variables, diffs, context):
+    define_flag_vars(self, variables, context)
     super().fillvars(variables, diffs, context)
     context = context + (self,)
     variables.define(context, "FILENAME", os.path.basename(self.file(diffs).v))
@@ -1036,8 +1069,13 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
 
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs, of course
+    # Sheets affected by the active variant are drawn per-instance
+    if self.variant_sensitive(diffs, context):
+      draw = Drawable.draw_as_pg(draw)
+      if not draw:
+        return
     pos = self["at"][0].pos(diffs, relative=True)
-    dnp = self.dnp(diffs).map(lambda dnp: "dim" * dnp)
+    dnp = self.dnp(diffs, context).map(lambda dnp: "dim" * dnp)
 
     svg.gstart(pos=pos, path=self.uuid(generate=True))
     svg.gstart(filt=dnp)
@@ -1072,13 +1110,15 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
           args["height"],
           margin,
         ),
+        context,
       )
 
     svg.gend()  # path, pos
 
   @sexp.uses("dnp")
-  def dnp(self, diffs=None):
-    return self.has_yes("dnp", diffs)
+  def dnp(self, diffs=None, context=None):
+    """DNP state of the sheet itself for the active variant in context."""
+    return self.flag("dnp", diffs, context)
 
   def name(self, diffs):
     return Field.getprop(self, "Sheetname", diffs)
@@ -1210,6 +1250,19 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
             names.update(v.name for v in path.getsubs("variant"))
     return names
 
+  def variant_symbol_overrides(self, variant):
+    """Returns a list of (reference, lib_id) for symbol instances that use an
+    alternate library symbol in the variant. Ignores diffs."""
+    overrides = []
+    for sym in self.getsubs("symbol"):
+      for path in sym.paths().values():
+        for v in path.getsubs("variant"):
+          alt = v.symbol_override().v if v.name == variant else None
+          if alt:
+            ref = path.get("reference")
+            overrides.append((ref[0] if ref else "?", alt))
+    return overrides
+
   def get_components(self, context, instance, diffs=None):
     # returns a dict mapping refdes to dict of properties
     # Context should include project and variables, ideally
@@ -1256,7 +1309,24 @@ def kicad_sch(f, fname=None):
   return data[0]
 
 
-def draw_dnp(dnp, svg, bounds):
+def define_flag_vars(item, variables, context):
+  """Defines ${DNP}, ${EXCLUDE_FROM_*} for a symbol or sheet instance, which
+  follow the active variant and are inherited from parent sheets."""
+  for var, flag, text in (
+    ("DNP", "dnp", "DNP"),
+    ("EXCLUDE_FROM_BOM", "exclude_from_bom", "Excluded from BOM"),
+    ("EXCLUDE_FROM_BOARD", "exclude_from_board", "Excluded from board"),
+    ("EXCLUDE_FROM_SIM", "exclude_from_sim", "Excluded from simulation"),
+  ):
+    value = text if item.inherited_flag(flag, context) else ""
+    variables.define(context + (item,), var, value)
+
+
+def draw_dnp(dnp, svg, bounds, context=()):
+  # The project can disable the DNP marker; DNP items are still dimmed
+  for c in context:
+    if hasattr(c, "kicad_pro") and not c.kicad_pro.show_dnp_markers:
+      return
   # FIXME: SCH_SYMBOL::PlotDNP uses a fancy calculation for margins which comes
   # out to -0.4x the pin length if pins exist on an edge, and -0.7x other pin
   # length if the edge has none. Sheets are even wonkier, including properties.

@@ -94,6 +94,15 @@ def active_variant(context):
 class HasInstanceData(sexp.SExp):
   """Sexp with instances->project->path->field/data"""
 
+  # Instance flags: (token, whether the token is positive logic)
+  FLAGS = {
+    "dnp": ("dnp", False),
+    "exclude_from_sim": ("exclude_from_sim", False),
+    "exclude_from_bom": ("in_bom", True),
+    "exclude_from_board": ("on_board", True),
+    "exclude_from_pos_files": ("in_pos_files", True),
+  }
+
   @classmethod
   def lookup(cls, field, diffs, context, default=None):
     # Instance data is tricky. Modifications are straightfoward (the
@@ -124,6 +133,98 @@ class HasInstanceData(sexp.SExp):
           if cdata and not cdata.is_empty:
             data = Param(cdata, default=data)
     return Param(data)
+
+  @staticmethod
+  def instance_uuid(context):
+    """Returns (project, uuid) of the page instance described by the context.
+    uuid is None if the context does not describe an instance.
+    """
+    project = None
+    path = None
+    sheets = []
+    for c in context or ():
+      typ = getattr(c, "type", None)
+      if typ == "~project":
+        project = c[0]
+      elif typ == "path":
+        path = c
+        sheets = []
+      elif typ == "sheet":
+        sheets.append(c)
+    if path is not None:
+      return project, path.uuid(sheets[:1])
+    # Standalone pages use a pair of fake sheets instead of a path
+    if len(sheets) >= 2:
+      return project, f"{sheets[0].uuid()}/{sheets[1].uuid()}"
+    return project, None
+
+  def variant_lookup(self, getter, diffs, context):
+    """Returns a Param of getter(variant, diffs) for this object's instance
+    data for the active variant in the context, or Param(None) if there is
+    none. Unlike other instance data, adding or removing a variant (or its
+    contents) is tracked as a diff.
+    """
+    variant = active_variant(context)
+    if not variant:
+      return Param(None)
+    project, uuid = HasInstanceData.instance_uuid(context)
+    if uuid is None:
+      return Param(None)
+    data = self.instancedata(
+      project,
+      uuid,
+      lambda path, diffs: path.variantdata(variant, getter, diffs),
+      diffs,
+    )
+    return Param(data)
+
+  def variant_sensitive(self, diffs, context):
+    """Returns True if any instance has data for the active variant."""
+    variant = active_variant(context)
+    if not variant:
+      return False
+    cache = self.__dict__.setdefault("_variant_sensitive_cache", {})
+    key = (id(diffs), variant)
+    if key not in cache:
+      cache[key] = any(
+        v.name == variant
+        for path in self.paths(None, diffs).values()
+        for v in path.variants(diffs)
+      )
+    return cache[key]
+
+  def flag(self, flag, diffs=None, context=None):
+    """Returns a Param of an instance flag (see FLAGS) for the active variant.
+    Only considers this object's own flag, not parent sheets.
+    """
+    token, positive = HasInstanceData.FLAGS[flag]
+    if positive:
+      # A missing token means the default: not excluded
+      base = self.getparam(token, diffs, get=lambda c, d: c.yes(d))
+      base = base.map(lambda y: y is False)
+    else:
+      base = self.has_yes(token, diffs)
+
+    def getter(variant, diffs):
+      value = variant.flag(token, diffs)
+      # Before 20260306, a variant's in_bom token was negative logic
+      if positive and not (token == "in_bom" and variant.version < 20260306):
+        value = value.map(lambda y: None if y is None else not y)
+      return value
+
+    return Param(self.variant_lookup(getter, diffs, context), default=base)
+
+  def inherited_flag(self, flag, context):
+    """Returns True if the flag is set on this object or on any sheet in its
+    hierarchy, for the active variant. Ignores diffs.
+    """
+    if self.flag(flag, None, context).v:
+      return True
+    _project, uuid = HasInstanceData.instance_uuid(context)
+    for c in context:
+      if hasattr(c, "kicad_pro") and uuid:
+        return c.kicad_pro.sheet_flag(flag, uuid, context)
+    return False
 
   def instancedata(self, project, uuid, field, diffs):
     # Disregard diffs on additions and removals
@@ -245,6 +346,8 @@ class Path(sexp.SExp):
   def instancedata(self, uuid, field, diffs):
     if uuid != self.path:
       return None
+    if callable(field):
+      return field(self, diffs)
     # Disregard diffs on additions and removals
     added, _removed = self.added_and_removed(diffs, sexp.SExp.get_class(field))
     data = None
@@ -254,6 +357,18 @@ class Path(sexp.SExp):
       if newdata and not newdata.is_empty:
         data = Param(data, default=newdata)
     return data
+
+  def variants(self, diffs=None):
+    """Returns all variant blocks, including ones added by diffs."""
+    added, _removed = self.added_and_removed(diffs, Variant)
+    return self.getsubs("variant") + [a.v for a in added]
+
+  def variantdata(self, variant, getter, diffs):
+    """Returns a Param of getter(variant block, diffs), tracking diffs that add
+    or remove the variant block."""
+    return self.getparam(
+      "variant", diffs, match=lambda v: v.name == variant, get=getter
+    )
 
 
 @sexp.handler("variant")
@@ -273,11 +388,41 @@ class Variant(sexp.SExp):
   def name(self):
     return self["name"][0][0] if "name" in self else ""
 
+  @property
+  def version(self):
+    """File version of the schematic this variant block is in."""
+    for a in self.ancestry:
+      if a.type == "kicad_sch" and "version" in a:
+        return a["version"][0][0]
+    return Version.MAX_VERSION
+
   def distance(self, other, fast, diffparam):
     if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     # Renaming a variant is treated as a remove + add
     return 0 if self.name == other.name else None
+
+  def flag(self, token, diffs=None):
+    """Returns a Param of True/False if the token is overridden, else None."""
+    return self.getparam(token, diffs, get=lambda c, d: c.yes(d))
+
+  def field(self, name, diffs=None):
+    """Returns a Param of the field override's text, or None."""
+    return self.getparam(
+      "field",
+      diffs,
+      match=lambda f: f.name == name,
+      get=lambda f, d: f.getparam("value", d),
+    )
+
+  def fields(self):
+    """Returns a dict of field name to override text. Ignores diffs."""
+    return {f.name: f.getparam("value").v for f in self.getsubs("field")}
+
+  @sexp.uses("symbol_override")
+  def symbol_override(self, diffs=None):
+    """Returns a Param of the alternate library symbol's ID, or None."""
+    return self.getparam("symbol_override", diffs)
 
 
 @sexp.handler("field")
@@ -588,6 +733,24 @@ class Drawable(ModifierRoot, sexp.SExp):
     for item in self.data:
       if isinstance(item, Drawable):
         item.fillnetlist(netlister, diffs, context)
+
+  @staticmethod
+  def draw_as_pg(draw):
+    """Remaps draw flags so that an element is entirely drawn during the
+    page-specific stages, e.g. if it differs between instances.
+    Returns 0 if nothing should be drawn during this stage.
+    """
+    if not draw & Drawable.DRAW_STAGE_PAGE_SPECIFIC:
+      return 0
+    for pg, common in (
+      (Drawable.DRAW_SYMBG, Drawable.DRAW_BG),
+      (Drawable.DRAW_TEXT_PG, Drawable.DRAW_TEXT),
+      (Drawable.DRAW_PROPS_PG, Drawable.DRAW_PROPS),
+      (Drawable.DRAW_FG_PG, Drawable.DRAW_FG),
+    ):
+      if draw & pg:
+        draw |= common
+    return draw
 
   @staticmethod
   def draw_body(draw, fill):
@@ -1046,15 +1209,38 @@ class Field(Drawable):
     # Changing field names is not supported, since many fields are special.
     return 0 if self.name == other.name else None
 
+  # Fields that design variants can't override
+  VARIANT_IMMUTABLE = ("Reference", "Sheetname", "Sheetfile")
+
+  def variant_override(self, diffs, context):
+    """Returns a Param of the active variant's override of this field's text
+    for the instance in context (which should end with the field's parent), or
+    Param(None) if there isn't one.
+    """
+    parent = context[-1] if context else None
+    if not isinstance(parent, HasInstanceData) or (
+      self.name in Field.VARIANT_IMMUTABLE
+    ):
+      return Param(None)
+    return parent.variant_lookup(
+      lambda v, d: v.field(self.name, d), diffs, context
+    )
+
   def fillvars(self, variables, diffs, context):
-    variables.define(context + (self,), self.name, self.value)
+    value = self.variant_override(None, context).v
+    variables.define(
+      context + (self,), self.name, self.value if value is None else value
+    )
     super().fillvars(variables, diffs, context)
 
   @sexp.uses("show_name", "hide")
   def fillsvg(self, svg, diffs, draw, context):
     # FIXME: diffs...
     prop = self.name  # changing field names is not supported
-    raw_text = self.param(diffs, "value")
+    raw_text = Param(
+      self.variant_override(diffs, context),
+      default=self.param(diffs, "value"),
+    )
     is_pg = raw_text.reduce(any, lambda t: "${" in t) or prop.lower() in (
       "reference",
       "sheetname",

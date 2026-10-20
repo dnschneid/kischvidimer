@@ -145,6 +145,8 @@ class Param:
       # Re-wrap with a different default: unwrap constants to their raw value
       if func._evalcache is None:
         func = func._args[0]
+        if func is None and isinstance(default, (Param, Diff.Group)):
+          func, default = default, None  # as with Param(None, default=X)
       # Non-constant Params fall through to the slow path as a Diff.Group/Param
 
     # --- Param(value): constant (common) ---
@@ -568,6 +570,8 @@ class FakeDiff(Diff):
   def __init__(self, cls, *args, **kargs):
     super().__init__(None, None, *args, **kargs)
     self._svgclass = cls
+    if self._data is None:
+      self._data = (None, None)  # FakeDiff(cls, new=None) renders as None
 
   def param(self):
     return Param(Diff.Group(self))

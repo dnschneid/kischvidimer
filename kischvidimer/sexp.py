@@ -268,23 +268,41 @@ class SExp(Comparable):
       diffs, self, key, base, default=default, with_remove_c=with_remove_c
     )
 
-  def getparam(self, atom, diffs=None, default=None, key=None, cls=None):
+  def getparam(
+    self,
+    atom,
+    diffs=None,
+    default=None,
+    key=None,
+    cls=None,
+    match=None,
+    get=None,
+  ):
     """Returns a Param for data of a unique subsexp, handling add/removes.
+    match(subsexp) picks one of several repeated subsexps, and get(subsexp,
+    diffs) returns a Param of its data in place of subsexp.param(diffs, key).
     It's generally better to make these subsexps Modifiers, if applicable.
     """
-    item = self.get(atom)
-    assert not is_atom(item, recurse=False), f"atom '{atom}' is not a subsexp"
+    if match is None:
+      item = self.get(atom)
+      assert not is_atom(item, recurse=False), f"atom '{atom}' is not a subsexp"
+    else:
+      item = next(filter(match, self.getsubs(atom)), None)
+    get = get or (lambda item, diffs: item.param(diffs, key))
     if item is None:
       options = Diff.Group(None)
     else:
       options = Diff.Group(
         *(
           FakeDiff(dp.c, new=dp.v) if dp.c else dp.v
-          for dp in item.param(diffs, key)
+          for dp in Param(get(item, diffs))
         )
       )
     added, removed = self.added_and_removed(diffs, cls or SExp.get_class(atom))
-    options += (FakeDiff(c, new=item.param(diffs).v) for item, c in added)
+    if match is not None:
+      added = [(a, c) for a, c in added if match(a)]
+      removed = {i: c for i, c in removed.items() if i == id(item)}
+    options += (FakeDiff(c, new=Param(get(item, diffs)).v) for item, c in added)
     options += (FakeDiff(c, old=options[0]) for c in removed.values())
     return Param(options, default=default)
 
