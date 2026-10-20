@@ -82,6 +82,9 @@ class Svg:
     "bus": 0.3048,  # mm
     "dnp": 0.1524 * 3,  # mm
   }
+  # Line endings; see KiCad's common/line_ending.cpp
+  MARKER_DEFAULT_RATIO = 5  # auto size, relative to the line thickness
+  MARKER_STYLES = {"arrow", "arrow_open", "circle", "square"}
   # It seems a font of size 1.5775 has an em height of 2.54 in KiCad
   FONT_SIZE = 2.54 / 1.5775  # converting KiCad glyph width to em height
   FONT_HEIGHT = 4 / 3  # converting KiCad glyph width to "height"
@@ -125,6 +128,7 @@ class Svg:
     self.uidtable = None
     self.prune = True
     self.glyphs = set()
+    self.markers = {}  # line ending marker id -> definition
     self._extend_current_line = 0
     self._invert_y = []
     self._bounds = None
@@ -576,11 +580,14 @@ class Svg:
     fill=None,
     thick=None,
     pattern=None,
+    start_marker=None,
+    end_marker=None,
     tag=None,
   ):
     """Renders an ellipse, or an elliptical arc if start and end are provided.
     rotate is the angle of the rx axis in degrees, clockwise on-screen.
     start and end are parametric angles in degrees, also clockwise on-screen.
+    start_marker/end_marker are line ending specs for arcs; see marker()
     The center and rotation are applied as separate transforms of a group so
     that diffs of each parameter animate a distinct attribute.
     """
@@ -604,11 +611,19 @@ class Svg:
       self._update_bounds(
         (sx * float(rx[0].v), sy * float(ry[0].v)), thick=thick[0].v
       )
+    markers = []
     if start is None:
       shape = ["<ellipse"] + self.attr("rx", rx, 0) + self.attr("ry", ry, 0)
     else:
       d = Param(Svg._ellipse_arc_d, rx, ry, start, end)
       shape = ["<path"] + self.attr("d", d)
+      markers = self._marker_attrs(
+        start_marker,
+        end_marker,
+        thick,
+        Param(Svg._ellipse_pt, rx, ry, start),
+        Param(Svg._ellipse_pt, rx, ry, end),
+      )
     self.add(
       shape
       + self.attr("stroke", color)
@@ -617,9 +632,17 @@ class Svg:
       + self.attr("fill", fill, "none")
       + self.attr("fill-opacity", fillopacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + markers
       + Svg._tagattr(tag)
     ).nocontents()
     self.gend()
+
+  @staticmethod
+  def _ellipse_pt(rx, ry, t):
+    """Returns the point at parametric angle t (degrees) on an unrotated
+    ellipse centered at the origin."""
+    t = math.radians(t)
+    return (float(rx) * math.cos(t), float(ry) * math.sin(t))
 
   @staticmethod
   def _ellipse_arc_d(rx, ry, start, end):
@@ -638,7 +661,7 @@ class Svg:
     # handles full ellipses, and keeps the path structure constant so that
     # diffs animate smoothly.
     pts = (
-      (rx * math.cos(t), ry * math.sin(t))
+      Svg._ellipse_pt(rx, ry, math.degrees(t))
       for t in (start, (start + end) / 2, end)
     )
     pts = [f"{Svg.tounit(x)} {Svg.tounit(y)}" for x, y in pts]
@@ -670,6 +693,8 @@ class Svg:
     fill=None,
     thick=None,
     pattern=None,
+    start_marker=None,
+    end_marker=None,
   ):
     start = Param(start)
     stop = Param(stop)
@@ -683,6 +708,7 @@ class Svg:
       # We expect it to be consistent regardless of diffs.
       if reverse.reduce(any):
         start, stop = stop, start
+        start_marker, end_marker = end_marker, start_marker
     else:
       assert radius and largearc
       radius = Param(radius)
@@ -731,7 +757,97 @@ class Svg:
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + self._marker_attrs(start_marker, end_marker, thick, start, stop)
     ).nocontents()
+
+  def _marker_attrs(self, start_marker, end_marker, thick, start, stop):
+    """Returns the marker-start/marker-end attributes for line endings.
+    start and stop are Params of the endpoints, for bounds calculations.
+    """
+    attrs = []
+    for name, spec, pt in (
+      ("marker-start", start_marker, start),
+      ("marker-end", end_marker, stop),
+    ):
+      if spec is None:
+        continue
+      spec = Param(spec)
+      marker = Param(self.marker, spec, thick)
+      # Markers extend beyond the line, so include them in the bounds
+      for i in range(max(len(spec), len(thick), len(pt))):
+        s, t, p = spec.get(i).v, thick.get(i).v, pt.get(i).v
+        if s and t and p:
+          extent = sum(Svg.marker_size(s, t)) + float(s[3])
+          self._update_bounds(p, thick=extent * 2)
+      attrs += self.attr(name, marker, "none", convert=False)
+    return attrs
+
+  @staticmethod
+  def marker_size(spec, thick):
+    """Returns the (length, width) of a line ending, in mm.
+    An unspecified axis inherits the other; if neither, auto-sizes.
+    """
+    length, width = float(spec[1]), float(spec[2])
+    auto = float(thick) * Svg.MARKER_DEFAULT_RATIO
+    return (length or width or auto, width or length or auto)
+
+  def marker(self, spec, thick):
+    """Maps a line ending spec to a marker reference, defining the marker if
+    necessary. spec is a tuple of (style, length, width, strokewidth) in mm.
+    The marker is shared by every line with the same proportions, and is sized
+    in units of the referencing line's stroke width. Paint comes from the
+    referencing line (context-stroke), so color, theming, and diff highlighting
+    of the line apply to the ending as well.
+    """
+    thick = float(thick or 0)
+    if not spec or spec[0] not in Svg.MARKER_STYLES or not thick:
+      return "none"
+    style = spec[0]
+    length, width = (s / thick for s in Svg.marker_size(spec, thick))
+    stroke = float(spec[3]) / thick
+
+    def num(x):
+      return f"{round(x, 3):g}"
+
+    back, hw = num(-length), num(width / 2)
+    mid = f"le_{style}_{num(length)}_{num(width)}"
+    mid += f"_{num(stroke)}" * bool(stroke)
+    if mid in self.markers:
+      return f"url(#{mid})"
+    # Closed shapes are filled; outlined if the ending has a stroke width.
+    # Open arrows are stroked with the ending's stroke width or the line's.
+    paint = ['fill="context-stroke"']
+    if stroke:
+      paint += ['stroke="context-stroke"', f'stroke-width="{num(stroke)}"']
+    if style == "arrow":
+      # Tip at the endpoint, extending back along the line
+      shape = ["<path", f'd="M0 0L{back} {hw}L{back} -{hw}Z"']
+    elif style == "arrow_open":
+      shape = ["<path", f'd="M{back} -{hw}L0 0L{back} {hw}"']
+      paint = ['stroke="context-stroke"', f'stroke-width="{num(stroke or 1)}"']
+    elif style == "circle":
+      # Centered on the endpoint
+      shape = ["<ellipse", f'rx="{num(length / 2)}"', f'ry="{hw}"']
+    else:
+      shape = [
+        "<rect",
+        f'x="{num(-length / 2)}"',
+        f'y="-{hw}"',
+        f'width="{num(length)}"',
+        f'height="{num(width)}"',
+      ]
+    self.markers[mid] = " ".join(
+      [
+        f'<marker id="{mid}"',
+        'markerUnits="strokeWidth"',
+        'orient="auto-start-reverse"',
+        'overflow="visible">',
+      ]
+      + shape
+      + paint
+      + ["/></marker>"]
+    )
+    return f"url(#{mid})"
 
   def lines(
     self,
@@ -764,6 +880,8 @@ class Svg:
     pattern=None,
     close=None,
     tag=None,
+    start_marker=None,
+    end_marker=None,
   ):
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -777,9 +895,20 @@ class Svg:
       pattern=pattern,
       close=close,
       tag=tag,
+      start_marker=start_marker,
+      end_marker=end_marker,
     )
 
-  def bezier(self, xys, color=None, fill=None, thick=None, pattern=None):
+  def bezier(
+    self,
+    xys,
+    color=None,
+    fill=None,
+    thick=None,
+    pattern=None,
+    start_marker=None,
+    end_marker=None,
+  ):
     """Renders a bezier curve.
     xys should be a list of tuples of coordinates, or a Param of such.
     """
@@ -791,15 +920,28 @@ class Svg:
       fill=fill,
       thick=thick,
       pattern=pattern,
+      start_marker=start_marker,
+      end_marker=end_marker,
     )
 
   def _path(
-    self, ptfunc, xys, color, fill, thick, pattern, close=None, tag=None
+    self,
+    ptfunc,
+    xys,
+    color,
+    fill,
+    thick,
+    pattern,
+    close=None,
+    tag=None,
+    start_marker=None,
+    end_marker=None,
   ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
     xys should be a list of tuples of coordinates, or a list of Params of tuples
     of coordinates, or a Param of coordinates
+    start_marker/end_marker are line ending specs; see marker()
     """
     if not isinstance(xys, Param):
       assert isinstance(xys, (tuple, list))
@@ -829,6 +971,13 @@ class Svg:
     for xy, _ in xys:
       for pt in xy:
         self._update_bounds(pt, thick=thick[0].v)
+    markers = self._marker_attrs(
+      start_marker,
+      end_marker,
+      thick,
+      xys.map(lambda xys: xys[0] if xys else None),
+      xys.map(lambda xys: xys[-1] if xys else None),
+    )
     self.add(
       ["<path"]
       + self.attr("d", d)
@@ -838,6 +987,7 @@ class Svg:
       + self.attr("stroke-dasharray", pattern)
       + self.attr("stroke-opacity", opacity, 1, convert=False)
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
+      + markers
       + Svg._tagattr(tag)
     ).nocontents()
 
@@ -1267,6 +1417,7 @@ class Svg:
           (self.metadata_context,) + t[1:] for t in symsvg.pin_text
         )
         self.glyphs.update(symsvg.glyphs)
+        self.markers.update(symsvg.markers)
         if bounds:
           bounds.append(FakeDiff(name[i].c, old=bounds[0], new=symbounds))
         else:
@@ -1562,6 +1713,11 @@ class Svg:
     )
     if self._has_animation:
       svg += self._auto_animate
+    # Add all line ending markers
+    if self.markers:
+      svg.append("<defs>")
+      svg += (self.markers[m] for m in sorted(self.markers))
+      svg.append("</defs>")
     # Add all symbols
     for name, symsvg in self.symbols.items():
       if symsvg is None or not symsvg.data:

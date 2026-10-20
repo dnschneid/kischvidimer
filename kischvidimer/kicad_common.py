@@ -542,6 +542,9 @@ class Polyline(Drawable):
     self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
+      # Line endings are only drawn with the stroke
+      args.pop("start_marker", None)
+      args.pop("end_marker", None)
     if not self.draw_body(draw, args):
       args["fill"] = "none"
     self._draw(svg, args)
@@ -581,10 +584,10 @@ class Arc(Drawable):
     args["fill"] = f"{args['color']}_background"
     self.fillsvgargs(args, diffs, context)
     if not self.draw_body(draw, args):
-      thick = args["thick"]
-      args["thick"] = 0
-      svg.arc(**args)
-      args["thick"] = thick
+      # Line endings are only drawn with the stroke
+      bgargs = {k: v for k, v in args.items() if not k.endswith("_marker")}
+      bgargs["thick"] = 0
+      svg.arc(**bgargs)
     if draw & Drawable.DRAW_FG:
       args["fill"] = "none"
       svg.arc(**args)
@@ -660,6 +663,9 @@ class Ellipse(Drawable):
     self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
       args["thick"] = 0
+      # Line endings are only drawn with the stroke
+      args.pop("start_marker", None)
+      args.pop("end_marker", None)
     if not self.draw_body(draw, args):
       args["fill"] = "none"
     svg.ellipse(**args)

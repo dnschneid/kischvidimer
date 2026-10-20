@@ -236,6 +236,32 @@ class Fill(HasModifiers):
   """fill properties: type, color"""
 
 
+@sexp.handler("start_shape", "end_shape")
+class LineEnding(Modifier):
+  """graphic line endings: (start_shape STYLE (length L) (width W) (stroke ..))
+  Collapses into a single (style, length, width, strokewidth) tuple, or None if
+  there is no ending. Sizes of 0 mean auto (relative to the line thickness).
+  Does not recurse into the sub-sexps, since width/stroke would otherwise
+  clobber the line's own thickness.
+  """
+
+  LITERAL_MAP = {"style": 1}
+
+  def fillsvgargs(self, args, diffs, context):
+    stroke = self.get("stroke")
+    args[self.type.replace("_shape", "_marker")] = Param(
+      lambda style, length, width, strokewidth: (
+        (str(style), length or 0, width or 0, strokewidth or 0)
+        if style and style != "none"
+        else None
+      ),
+      self.param(diffs, "style"),
+      self.getparam("length", diffs),
+      self.getparam("width", diffs),
+      stroke.getparam("width", diffs) if stroke else None,
+    )
+
+
 class HasYes(sexp.SExp):
   """Marker class for easy identification."""
 
