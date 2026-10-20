@@ -417,7 +417,7 @@ class SymbolBody(Drawable):
   LITERAL_MAP = {"body": 1}
 
   def __str__(self):
-    return f"symbol body u{self.unit} v{self.variant}"
+    return f"symbol body u{self.unit} v{self.body_style}"
 
   def fillnetlist(self, netlister, diffs, context):
     if "pin" not in self:
@@ -430,7 +430,7 @@ class SymbolBody(Drawable):
     return int(self[0].split("_")[-2])
 
   @property
-  def variant(self):
+  def body_style(self):
     return int(self[0].rpartition("_")[-1])
 
 
@@ -457,12 +457,12 @@ class SymbolDef(sexp.SExp):
   def libname(self):
     return self[0]
 
-  def fillnetlist(self, netlister, diffs, context, unit, variant):
-    for body in self._get_bodies(diffs, context, unit, variant).v:
+  def fillnetlist(self, netlister, diffs, context, unit, body_style):
+    for body in self._get_bodies(diffs, context, unit, body_style).v:
       body.fillnetlist(netlister, diffs, context + (self,))
 
-  def fillsvg(self, svg, diffs, draw, context, unit=1, variant=1):
-    for body in self._get_bodies(diffs, context, unit, variant).v:
+  def fillsvg(self, svg, diffs, draw, context, unit=1, body_style=1):
+    for body in self._get_bodies(diffs, context, unit, body_style).v:
       body.fillsvg(svg, diffs, draw, context + (self,))
     draw_props = draw & (Drawable.DRAW_PROPS | Drawable.DRAW_PROPS_PG)
     if draw_props:
@@ -474,17 +474,17 @@ class SymbolDef(sexp.SExp):
       for field in properties.values():
         field.fillsvg(svg, diffs, draw_props, context + (self,))
 
-  def get_nonunique_pins(self, diffs, context, variant=1):
+  def get_nonunique_pins(self, diffs, context, body_style=1):
     # Returns a set of base pin names that appear on more than one pin.
     # FIXME: diffs not handled; cache assumes base revision's pin names
     if not hasattr(self, "_nonunique_pins_cache"):
       self._nonunique_pins_cache = {}
-    variant_v = variant.v if isinstance(variant, Param) else variant
-    if variant_v in self._nonunique_pins_cache:
-      return self._nonunique_pins_cache[variant_v]
+    body_style_v = body_style.v if isinstance(body_style, Param) else body_style
+    if body_style_v in self._nonunique_pins_cache:
+      return self._nonunique_pins_cache[body_style_v]
     seen = set()
     nonunique = set()
-    for body in self._get_bodies(diffs, context, variant=variant).v:
+    for body in self._get_bodies(diffs, context, body_style=body_style).v:
       if "pin" not in body:
         continue
       for pin in body["pin"]:
@@ -493,14 +493,14 @@ class SymbolDef(sexp.SExp):
           nonunique.add(name)
         else:
           seen.add(name)
-    self._nonunique_pins_cache[variant_v] = nonunique
+    self._nonunique_pins_cache[body_style_v] = nonunique
     return nonunique
 
-  def get_con_pin_coords(self, diffs, context, unit, variant=1):
+  def get_con_pin_coords(self, diffs, context, unit, body_style=1):
     # Returns untransformed coordinates where unconnected markers can appear
     # FIXME: diffs?
     pins = set()
-    for body in self._get_bodies(diffs, context, unit, variant).v:
+    for body in self._get_bodies(diffs, context, unit, body_style).v:
       if "pin" not in body:
         continue
       for pin in body["pin"]:
@@ -520,9 +520,9 @@ class SymbolDef(sexp.SExp):
       self._sym(diffs, context),
     )
 
-  def num_variants(self, diffs, context):
+  def num_body_styles(self, diffs, context):
     return Param(
-      lambda s: max((b.variant for b in s.getsubs("symbol")), default=0),
+      lambda s: max((b.body_style for b in s.getsubs("symbol")), default=0),
       self._sym(diffs, context),
     )
 
@@ -573,26 +573,26 @@ class SymbolDef(sexp.SExp):
     return Param(self)
 
   @sexp.uses("symbol")
-  def _get_bodies(self, diffs, context, unit=None, variant=None):
+  def _get_bodies(self, diffs, context, unit=None, body_style=None):
     bodies = self._sym(diffs, context)
-    return Param(SymbolDef._filter_bodies, bodies, unit, variant)
+    return Param(SymbolDef._filter_bodies, bodies, unit, body_style)
 
   @staticmethod
-  def _filter_bodies(bodies, unit, variant):
+  def _filter_bodies(bodies, unit, body_style):
     # FIXME: diffs
     if not isinstance(bodies, list):
       try:
         bodies = bodies["symbol"]
       except KeyError:
         bodies = ()
-    if unit is None and variant is None:
+    if unit is None and body_style is None:
       return bodies
     elif unit is None:
-      return (b for b in bodies if b.variant in (0, variant))
-    elif variant is None:
+      return (b for b in bodies if b.body_style in (0, body_style))
+    elif body_style is None:
       return (b for b in bodies if b.unit in (0, unit))
-    to_render = ((0, 0), (0, variant), (unit, 0), (unit, variant))
-    return (b for b in bodies if (b.unit, b.variant) in to_render)
+    to_render = ((0, 0), (0, body_style), (unit, 0), (unit, body_style))
+    return (b for b in bodies if (b.unit, b.body_style) in to_render)
 
 
 class SymbolInst(PlaceholderHandler):
@@ -695,10 +695,10 @@ def main(argv):
     if len(argv) > 3
     else random.randint(1, sym.num_units(None, params["context"]).v)
   )
-  params["variant"] = (
+  params["body_style"] = (
     int(argv[4])
     if len(argv) > 4
-    else random.randint(1, sym.num_variants(None, params["context"]).v)
+    else random.randint(1, sym.num_body_styles(None, params["context"]).v)
   )
 
   sym.fillsvg(**params)

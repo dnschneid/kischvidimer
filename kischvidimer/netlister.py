@@ -559,10 +559,10 @@ class Netlister:
         symuuid = c.uuid(generate=True)
         ref = c.refdes(None, sym_context).v
         show_unit = c.show_unit(None, sym_context).v
-        variant = c.variant(None, sym_context).v
+        body_style = c.body_style(None, sym_context).v
         power_net = c.power_net(None, sym_context, self.netprefix).v
         nonunique_pins = symbol_def.get_nonunique_pins(
-          None, context, variant=variant
+          None, context, body_style=body_style
         )
         break
     name = pin.getparam("name", None).v

@@ -1443,7 +1443,7 @@ class Svg:
     lib,
     lib_id,
     unit=None,
-    variant=None,
+    body_style=None,
     diffs=None,
     context=None,
   ):
@@ -1463,7 +1463,7 @@ class Svg:
     lib = Param(lib)
     lib_id = Param(lib_id)
     unit = Param(unit, default=1)
-    variant = Param(variant, default=1)
+    body_style = Param(body_style, default=1)
     mirror = Param(
       lambda *mirrors: bool(sum(m[0] != m[1] for m in mirrors) % 2),
       *self._mirrorstate,
@@ -1481,19 +1481,19 @@ class Svg:
       *self._rotatestate,
     )
     name = Param(
-      lambda lib, lib_id, unit, variant, rotate, mirror, alts: ":".join(
+      lambda lib, lib_id, unit, body_style, rotate, mirror, alts: ":".join(
         (
           "symbol",
           f"{lib.sym_hash(lib_id, diffs):x}",
           str(unit),
-          str(variant),
+          str(body_style),
           alts,
           str(rotate // 90),
           "m" * mirror,
           f"{draw:x}",
         )
       ),
-      *(lib, lib_id, unit, variant, rotate, mirror, alternates_hash),
+      *(lib, lib_id, unit, body_style, rotate, mirror, alternates_hash),
     )
     for i in range(len(name)):
       if name[i].v in self.symbols:
@@ -1510,20 +1510,20 @@ class Svg:
       symsvg._rotatestate = [rotate.get(i).v]
       symsvg.push_invert_y()
       symsvg.colormap = self.colormap
-      # Inject this variant's alternates into the context
-      variant_alts = alternates_param.get(i).v
-      variant_context = context or ()
-      if variant_alts is not None:
-        variant_context = variant_context + (
-          AlternateContext(Param(variant_alts)),
+      # Inject this version's alternates into the context
+      version_alts = alternates_param.get(i).v
+      version_context = context or ()
+      if version_alts is not None:
+        version_context = version_context + (
+          AlternateContext(Param(version_alts)),
         )
       sym.fillsvg(
         symsvg,
         None,
         draw,
-        variant_context,
+        version_context,
         unit=int(params[2]),
-        variant=int(params[3]),
+        body_style=int(params[3]),
       )
       symsvg.pop_invert_y()
       self.symbols[name[i].v] = symsvg

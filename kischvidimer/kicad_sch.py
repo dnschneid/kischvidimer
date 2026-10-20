@@ -654,7 +654,9 @@ class Cells(Drawable):
 
 Reference = sexp.SExp.basic("reference")  # Instance data reference
 Unit = sexp.SExp.basic("unit")  # SymbolInst/Instance data unit
-BodyStyle = sexp.SExp.basic("body_style", "convert")  # SymbolInst: sym variant
+BodyStyle = sexp.SExp.basic(
+  "body_style", "convert"
+)  # SymbolInst: De Morgan style
 LibId = sexp.SExp.basic("lib_id")  # ID of a symbol back to the original library
 LibName = sexp.SExp.basic("lib_name")  # ID of a local symbol override
 Mirror = sexp.SExp.basic("mirror")  # SymbolInst: mirrors
@@ -766,13 +768,13 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     lib_id = self.lib_id(diffs, context).v
     sym = lib.symbol(lib_id)
     unit = self.unit(diffs, context)
-    variant = self.variant(diffs, context)
+    body_style = self.body_style(diffs, context)
     sym.fillnetlist(
       netlister,
       diffs,
       context + (self,),
       unit=unit,
-      variant=variant,
+      body_style=body_style,
     )
 
   def transform_pin(self, pos, _diffs=None):
@@ -800,7 +802,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
-      variant = self.variant(diffs, context)
+      body_style = self.body_style(diffs, context)
       svg.gstart(rotate=rot, mirror=mirror)
       svg.gstart(filt=dnp)
       bounds = svg.instantiate(
@@ -808,7 +810,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
         lib,
         lib_id,
         unit=unit,
-        variant=variant,
+        body_style=body_style,
         diffs=diffs,
         context=(self,),
       )
@@ -823,7 +825,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
         # NOTE: context passed to sym (intentionally) does not include self, so
         #       returned pts will be untransformed
         sym = lib.symbol(lib_id.v, diffs)
-        for pos in sym.get_con_pin_coords(diffs, context, unit, variant):
+        for pos in sym.get_con_pin_coords(diffs, context, unit, body_style):
           abs_pos = transformed_pin(pos, rot, mirror, sym_pos)
           if n.get_net(context, abs_pos).is_floating_sympin():
             svg.circle(
@@ -889,7 +891,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       return unit
     return unit.map(unit_to_alpha)
 
-  def variant(self, diffs, context):
+  def body_style(self, diffs, context):
     return Param(
       self.getparam(
         "body_style", diffs, default=self.getparam("convert", diffs, default=1)
