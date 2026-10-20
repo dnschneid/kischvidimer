@@ -64,7 +64,7 @@ class HasUUID:
     return None if this is None or that is None else this == that
 
   def distance(self, other, fast, diffparam):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     uuid_matches = self.uuid_matches(other)
     if uuid_matches:
@@ -337,7 +337,7 @@ class Coord(sexp.SExp):
 
   def distance(self, other, fast, _diffparam):
     """Returns the distance between two points."""
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     if fast:
       return self != other
@@ -346,7 +346,7 @@ class Coord(sexp.SExp):
     ) + (len(self.data) != len(other.data) or self.data[2:] != other.data[2:])
 
   def __eq__(self, other):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return False
     lendata = len(self.data)
     if lendata != len(other.data):
@@ -384,7 +384,7 @@ class MultiCoord(Coord):
   LITERAL_MAP = {"pos": (1, 2)}
 
   def distance(self, other, fast, diffparam):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     this_i = None
     other_i = None
@@ -916,7 +916,7 @@ class TableCell(TextBox):
     return f"cell {unit_to_alpha(rc[1] + 1)}{rc[0] + 1}"
 
   def distance(self, other, fast, diffparam):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     # Consider cells the same if they are the same row+column
     thispos = self["at"][0].pos(relative=True).v
@@ -948,7 +948,7 @@ class Field(Drawable):
     return self[1]
 
   def distance(self, other, fast, diffparam):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     # Changing field names is not supported, since many fields are special.
     return 0 if self.name == other.name else None

@@ -71,7 +71,7 @@ class PinDef(Drawable):
     return f"pin {self['number'][0][0]}"
 
   def distance(self, other, fast, diffparam):
-    if self.type != other.type:
+    if not isinstance(other, sexp.SExp) or self.type != other.type:
       return None
     if self["number"][0][0] == other["number"][0][0]:
       return 0

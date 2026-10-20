@@ -54,7 +54,7 @@ class Comparable:
     """
     # Avoid the diff in the case of "fast"
     if fast:
-      return 1 * (not self.__eq__(other))
+      return 1 * (self != other)
     diff = self.diff(other, diffparam)
     return None if diff is None else len(diff)
 
