@@ -702,9 +702,18 @@ class Svg:
     start_marker=None,
     end_marker=None,
     hatch=None,
+    shorten=None,
   ):
+    """Renders a circular arc.
+    shorten is a Param of how far to pull back each end along the arc; see
+    ending_depths()
+    """
     start = Param(start)
     stop = Param(stop)
+    if shorten is not None and mid is not None:
+      start, mid, stop = Param.multi(
+        3, Svg._shorten_arc, start, Param(mid), stop, shorten
+      )
     center = None
     if mid is not None:
       mid = Param(mid)
@@ -767,6 +776,73 @@ class Svg:
       + self.attr("stroke-width", thick, Svg.THICKNESS["wire"])
       + self._marker_attrs(start_marker, end_marker, thick, start, stop)
     ).nocontents()
+
+  @staticmethod
+  def _shorten_arc(start, mid, stop, depths):
+    """Pulls back both ends of a circular arc along it by depths (mm).
+    Returns the new start, mid, and stop.
+    """
+    (cx, cy), r, _, _ = Svg.c_r_la(start, mid, stop)
+    a0, am, a1 = (
+      math.atan2(float(pt[1]) - cy, float(pt[0]) - cx)
+      for pt in (start, mid, stop)
+    )
+
+    def turn(a, b):
+      # Shortest signed turn from a to b; the middle is within half a turn
+      return (b - a + math.pi) % (2 * math.pi) - math.pi
+
+    sweep = turn(a0, am) + turn(am, a1)
+    d0, d1 = float(depths[0]) / r, float(depths[1]) / r
+    # KiCad omits a fill that is entirely covered; keep a sliver instead
+    scale = min(1, abs(sweep) * 0.999 / (d0 + d1)) if d0 + d1 else 1
+    a0 += math.copysign(d0 * scale, sweep)
+    a1 -= math.copysign(d1 * scale, sweep)
+    am = a0 + (sweep - math.copysign((d0 + d1) * scale, sweep)) / 2
+    return tuple(
+      (cx + r * math.cos(a), cy + r * math.sin(a)) for a in (a0, am, a1)
+    )
+
+  @staticmethod
+  def _shorten_path(pts, depths):
+    """Moves both ends of a path toward their neighbors by depths (mm)."""
+    pts = list(pts)
+    if len(pts) < 2:
+      return pts
+    for i, j, depth in ((0, 1, depths[0]), (-1, -2, depths[1])):
+      (x0, y0), (x1, y1) = pts[i], pts[j]
+      dx, dy = float(x1) - float(x0), float(y1) - float(y0)
+      dist = math.hypot(dx, dy)
+      if depth and dist:
+        f = min(float(depth) / dist, 1)
+        pts[i] = (float(x0) + f * dx, float(y0) + f * dy)
+    return pts
+
+  @staticmethod
+  def ending_depths(start_marker, end_marker, thick):
+    """Returns a Param of how far (mm) each line ending covers the end of its
+    line, which is how far KiCad's fills stop short of the ends (see
+    LINE_ENDING::GetShortenDepth), or None if there are no line endings.
+    """
+    if start_marker is None and end_marker is None:
+      return None
+
+    def depth(spec, thick):
+      if not spec or spec[0] not in Svg.MARKER_STYLES:
+        return 0
+      if spec[0] == "arrow_open":
+        return 0
+      depth = Svg.marker_size(spec, thick)[0]
+      if spec[0] != "arrow":
+        depth /= 2  # circles and squares are centered on the end
+      return max(0, depth - float(spec[3]) / 2)
+
+    return Param(
+      lambda s, e, t: (depth(s, t), depth(e, t)),
+      start_marker,
+      end_marker,
+      Svg._thick(thick),
+    )
 
   def _marker_attrs(self, start_marker, end_marker, thick, start, stop):
     """Returns the marker-start/marker-end attributes for line endings.
@@ -933,6 +1009,7 @@ class Svg:
     start_marker=None,
     end_marker=None,
     hatch=None,
+    shorten=None,
   ):
     """Renders a polyline.
     xys should be a list of tuples of coordinates, or a Param of such.
@@ -949,6 +1026,7 @@ class Svg:
       start_marker=start_marker,
       end_marker=end_marker,
       hatch=hatch,
+      shorten=shorten,
     )
 
   def bezier(
@@ -961,9 +1039,11 @@ class Svg:
     start_marker=None,
     end_marker=None,
     hatch=None,
+    shorten=None,
   ):
     """Renders a bezier curve.
     xys should be a list of tuples of coordinates, or a Param of such.
+    shorten is ignored, since moving the ends would reshape the curve.
     """
     # TODO: fill isn't right if the bezier loops
     self._path(
@@ -991,17 +1071,21 @@ class Svg:
     start_marker=None,
     end_marker=None,
     hatch=None,
+    shorten=None,
   ):
     """Renders a path of various types.
     ptfunc is a func converting point index (i) to svg path prefix with space.
     xys should be a list of tuples of coordinates, or a list of Params of tuples
     of coordinates, or a Param of coordinates
     start_marker/end_marker are line ending specs; see marker()
+    shorten is a Param of how far to pull back each end; see ending_depths().
     """
     if not isinstance(xys, Param):
       assert isinstance(xys, (tuple, list))
       # FIXME: NO! handle this better so we don't conflate everything
       xys = Param.array(*xys)
+    if shorten is not None:
+      xys = Param(Svg._shorten_path, xys, shorten)
     if len(xys) > 1:
       # Match the number of points in all versions of XYs so animations work
       maxpts = xys.reduce(max, len)

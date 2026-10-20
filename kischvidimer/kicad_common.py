@@ -556,10 +556,14 @@ class Polyline(Drawable):
       args["close"] = close
     self.fillsvgargs(args, diffs, context)
     if not draw & Drawable.DRAW_FG:
+      # Line endings are only drawn with the stroke, and as in KiCad, fills
+      # stop at the base of closed line endings.
+      args["shorten"] = svg.ending_depths(
+        args.pop("start_marker", None),
+        args.pop("end_marker", None),
+        args["thick"],
+      )
       args["thick"] = 0
-      # Line endings are only drawn with the stroke
-      args.pop("start_marker", None)
-      args.pop("end_marker", None)
     if not self.draw_body(draw, args):
       args["fill"] = "none"
     self._draw(svg, args)
@@ -599,8 +603,12 @@ class Arc(Drawable):
     args["fill"] = f"{args['color']}_background"
     self.fillsvgargs(args, diffs, context)
     if not self.draw_body(draw, args):
-      # Line endings are only drawn with the stroke
+      # Line endings are only drawn with the stroke, and as in KiCad, fills
+      # stop at the base of closed line endings.
       bgargs = {k: v for k, v in args.items() if not k.endswith("_marker")}
+      bgargs["shorten"] = svg.ending_depths(
+        args.get("start_marker"), args.get("end_marker"), args["thick"]
+      )
       bgargs["thick"] = 0
       svg.arc(**bgargs)
     if draw & Drawable.DRAW_FG:
