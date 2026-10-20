@@ -142,10 +142,19 @@ def get_version(repo=None, githash=None):
   except FileNotFoundError:
     versionfile = None
   if versionfile:
-    glbls = {"__builtins__": {"object": object, "str": str}}
+
+    def _import(name, *args, **kwargs):
+      # setuptools_scm templates start with "from __future__ import ..."
+      if name != "__future__":
+        raise ImportError(f"import of '{name}' not allowed", name=name)
+      return __import__(name, *args, **kwargs)
+
+    glbls = {
+      "__builtins__": {"object": object, "str": str, "__import__": _import}
+    }
     try:
       exec(versionfile.read().decode(), glbls)
-    except NameError as e:
+    except (NameError, ImportError) as e:
       print(
         f"Failed to execute _version.py ('{e.name}' not available)",
         file=sys.stderr,
