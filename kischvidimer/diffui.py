@@ -34,7 +34,7 @@ from io import BytesIO
 
 from . import git, themes
 from .diff import FakeDiff, TargetDict, applylists, threeway
-from .kicad_common import Drawable, Variables, variant_context
+from .kicad_common import Drawable, Variables, diff_variant, variant_context
 from .kicad_pro import DEFAULT_LICENSE_HEADER
 from .netlister import Netlister
 from .svg import Svg
@@ -260,7 +260,7 @@ class DiffUI:
         self.schematic_index["diffs"].setdefault(i, []).append(
           [
             [
-              {"text": str(s3).partition(": ")[2], "id": s3.forsvg().c, "c": 1}
+              {"text": self._difftext(s3), "id": s3.forsvg().c, "c": 1}
               for s3 in s2
             ]
             for s2 in s
@@ -270,10 +270,7 @@ class DiffUI:
       for s in ui_page.safediffs:
         self.schematic_index["diffs"].setdefault(i, []).append(
           [
-            [
-              {"text": str(s3).partition(": ")[2], "id": s3.forsvg().c}
-              for s3 in s2
-            ]
+            [{"text": self._difftext(s3), "id": s3.forsvg().c} for s3 in s2]
             for s2 in s
           ]
         )
@@ -292,6 +289,14 @@ class DiffUI:
     # Clean up netmap for pages that don't exist (e.g., due to not having diffs)
     for k in [k for k in netmap if isinstance(k, str)]:
       del netmap[k]
+
+  def _difftext(self, diff):
+    text = str(diff).partition(": ")[2]
+    # Note changes to design variants that aren't being rendered
+    variant = diff_variant(diff)
+    if variant is not None and variant != self._variant:
+      text += f" (variant '{variant}' not shown)"
+    return text
 
   def addpage(self, name, page, instances, safediffs, conflicts):
     p = Page(

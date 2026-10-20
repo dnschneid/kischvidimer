@@ -371,6 +371,18 @@ class Path(sexp.SExp):
     )
 
 
+def diff_variant(diff):
+  """Returns the name of the design variant a diff changes, or None if the diff
+  isn't specific to a variant."""
+  if diff.is_instance(Variant):
+    return next(v.name for v in diff.values if isinstance(v, Variant))
+  target = diff.target
+  for item in (target, *getattr(target, "ancestry", ())):
+    if isinstance(item, Variant):
+      return item.name
+  return None
+
+
 @sexp.handler("variant")
 class Variant(sexp.SExp):
   """Design variant overrides of a symbol or sheet instance.

@@ -282,7 +282,8 @@ class Schematic:
       p.set_text("Rendering " + dispname).incr().write()
       diffs, conflicts = page.diff()
       if self.diff and not conflicts:
-        # Skip the page if only unimportant diffs remain
+        # Skip the page if only unimportant diffs remain. Changes to other
+        # variants still count, even though they aren't visible.
         for pair in diffs or []:
           if (
             pair[0]

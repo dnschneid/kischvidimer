@@ -400,6 +400,16 @@ class Diff:
     self._unimportant = False
 
   @property
+  def target(self):
+    """The instance the diff applies to."""
+    return self._target
+
+  @property
+  def values(self):
+    """(old, new) for add/rm/mod diffs; None for diff lists."""
+    return self._data if isinstance(self._data, tuple) else None
+
+  @property
   def is_add(self):
     return isinstance(self._data, tuple) and self._data[0] is None
 
