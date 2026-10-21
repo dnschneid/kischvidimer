@@ -201,7 +201,10 @@ class Label(HasUUID, Drawable):
       for c in context:
         if hasattr(c, "kicad_pro"):
           own_page, short, prefix, suffix = c.kicad_pro.intersheet_refs_format
-      instances = net.instances(exclude_context=None if own_page else context)
+      # Pages with a global label of the same name, connected or not
+      instances = n.global_label_instances(
+        short_name, exclude_context=None if own_page else context
+      )
       pages = {variables.resolve(i, variables.PAGENO) for i in instances}
       pages = sorted(pages - {None}, key=page_sort_key)
       if short and len(pages) > 2:

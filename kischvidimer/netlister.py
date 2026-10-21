@@ -405,6 +405,7 @@ class Netlister:
     self._wires_by_inst = {}
     self._instcoord_count = {}  # connection count by coordinate
     self._pinnets_by_ref = {}  # ref: {pin: net}
+    self._global_labels = {}  # name: {instance}
     self.netprefix = "/"  # updated by callers to set the local net name prefix
 
   def context(self):
@@ -437,10 +438,18 @@ class Netlister:
       def get_node_count(self, context, xy, is_bus=False):
         return -1
 
+      def global_label_instances(self, name, exclude_context=None):
+        return set()
+
       def generate_netmap(self, svg):
         return Netlister().generate_netmap(svg)
 
     return Dummy()
+
+  def global_label_instances(self, name, exclude_context=None):
+    """Returns the page instances that have a global label with the name"""
+    exclude = exclude_context and Instance(exclude_context).instance
+    return self._global_labels.get(name, set()) - {exclude}
 
   def get_net(self, context, xy, is_bus=False):
     """Returns a NetBus for the given coordinate+is_bus"""
@@ -499,6 +508,9 @@ class Netlister:
     il = InstLabel(context, label, is_global)
     netbus = self._add_node(ic, label)
     netbus = self._by_instlabel.setrep(il, netbus)
+    if is_global:
+      inst = Instance(context).instance
+      self._global_labels.setdefault(il.text, set()).add(inst)
     netbus.add_name(
       label[0] if is_global else f"{self.netprefix.rstrip('/')}/{label[0]}",
       category=NetBus.CAT_LABEL,
