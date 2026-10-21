@@ -64,22 +64,13 @@ class TitleBlock(Drawable):
     # FIXME: diffs
     svg.instantiate_worksheet(draw, context)
 
-  @sexp.uses(
-    "company",
-    "comment",
-    "title",
-    "paper",
-    "generator",
-    "generator_version",
-    "rev",
-  )
+  @sexp.uses("company", "comment", "date", "rev", "title")
   def fillvars(self, variables, diffs, context):
     # Fill in all variable defaults
     missing_vars = set(kicad_wks.ALL_WKS_VARS)
     for var in self.data:
       name = str(var.type)
-      if name == "date":
-        name = "ISSUE_DATE"
+      name = {"date": "ISSUE_DATE", "rev": "REVISION"}.get(name, name)
       # FIXME: move comment handling to Comment.fillvars
       if len(var.data) > 1:
         name += "".join(str(s) for s in var.data[:-1])
@@ -87,32 +78,7 @@ class TitleBlock(Drawable):
       missing_vars.remove(name)
       variables.define(context + (self,), name, var.data[-1])
     for name in missing_vars:
-      text = ""
-      if name == "PAPER":
-        for c in reversed(context):
-          if c.type == "kicad_sch":
-            text = c.get("paper", default=["A4"])[0]
-            break
-      elif name == "KICAD_VERSION":
-        for c in reversed(context):
-          if c.type == "kicad_sch":
-            text = " ".join(
-              (
-                c.get("generator", default=["unknown"])[0],
-                c.get(
-                  "generator_version",
-                  default=[
-                    str(c.get("version", default=["version unknown"])[0])
-                  ],
-                )[0],
-                "(rendered by kischvidimer)",
-              )
-            )
-            break
-      variables.define(context + (self,), name, text)
-    # For whatever reason, wks uses REVISION but it references REV
-    if variables.resolve(context + (self,), "REVISION") is None:
-      variables.define(context + (self,), "REVISION", "${REV}")
+      variables.define(context + (self,), name, "")
     super().fillvars(variables, diffs, context)
 
 
@@ -1088,8 +1054,6 @@ class Sheet(HasUUID, HasInstanceData, Drawable):
     define_flag_vars(self, variables, context)
     super().fillvars(variables, diffs, context)
     context = context + (self,)
-    variables.define(context, "FILENAME", os.path.basename(self.file(diffs).v))
-    variables.define(context, "FILEPATH", self.file(diffs).v)
     # Define SHEETPATH using the parent sheetpath and just-now-defined sheetname
     # The resolver handles the recursion by going up in the hierarchy
     variables.define(context, "SHEETPATH", "${SHEETPATH}${SHEETNAME}/")

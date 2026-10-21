@@ -41,12 +41,36 @@ from .kicad_common import Drawable, Variables, unit_to_alpha
 ALL_WKS_VARS = {
   "TITLE",
   "ISSUE_DATE",
-  "REV",
+  "REVISION",
   "COMPANY",
-  "LAYER",
-  "PAPER",
-  "KICAD_VERSION",
 }.union({f"COMMENT{i}" for i in range(10)})
+# Variables that only exist in the drawing sheet
+RE_WKS_ONLY_VAR = re.compile(
+  r"(?<!\\)\${(FILENAME|FILEPATH|KICAD_VERSION|LAYER|PAPER)}"
+)
+
+
+@sexp.uses("paper", "generator", "generator_version", "version")
+def wks_only_vars(context):
+  """Returns the values of variables that only exist in the drawing sheet"""
+  sch = next((c for c in reversed(context) if c.type == "kicad_sch"), None)
+  if not sch:
+    return {}
+  version = str(sch.get("version", default=["version unknown"])[0])
+  return {
+    # The current page's file, unlike in other text
+    "FILENAME": os.path.basename(sch._fname or ""),
+    "FILEPATH": sch._fname or "",
+    "KICAD_VERSION": " ".join(
+      (
+        sch.get("generator", default=["unknown"])[0],
+        sch.get("generator_version", default=[version])[0],
+        "(rendered by kischvidimer)",
+      )
+    ),
+    "LAYER": "",
+    "PAPER": sch.get("paper", default=["A4"])[0],
+  }
 
 
 @sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
@@ -183,8 +207,10 @@ class Repeatable(Drawable):
       params["start"] = coord_from_corners(self["start"][0], corners, diffs)
       params["end"] = coord_from_corners(self["end"][0], corners, diffs)
     variables = Variables.v(context)
+    wks_vars = wks_only_vars(context)
 
     def expandfunc(t):
+      t = RE_WKS_ONLY_VAR.sub(lambda m: wks_vars.get(m[1], m[0]), t)
       return variables.expand(context, t)
 
     # Don't render on the wrong page
