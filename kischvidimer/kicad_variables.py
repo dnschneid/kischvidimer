@@ -267,7 +267,8 @@ class Variables:
     g = evaluation_context()
     try:
       ret = eval(expr, g, g)
-    except (NameError, SyntaxError):
+    except Exception:
+      # Like KiCad, leave expressions that fail to evaluate as-is
       return orig_expr
 
     if isinstance(ret, (bool, int)):
