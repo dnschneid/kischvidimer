@@ -16,6 +16,7 @@
 Common classes and routines for handling kicad variables
 """
 
+import datetime
 import math
 import random
 import re
@@ -395,16 +396,26 @@ def evaluation_context():
     """Converts a value to a string like the result of an expression"""
     return x if isinstance(x, str) else format_number(float(x))
 
+  def total(x, *a):
+    for y in a:
+      x += y
+    return x
+
+  def kround(x, n=0):
+    # Round half away from zero, unlike Python
+    m = math.pow(10, int(n))
+    return math.copysign(math.floor(abs(x * m) + 0.5), x) / m
+
   g["abs"] = abs
   g["sqrt"] = math.sqrt
   g["pow"] = math.pow
   g["floor"] = math.floor
   g["ceil"] = math.ceil
-  g["round"] = round
-  g["min"] = min
-  g["max"] = max
-  g["sum"] = sum
-  g["avg"] = lambda *a: sum(a) / len(a)
+  g["round"] = kround
+  g["min"] = lambda x, *a: min((x, *a))
+  g["max"] = lambda x, *a: max((x, *a))
+  g["sum"] = total
+  g["avg"] = lambda *a: total(*a) / len(a)
   g["shunt"] = lambda x, y: x * y / (x + y) if x + y > 0 else 0
   g["db"] = lambda x: 10 * math.log10(x)
   g["dbv"] = lambda x: 20 * math.log10(x)
@@ -421,62 +432,87 @@ def evaluation_context():
 
   g["upper"] = lambda a: text(a).upper()
   g["lower"] = lambda a: text(a).lower()
-  g["concat"] = lambda *a: "".join(map(text, a))
-  g["beforefirst"] = lambda a, c: text(a).partition(text(c)[0])[0]
-  g["beforelast"] = lambda a, c: text(a).rpartition(text(c)[0])[0]
-  g["afterfirst"] = lambda a, c: text(a).partition(text(c)[0])[2]
-  g["afterlast"] = lambda a, c: text(a).rpartition(text(c)[0])[2]
+  g["concat"] = lambda a, b, *c: "".join(map(text, (a, b, *c)))
+  g["beforefirst"] = lambda a, c: text(a).partition((text(c) or " ")[0])[0]
+  g["beforelast"] = lambda a, c: text(a).rpartition((text(c) or " ")[0])[0]
+  g["afterfirst"] = lambda a, c: text(a).partition((text(c) or " ")[0])[2]
+  g["afterlast"] = lambda a, c: text(a).rpartition((text(c) or " ")[0])[2]
+  g["replace"] = lambda a, b, c: (
+    text(a).replace(text(b), text(c)) if text(b) else text(a)
+  )
 
   g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
   g["fixed"] = g["format"]
-  g["currency"] = lambda x, symbol="$": f"{symbol}{float(x):.2f}"
+  g["currency"] = lambda x, symbol="$": f"{text(symbol)}{float(x):.2f}"
 
-  g["weekdayname"] = lambda d: time.strftime(
-    "%A", time.gmtime(float(d) * 24 * 3600)
-  )
+  weekdays = "Monday Tuesday Wednesday Thursday Friday Saturday Sunday".split()
+  g["weekdayname"] = lambda d: weekdays[(int(d) + 3) % 7]
+
+  def days(y, m, d):
+    epoch = datetime.date(1970, 1, 1).toordinal()
+    return float(datetime.date(y, m, 1).toordinal() - epoch + d - 1)
 
   def datestring(s):
-    cjk = "年月日년월일"
-    is_cjk = any(c in s for c in cjk)
-    has_slash = "/" in s
-    if not is_cjk and len(s) == 8:
-      fmt = "%Y%d%m"
+    s = text(s)
+    cjk = re.search(r"(\d+)\s*[年년]\s*(\d+)\s*[月월]\s*(\d+)\s*[日일]", s)
+    sep = next((c for c in "-/." if c in s), None)
+    if cjk:
+      p = [int(x) for x in cjk.groups()]
+    elif sep:
+      p = [int(x) for x in s.split(sep)]
+    elif len(s) == 8:
+      return days(int(s[:4]), int(s[4:6]), int(s[6:]))
     else:
-      p = [x.strip() for x in re.split(f"[-./{cjk}]", str(s), maxsplit=3)]
-      s = ".".join(p)
-      fmt = "%Y.%m.%d"
-      if len(p) == 1:
-        fmt = "%Y"
-      elif len(p) == 2:
-        fmt = "%Y.%m"
-      elif not is_cjk and has_slash and p[0] <= 12 and p[1] <= 31:
-        fmt = "%m.%d.%Y"
-      elif not is_cjk and has_slash and p[0] <= 12:
-        fmt = "%d.%m.%Y"
-    return int(time.mktime(time.strptime(s, fmt)) / (24 * 3600))
+      raise ValueError("invalid date")
+    p += [1] * (3 - len(p))
+    if not cjk and sep == "/" and p[0] <= 12 and p[1] <= 31:
+      p = [p[2], p[0], p[1]]
+    elif not cjk and sep == "/" and p[1] <= 12:
+      p = p[::-1]
+    datetime.date(*p)  # validate
+    return days(*p)
+
+  months = (
+    "January February March April May June July August September October "
+    "November December"
+  ).split()
 
   def dateformat(d, fmt="ISO"):
-    fmt = fmt.lower()
-    if fmt == "us":
-      fmt = "%m/%d/%Y"
-    elif fmt in ("eu", "european"):
-      fmt = "%d/%m/%Y"
-    elif fmt == "long":
-      fmt = "%B %d, %Y"
-    elif fmt == "short":
-      fmt = "%b %d, %Y"
-    elif fmt in ("cn", "jp", "chinese", "japanese", "中文", "日本語"):
-      fmt = "%Y年%m月%d日"
-    elif fmt in ("kr", "korean", "한국어"):
-      fmt = "%Y년%m월%d일"
-    else:
-      fmt = "%Y-%m-%d"
-    return time.strftime(fmt, time.gmtime(float(d) * 24 * 3600))
+    date = datetime.date(1970, 1, 1) + datetime.timedelta(days=int(d))
+    y, m, d = date.year, date.month, date.day
+    fmt = text(fmt)
+    if fmt in ("US", "us"):
+      return f"{m:02}/{d:02}/{y:04}"
+    if fmt in ("EU", "european"):
+      return f"{d:02}/{m:02}/{y:04}"
+    if fmt in ("long", "short"):
+      month = months[m - 1] if fmt == "long" else months[m - 1][:3]
+      return f"{month} {d}, {y}"
+    if fmt in (
+      "Chinese chinese CN cn 中文 Japanese japanese JP jp 日本語".split()
+    ):
+      return f"{y}年{m:02}月{d:02}日"
+    if fmt in ("Korean", "korean", "KR", "kr", "한국어"):
+      return f"{y}년 {m:02}월 {d:02}일"
+    return f"{y:04}-{m:02}-{d:02}"
+
+  def timeformat(t, fmt="ISO"):
+    t = time.localtime(int(t))
+    h, m, s = t.tm_hour, t.tm_min, t.tm_sec
+    fmt = text(fmt)
+    if fmt == "12h":
+      return f"{h % 12 or 12}:{m:02}:{s:02} {'PM' if h >= 12 else 'AM'}"
+    if fmt in ("HH_MM_SS", "filename"):
+      return f"{h:02}h{m:02}m{s:02}s"
+    if fmt == "short":
+      return f"{h:02}:{m:02}"
+    return f"{h:02}:{m:02}:{s:02}"
 
   g["datestring"] = datestring
   g["dateformat"] = dateformat
+  g["timeformat"] = timeformat
 
-  g["__if__"] = lambda c, t, f: t if c else f
+  g["__if__"] = lambda c, t, f: t if float(c) else f
   g["__builtins__"] = {}
 
   return g
