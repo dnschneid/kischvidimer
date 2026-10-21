@@ -659,9 +659,11 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     variables.define(context + (self,), "UNIT", unit)
     variables.define(context + (self,), "OP", "--")
     define_flag_vars(self, variables, context)
-    footprint = self.field_text("Footprint", context).partition(":")
+    footprint = self.field_text("Footprint", context)
+    footprint = variables.expand(context + (self,), footprint).split(":")
     variables.define(context + (self,), "FOOTPRINT_LIBRARY", footprint[0])
-    variables.define(context + (self,), "FOOTPRINT_NAME", footprint[2])
+    name = footprint[1] if len(footprint) > 1 else ""
+    variables.define(context + (self,), "FOOTPRINT_NAME", name)
     refdes = self.refdes(diffs, context).v
     variables.define(context + (self,), "SHORT_REFERENCE", refdes)
     lib_id = self.getparam("lib_id", diffs, default="").v
