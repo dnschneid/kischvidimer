@@ -486,13 +486,14 @@ class Expression:
 
   # Binary operators by increasing precedence; ^ is handled in unary()
   BINARY = (("<", ">", "<=", ">=", "==", "!="), ("+", "-"), ("*", "/", "%"))
+  PRECEDENCE = {op: i for i, ops in enumerate(BINARY, 1) for op in ops}
 
   def __init__(self, text):
     self.tokens = tokenize(text)
     self.pos = 0
 
   def evaluate(self):
-    value = self.binary(0)
+    value = self.binary()
     if self.pos != len(self.tokens):
       raise SyntaxError("trailing tokens")
     return value
@@ -510,13 +511,13 @@ class Expression:
     if not self.accept(op):
       raise SyntaxError(f"expected {op}")
 
-  def binary(self, level):
-    if level == len(self.BINARY):
-      return self.unary()
-    value = self.binary(level + 1)
+  def binary(self, precedence=1):
+    """Parses operators that bind at least as tightly as precedence"""
+    value = self.unary()
     while True:
       kind, op = self.peek()
-      if kind != "op" or op not in self.BINARY[level]:
+      level = self.PRECEDENCE.get(op, 0) if kind == "op" else 0
+      if level < precedence:
         return value
       self.pos += 1
       value = binop(op, value, self.binary(level + 1))
@@ -537,7 +538,7 @@ class Expression:
     if kind in ("num", "str"):
       return value
     if (kind, value) == ("op", "("):
-      value = self.binary(0)
+      value = self.binary()
       self.expect(")")
       return value
     if kind != "id":
@@ -545,9 +546,9 @@ class Expression:
     self.expect("(")
     args = []
     if not self.accept(")"):
-      args.append(self.binary(0))
+      args.append(self.binary())
       while self.accept(","):
-        args.append(self.binary(0))
+        args.append(self.binary())
       self.expect(")")
     return call(value, args)
 
