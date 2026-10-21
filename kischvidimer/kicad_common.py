@@ -19,6 +19,7 @@ Common classes and routines for handling sexp-based kicad files
 import math
 import operator as op
 import os
+import re
 import sys
 from decimal import Decimal
 from uuid import uuid4
@@ -1058,6 +1059,9 @@ class TextBox(Drawable):
       descr = f"large {descr}"
     return f"{descr} at ({pos.v[0]}, {pos.v[1]})"
 
+  def expand_text(self, variables, context, text, depth=0):
+    return variables.expand(context, Variables.unescape(text))
+
   @sexp.uses("pos", "size")
   def pos_size(self, diffs, relative=False, raw_pos=False):
     if not raw_pos:
@@ -1121,7 +1125,7 @@ class TextBox(Drawable):
       # halve the right margin to account for character spacing
       wrapwidth = Param(lambda s, m: s[0] - m[0] - m[2] / 2, size, margins)
       unwrapped = Param(
-        lambda t: variables.expand(subcontext, Variables.unescape(t)), raw_text
+        lambda t: self.expand_text(variables, subcontext, t), raw_text
       )
       textwidth = Param(
         op.mul, args.get("textsize", 0), args.get("textscale", 1)
@@ -1181,6 +1185,56 @@ class TextBox(Drawable):
 @sexp.handler("table_cell")
 class TableCell(TextBox):
   ORDERED = True
+
+  RE_CELL_VAR = re.compile(r"\$\{(ROW|COL|ADDR|CELL\(([^$]*?)\))\}")
+  RE_ADDR = re.compile(r"([A-Za-z]+)([0-9]+)")
+
+  def row_col(self):
+    pos = self["at"][0].pos(relative=True).v
+    return self.parent.to_row_col(pos, relative=True)
+
+  def expand_text(self, variables, context, text, depth=0):
+    """Expands the cell variables ${ROW}, ${COL}, ${ADDR} and ${CELL(...)}
+    before the rest, like KiCad's SCH_TABLECELL::GetShownText"""
+    row, col = self.row_col()
+
+    def sub(m):
+      if m[1] in ("ROW", "COL"):
+        return str(row if m[1] == "ROW" else col)
+      if m[1] == "ADDR":
+        return f"{chr(ord('A') + col % 26)}{row}"
+      return self.cell_text(variables, context, m[2].strip(), depth)
+
+    # Twice, for e.g. ${CELL(${ROW},0)}
+    text = TableCell.RE_CELL_VAR.sub(sub, TableCell.RE_CELL_VAR.sub(sub, text))
+    return super().expand_text(variables, context, text)
+
+  def cell_text(self, variables, context, args, depth):
+    """Returns the text of the cell ${CELL(args)} refers to"""
+    addr = TableCell.RE_ADDR.fullmatch(args[1:-1])
+    if args[:1] == args[-1:] == '"' and addr:
+      row, col = int(addr[2]), 0
+      for c in addr[1].upper():
+        col = col * 26 + ord(c) - ord("A") + 1
+      col -= 1
+    elif args[:1] == args[-1:] == '"':
+      return f"<Unresolved: Invalid cell address: {args[1:-1]}>"
+    elif "," in args:
+      row, _, col = args.partition(",")
+      try:
+        row, col = int(row), int(col)
+      except ValueError:
+        return f"<Unresolved: Invalid cell coordinates: {args}>"
+    else:
+      return f"<Unresolved: Invalid CELL() syntax: {args}>"
+    for cell in self.parent["table_cell"]:
+      if cell.row_col() == (row, col):
+        if depth >= Variables.MAX_DEPTH:
+          return "<Circular reference>"
+        text = cell.param(None).v
+        return cell.expand_text(variables, context, text, depth + 1)
+    addr = f"{chr(ord('A') + col % 26)}{row}" if row >= 0 <= col else args
+    return f"<Unresolved: Cell {addr} not found>"
 
   def __str__(self):
     pos = self["at"][0].pos(relative=True).v

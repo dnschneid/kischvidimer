@@ -94,6 +94,8 @@ class Variables:
   GLOBAL = ""
   PAGENO = "#"
   PAGECOUNT = "##"
+  # How many times KiCad resolves references within references
+  MAX_DEPTH = 6
   # FIXME: handle backslash escapes better
   RE_VAR = re.compile(r"(?<!\\)\${([^}:]+:)?([^}]+)}")
   ESCAPES = {
