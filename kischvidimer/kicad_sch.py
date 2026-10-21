@@ -1194,6 +1194,19 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
       variables.define(context, "FILEPATH", self._fname)
       variables.define(context, "SHEETFILE", os.path.basename(self._fname))
       variables.define(context, "SHEETPATH", "/")
+      name = os.path.splitext(os.path.basename(self._fname))[0]
+      for c in context or ():
+        if hasattr(c, "kicad_pro"):
+          name = c.kicad_pro.root_sheet_name
+      variables.define(context, "SHEETNAME", name)
+      # The root page has no sheet that could set these
+      for var in (
+        "DNP",
+        "EXCLUDE_FROM_BOM",
+        "EXCLUDE_FROM_BOARD",
+        "EXCLUDE_FROM_SIM",
+      ):
+        variables.define(context, var, "")
     super().fillvars(variables, diffs, context)
 
   def get_symbol_lib(self, diffs, context):

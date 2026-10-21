@@ -46,6 +46,11 @@ class KicadPro(Comparable):
     return self.json["meta"]["filename"].replace(".kicad_pro", "")
 
   @property
+  def root_sheet_name(self):
+    tls = self.json.get("schematic", {}).get("top_level_sheets") or [{}]
+    return tls[0].get("name", self.project)
+
+  @property
   def variables(self):
     return self.json.get("text_variables", {})
 
