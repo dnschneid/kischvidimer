@@ -10,11 +10,23 @@ pre-commit:
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/build/cache/pip"
     PRE_COMMIT_HOME: "$CI_PROJECT_DIR/build/cache/pre-commit"
+    # TODO: quick-lint-js fails in CI ("This: not found"); see the optional
+    # quick-lint-js job below. Stop skipping it once that's fixed.
+    SKIP: quick-lint-js
   before_script:
     - apt-get update && apt-get install --no-install-recommends -y npm
     - pip install pre-commit
   script:
     - pre-commit run --all-files
+
+quick-lint-js:
+  extends: pre-commit
+  # TODO: make this required again once it passes in CI
+  allow_failure: true
+  variables:
+    SKIP: ""
+  script:
+    - pre-commit run quick-lint-js --all-files
 
 pages:
   cache:
