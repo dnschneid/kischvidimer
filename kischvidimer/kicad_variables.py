@@ -265,15 +265,13 @@ def expression_end(text, i):
   """Returns the index after the } that closes an expression starting at i,
   skipping over string literals, or None if the expression isn't closed."""
   depth = 1
-  while i < len(text):
-    m = RE_STRING.match(text, i)
-    if m:
-      i = m.end()
-      continue
-    depth += {"{": 1, "}": -1}.get(text[i], 0)
-    i += 1
-    if not depth:
-      return i
+  for m in RE_BRACE_OR_STRING.finditer(text, i):
+    if m[0] == "{":
+      depth += 1
+    elif m[0] == "}":
+      depth -= 1
+      if not depth:
+        return m.end()
   return None
 
 
@@ -384,8 +382,6 @@ PREFIXES = {
   "P": 1e15,
   "E": 1e18,
 }
-# Longest first
-OPERATORS = "<= >= == != ( ) + - * / % ^ , < >".split()
 STRING_ESCAPES = {
   "n": "\n",
   "t": "\t",
@@ -395,9 +391,11 @@ STRING_ESCAPES = {
   "'": "'",
   "0": "\0",
 }
-RE_EXPONENT = re.compile(r"[eE][+-]?[0-9]+")
-RE_STRING = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'")
-RE_HEX = re.compile(r"[0-9a-fA-F]{1,2}")
+RE_STRING = re.compile(
+  r"\"[^\"\\\n]*(?:\\.[^\"\\\n]*)*\"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'"
+)
+RE_BRACE_OR_STRING = re.compile(r"[{}]|" + RE_STRING.pattern)
+RE_STRING_ESCAPE = re.compile(r"\\(?:x([0-9a-fA-F]{1,2})|(.))", re.DOTALL)
 # What KiCad accepts when converting a string to a number
 RE_FLOAT = re.compile(
   r"-?(?:(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|inf(?:inity)?|nan)",
@@ -405,125 +403,81 @@ RE_FLOAT = re.compile(
 )
 
 
-def is_alpha(c):
-  """KiCad treats every non-ASCII, non-space character as a letter"""
-  return c.isalpha() if c.isascii() else c != "\ufffd" and not c.isspace()
+def letters(also=""):
+  """Returns a regex character class for what KiCad considers letters, plus
+  the characters in also: every non-ASCII, non-space character except U+FFFD
+  counts as a letter."""
+  others = (
+    c for c in range(128) if not chr(c).isalpha() and chr(c) not in also
+  )
+  return "[^" + "".join(f"\\x{c:02x}" for c in others) + "\\s\\ufffd]"
 
 
-def is_digit(c):
-  return "0" <= c <= "9"
+RE_IDENTIFIER = letters("_") + letters("_0123456789") + "*"
+# A unit is a whole word, where quotes count as letters (1" is an inch)
+RE_UNIT = (
+  "(?:" + "|".join(map(re.escape, UNITS)) + ")(?!" + letters("\"'") + ")"
+)
+# A prefix can't start a unit, and R and F can't start an identifier
+RE_PREFIX = f"(?!{RE_UNIT}|[RF]{letters('_')})[{''.join(PREFIXES)}]"
+RE_EXPONENT = r"[eE][+-]?[0-9]+"
+# One token per match, dispatched on lastgroup. Strings match RE_STRING, except
+# that with re.DOTALL a backslash can also escape a newline. Anything else,
+# including an unterminated string, is bad.
+RE_TOKEN = re.compile(
+  rf"""
+    (?P<space>\s+)
+  | (?P<str>{RE_STRING.pattern})
+  | (?P<num>(?=\.?[0-9])(?P<int>[0-9]*)
+      (?:
+        # RKM notation (4k7): the prefix takes the place of the decimal point
+          (?!{RE_EXPONENT})(?P<rkm>{RE_PREFIX})
+          (?P<frac>[0-9]*(?:{RE_EXPONENT})?)
+        | (?P<dec>\.?[0-9]*(?:{RE_EXPONENT})?)(?P<prefix>{RE_PREFIX})?
+      )
+      (?:\s*(?P<unit>{RE_UNIT}))?  # a unit may follow after whitespace
+    )
+  | (?P<id>{RE_IDENTIFIER})
+  | (?P<op><=|>=|==|!=|[-+*/%^(),<>])
+  | (?P<bad>.)
+  """,
+  re.VERBOSE | re.DOTALL,
+)
 
 
 def tokenize(text):
   """Returns a list of (kind, value) tuples, where kind is "num", "str", "id",
   or "op". Raises ValueError on invalid input."""
   tokens = []
-  i = 0
-  while i < len(text):
-    c = text[i]
-    nxt = text[i + 1 : i + 2]
-    if c.isspace():
-      i += 1
-    elif c in "\"'":
-      value, i = tokenize_string(text, i)
-      tokens.append(("str", value))
-    elif is_digit(c) or c == "." and is_digit(nxt):
-      value, i = tokenize_number(text, i)
-      tokens.append(("num", value))
-    elif is_alpha(c) or c == "_":
-      start = i
-      while i < len(text) and (is_alpha(text[i]) or text[i] in "0123456789_"):
-        i += 1
-      tokens.append(("id", text[start:i]))
-    else:
-      op = next((op for op in OPERATORS if text.startswith(op, i)), None)
-      if not op:
-        raise ValueError(f"unexpected {c!r}")
-      tokens.append(("op", op))
-      i += len(op)
+  for m in RE_TOKEN.finditer(text):
+    kind = m.lastgroup
+    if kind == "num":
+      tokens.append((kind, number_value(m)))
+    elif kind == "str":
+      tokens.append((kind, RE_STRING_ESCAPE.sub(string_escape, m[0][1:-1])))
+    elif kind == "bad":
+      raise ValueError(f"unexpected {m[0]!r}")
+    elif kind != "space":
+      tokens.append((kind, m[0]))
   return tokens
 
 
-def tokenize_string(text, i):
-  quote = text[i]
-  value = ""
-  i += 1
-  while i < len(text) and text[i] not in (quote, "\n"):
-    if text[i] == "\\" and i + 1 < len(text):
-      escape = text[i + 1]
-      i += 2
-      if escape == "x":
-        m = RE_HEX.match(text, i)
-        value += chr(int(m[0], 16)) if m else "\\x"
-        i += len(m[0]) if m else 0
-      else:
-        value += STRING_ESCAPES.get(escape, "\\" + escape)
-    else:
-      value += text[i]
-      i += 1
-  if text[i : i + 1] != quote:
-    raise ValueError("unterminated string")
-  return value, i + 1
+def string_escape(m):
+  """Decodes one backslash escape; unknown escapes are kept as-is"""
+  if m[1]:
+    return chr(int(m[1], 16))
+  return STRING_ESCAPES.get(m[2], m[0])
 
 
-def tokenize_number(text, i):
-  """Parses a number with an optional SI prefix, RKM notation (4k7) and unit"""
-
-  def at(i):
-    return text[i : i + 1]
-
-  def digits(i):
-    while is_digit(at(i)):
-      i += 1
-    return i
-
-  def word(i):
-    end = i
-    while is_alpha(at(end)) or at(end) and at(end) in "\"'":
-      end += 1
-    return text[i:end]
-
-  def prefix(i):
-    """Returns the multiplier if text[i] is a prefix rather than a unit"""
-    c = at(i)
-    if c not in PREFIXES or word(i) in UNITS:
-      return None
-    if c in "RF" and (is_alpha(at(i + 1)) or at(i + 1) == "_"):
-      return None
-    return PREFIXES[c]
-
-  end = digits(i)
-  num = text[i:end]
-  multiplier = None
-  if at(end) == ".":
-    num += "."
-    end += 1
-  elif not RE_EXPONENT.match(text, end):
-    multiplier = prefix(end)
-    if multiplier is not None:
-      end += 1
-      if is_digit(at(end)):
-        num += "."  # RKM: the prefix takes the place of the decimal point
-  i, end = end, digits(end)
-  num += text[i:end]
-  m = RE_EXPONENT.match(text, end)
-  if m:
-    num += m[0]
-    end = m.end()
-  if multiplier is None:
-    multiplier = prefix(end)
-    end += multiplier is not None
-  value = float(num) * (multiplier or 1)
+def number_value(m):
+  """Returns the value of a number token, applying its prefix and unit"""
+  if m["rkm"]:
+    value = float(f"{m['int']}.{m['frac']}") * PREFIXES[m["rkm"]]
+  else:
+    value = float(m["int"] + m["dec"]) * PREFIXES.get(m["prefix"], 1)
   if not math.isfinite(value):
     raise ValueError("number out of range")
-  # A unit may follow after whitespace
-  i = end
-  while at(i).isspace():
-    i += 1
-  unit = word(i)
-  if unit in UNITS:
-    return value * UNITS[unit], i + len(unit)
-  return value, end
+  return value * UNITS[m["unit"]] if m["unit"] else value
 
 
 class Expression:
