@@ -34,6 +34,7 @@ from .kicad_common import (
   unit_to_alpha,
 )
 from .kicad_modifiers import HasYes
+from .kicad_variables import page_sort_key
 from .netlister import Netlister
 
 # FIXME: check eeschema/schematic.keywords for completeness
@@ -230,9 +231,18 @@ class Label(HasUUID, Drawable):
     variables.define(context, "SHORT_NET_NAME", short_name)  # TODO: specificity
     # FIXME: ${NET_CLASS} -> net class
     if self.type == "global_label":
-      instances = net.instances(exclude_context=context)
-      refs = ",".join(f"${{{i}:#}}" for i in instances)
-      variables.define(context, "INTERSHEET_REFS", refs)
+      own_page, short, prefix, suffix = True, False, "[", "]"
+      for c in context:
+        if hasattr(c, "kicad_pro"):
+          own_page, short, prefix, suffix = c.kicad_pro.intersheet_refs_format
+      instances = net.instances(exclude_context=None if own_page else context)
+      pages = {variables.resolve(i, variables.PAGENO) for i in instances}
+      pages = sorted(pages - {None}, key=page_sort_key)
+      if short and len(pages) > 2:
+        refs = f"{pages[0]}..{pages[-1]}"
+      else:
+        refs = ",".join(pages)
+      variables.define(context, "INTERSHEET_REFS", prefix + refs + suffix)
 
   @sexp.uses("shape")
   def shape(self, diffs=None):

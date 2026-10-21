@@ -269,12 +269,7 @@ class Variables:
         vardict = self._contexts.get(context, {})
         resolved = vardict.get(variable, vardict.get(variable.upper()))
         if resolved is not None:
-          expanded = self.expand(context, resolved, hist)
-          # Ensure the final page list for INTERSHEET_REFS is unique and sorted
-          if variable == "INTERSHEET_REFS":
-            pages = sorted(set(expanded.split(",")), key=page_sort_key)
-            return ",".join(pages)
-          return expanded
+          return self.expand(context, resolved, hist)
       if not context:
         if orig_context_text:
           return f"<Unresolved: {orig_context_text}>"

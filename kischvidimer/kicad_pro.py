@@ -51,6 +51,17 @@ class KicadPro(Comparable):
     return tls[0].get("name", self.project)
 
   @property
+  def intersheet_refs_format(self):
+    """Returns (own page, short, prefix, suffix) settings for intersheet refs"""
+    drawing = self.json.get("schematic", {}).get("drawing", {})
+    return (
+      drawing.get("intersheets_ref_own_page", True),
+      drawing.get("intersheets_ref_short", False),
+      drawing.get("intersheets_ref_prefix", "["),
+      drawing.get("intersheets_ref_suffix", "]"),
+    )
+
+  @property
   def variables(self):
     return self.json.get("text_variables", {})
 
@@ -170,15 +181,16 @@ class KicadPro(Comparable):
     context = self.context()
     if netlister:
       context += netlister.context()
+    # Number all pages first, since other pages can refer to them
+    for instances, _sch in pages.values():
+      for path, sheet in instances:
+        page = path.get("page", [None])[0]
+        variables.define(context + (path, sheet), variables.PAGENO, page)
     for filename, (instances, sch) in pages.items():
       if p:
         p.set_text(f"Processing {filename[:-10]}").write().incr()
       for path, sheet in instances:
-        pgcontext = context + (path, sheet)
-        variables.define(
-          pgcontext, variables.PAGENO, path.get("page", [None])[0]
-        )
-        sch.fillvars(variables, diffs, context=pgcontext)
+        sch.fillvars(variables, diffs, context=context + (path, sheet))
     if p:
       p.set_text(f"Processing {self.project}").incr_max(1).write().incr()
 
