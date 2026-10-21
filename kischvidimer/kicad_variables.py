@@ -102,34 +102,41 @@ class Variables:
     "ps/cm": 1,
     "ps/in": 1,
     "mm": 1,
-    "cm": "1/10",
-    "in": "254/10",
-    # '"': "254/10",  # needs special-casing
-    "mil": "254/10000",
-    "thou": "254/10000",
+    "cm": 1 / 10,
+    "in": 25.4,
+    # '"': 25.4,  # needs special-casing
+    "mil": 0.0254,
+    "thou": 0.0254,
     "um": 1000,
     "deg": 1,
     "°": 1,
     "ps": 1,
     "ns": 1,
     "fs": 1,
-    "f": "1e-15",
-    "p": "1e-12",
-    "n": "1e-9",
-    "u": "1e-6",
-    "m": "1e-3",
-    "k": 1000,
-    "K": 1000,
-    "M": 1000000,
-    "G": 1000000000,
-    "T": 1000000000000,
-    "P": 1000000000000000,
+    "f": 1e-15,
+    "p": 1e-12,
+    "n": 1e-9,
+    "u": 1e-6,
+    "m": 1e-3,
+    "k": 1e3,
+    "K": 1e3,
+    "M": 1e6,
+    "G": 1e9,
+    "T": 1e12,
+    "P": 1e15,
   }
   RE_NUM = re.compile(r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+  # A number with an optional unit or SI prefix
   RE_UNITS = re.compile(
-    f"({RE_NUM.pattern}" + r"\s*)(" + "|".join(UNITS) + r")(?![a-zA-Z0-9_])"
+    rf"(?<![\w.])({RE_NUM.pattern})(?:\s*({'|'.join(UNITS)})(?!\w))?"
   )
-  UNITS_SUB = {u: f"*{v}{'':{i}}" for i, (u, v) in enumerate(UNITS.items())}
+  RE_STRING = re.compile(r"(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')")
+  # Python features that aren't part of KiCad's grammar, including anything
+  # that could reach beyond the functions in evaluation_context. String
+  # literals are replaced by "" before matching.
+  RE_UNSAFE = re.compile(
+    r"__|\[|\.\s*[^\W\d]|\w\"|\b(?:lambda|and|or|not|is|in|for|else)\b"
+  )
 
   def __init__(self):
     # Maps a uuid to a dict of variable definitions. If a variable isn't defined
@@ -252,17 +259,20 @@ class Variables:
     orig_expr = expr
     expr = expr[2:-1]  # remove @{}
 
-    # Use a parser-ignored and likely unique string to tag replaces so that we
-    # can undo them if it turns out they were inside a string literal.
-    tag = "\t \t  \t \t"
-
+    # Rewrite everything outside of string literals into Python. All numbers
+    # become floats so that ^ can't create huge integers.
     # FIXME: parse quote unit
     # FIXME: numbers can be added to strings (becomes concat), not vice-versa
-    expr = expr.replace("^", f"{tag}**{tag}")
-    expr = Variables.RE_IF.sub(f"{tag}__if__{tag}", expr)
-    expr = Variables.RE_UNITS.sub(
-      lambda m: f"{tag}({tag}{m[1]}{tag}{Variables.UNITS_SUB[m[2]]}){tag}", expr
-    )
+    parts = Variables.RE_STRING.split(expr)
+    for i in range(0, len(parts), 2):
+      parts[i] = Variables.RE_UNITS.sub(
+        lambda m: repr(float(m[1]) * Variables.UNITS.get(m[2], 1)), parts[i]
+      )
+    if Variables.RE_UNSAFE.search('""'.join(parts[::2])):
+      return orig_expr
+    for i in range(0, len(parts), 2):
+      parts[i] = Variables.RE_IF.sub("__if__", parts[i].replace("^", "**"))
+    expr = "".join(parts)
 
     g = evaluation_context()
     try:
@@ -277,14 +287,7 @@ class Variables:
     elif isinstance(ret, float):
       # Floats should avoid having ".0" if possible
       ret = f"{ret:g}"
-    elif isinstance(ret, str):
-      # Undo changes that still have the tagging
-      ret = ret.replace(f"{tag}**{tag}", "^")
-      ret = ret.replace(f"{tag}({tag}", "")
-      ret = ret.replace(f"{tag}__if__{tag}", "if")
-      for orig, t in Variables.UNITS_SUB.items():
-        ret = ret.replace(f"{tag}{t}){tag}", orig)
-    else:
+    elif not isinstance(ret, str):
       # Weird types suggest an eval issue (e.g., a function object returned)
       ret = orig_expr
 
@@ -345,6 +348,10 @@ def evaluation_context():
     return evaluation_context.g
   g = evaluation_context.g = {}
 
+  def text(x):
+    """Converts a value to a string like the result of an expression"""
+    return x if isinstance(x, str) else f"{x:g}"
+
   g["abs"] = abs
   g["sqrt"] = math.sqrt
   g["pow"] = math.pow
@@ -369,13 +376,13 @@ def evaluation_context():
   g["now"] = lambda: int(time.time())
   g["random"] = lambda: random.uniform(0, 1)
 
-  g["upper"] = lambda a: str(a).upper()
-  g["lower"] = lambda a: str(a).lower()
-  g["concat"] = lambda *a: "".join(map(str, a))
-  g["beforefirst"] = lambda a, c: str(a).partition(str(c)[0])[0]
-  g["beforelast"] = lambda a, c: str(a).rpartition(str(c)[0])[0]
-  g["afterfirst"] = lambda a, c: str(a).partition(str(c)[0])[2]
-  g["afterlast"] = lambda a, c: str(a).rpartition(str(c)[0])[2]
+  g["upper"] = lambda a: text(a).upper()
+  g["lower"] = lambda a: text(a).lower()
+  g["concat"] = lambda *a: "".join(map(text, a))
+  g["beforefirst"] = lambda a, c: text(a).partition(text(c)[0])[0]
+  g["beforelast"] = lambda a, c: text(a).rpartition(text(c)[0])[0]
+  g["afterfirst"] = lambda a, c: text(a).partition(text(c)[0])[2]
+  g["afterlast"] = lambda a, c: text(a).rpartition(text(c)[0])[2]
 
   g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
   g["fixed"] = g["format"]
