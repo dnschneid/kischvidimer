@@ -59,7 +59,8 @@ repos:
       exclude: \.min\.
     - id: prettier
       name: prettier
-      entry: ./npxenv prettier
+      # Pinned, since prettier's style changes between minor versions
+      entry: ./npxenv prettier@3.8.5
       args: [ --no-config, --write ]
       language: python
       additional_dependencies: [ nodeenv ]
