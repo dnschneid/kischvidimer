@@ -98,25 +98,24 @@ class Variables:
   RE_EXPR = re.compile(r"(?<!\\)@{(?:" + RE_VAR.pattern + r"|[^}])*}")
   RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
   UNITS = {
-    "ps/mm": 1,
-    "ps/cm": 1,
-    "ps/in": 1,
     "mm": 1,
-    "cm": 1 / 10,
+    "cm": 10,
     "in": 25.4,
-    # '"': 25.4,  # needs special-casing
     "mil": 0.0254,
+    "mils": 0.0254,
     "thou": 0.0254,
-    "um": 1000,
+    "um": 0.001,
     "deg": 1,
     "°": 1,
     "ps": 1,
-    "ns": 1,
     "fs": 1,
+    "a": 1e-18,
     "f": 1e-15,
     "p": 1e-12,
     "n": 1e-9,
     "u": 1e-6,
+    "µ": 1e-6,
+    "μ": 1e-6,
     "m": 1e-3,
     "k": 1e3,
     "K": 1e3,
@@ -124,13 +123,17 @@ class Variables:
     "G": 1e9,
     "T": 1e12,
     "P": 1e15,
+    "E": 1e18,
   }
   RE_NUM = re.compile(r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
   # A number with an optional unit or SI prefix
   RE_UNITS = re.compile(
     rf"(?<![\w.])({RE_NUM.pattern})(?:\s*({'|'.join(UNITS)})(?!\w))?"
   )
-  RE_STRING = re.compile(r"(\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*')")
+  STRING = r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
+  RE_STRING = re.compile(f"({STRING})")
+  # A number followed by an inch mark, outside of string literals
+  RE_INCH = re.compile(rf"({STRING})|(?<![\w.])({RE_NUM.pattern})\s*\"")
   # Python features that aren't part of KiCad's grammar, including anything
   # that could reach beyond the functions in evaluation_context. String
   # literals are replaced by "" before matching.
@@ -259,8 +262,8 @@ class Variables:
 
     # Rewrite everything outside of string literals into Python. All numbers
     # become floats so that ^ can't create huge integers.
-    # FIXME: parse quote unit
     # FIXME: numbers can be added to strings (becomes concat), not vice-versa
+    expr = Variables.RE_INCH.sub(lambda m: m[1] or f"{m[2]}in", expr)
     parts = Variables.RE_STRING.split(expr)
     for i in range(0, len(parts), 2):
       parts[i] = Variables.RE_UNITS.sub(
