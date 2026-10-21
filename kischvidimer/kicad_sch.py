@@ -241,7 +241,7 @@ class Label(HasUUID, Drawable):
   def net(self, diffs, context, display=False):
     name = self.param(diffs)
     if display:
-      return name.map(lambda n: n.replace("{slash}", "/"))
+      return name.map(Variables.unescape)
     return name
 
   def bus(self, diffs, context):

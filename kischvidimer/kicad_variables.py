@@ -96,6 +96,23 @@ class Variables:
   # FIXME: handle backslash escapes better
   RE_VAR = re.compile(r"(?<!\\)\${([^}:]+:)?([^}]+)}")
   RE_EXPR = re.compile(r"(?<!\\)@{(?:" + RE_VAR.pattern + r"|[^}])*}")
+  ESCAPES = {
+    "dblquote": '"',
+    "quote": "'",
+    "lt": "<",
+    "gt": ">",
+    "backslash": "\\",
+    "slash": "/",
+    "bar": "|",
+    "comma": ",",
+    "colon": ":",
+    "space": " ",
+    "dollar": "$",
+    "tab": "\t",
+    "return": "\n",
+    "brace": "{",
+  }
+  RE_ESCAPE = re.compile(r"(?<![$~^_]){(" + "|".join(ESCAPES) + ")}")
   RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
   UNITS = {
     "mm": 1,
@@ -207,7 +224,16 @@ class Variables:
   def expand(self, context, text, hist=None):
     text = Variables.RE_VAR.sub(lambda m: self.resolve(context, m, hist), text)
     text = Variables.RE_EXPR.sub(lambda m: self.evaluate(context, m[0]), text)
+    if hist is None:
+      # Escaped references are shown without the backslash
+      text = text.replace("\\${", "${").replace("\\@{", "@{")
     return text
+
+  @staticmethod
+  def unescape(text):
+    """Decodes the escapes KiCad uses for special characters in text, such as
+    {slash}. Like KiCad, this should happen before expanding variables."""
+    return Variables.RE_ESCAPE.sub(lambda m: Variables.ESCAPES[m[1]], text)
 
   def resolve(self, context, variable, hist=None):
     """Variable can be x, x:y, or a match object.

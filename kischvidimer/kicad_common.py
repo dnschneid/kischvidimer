@@ -1029,7 +1029,9 @@ class Text(Drawable):
     subcontext = context + (self,)
     variables = Variables.v(context)
     raw_text = self.param(diffs)
-    text = Param(lambda t: variables.expand(subcontext, t), raw_text)
+    text = Param(
+      lambda t: variables.expand(subcontext, Variables.unescape(t)), raw_text
+    )
     is_pg = raw_text.reduce(any, lambda t: "${" in t)
     if not draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       return
@@ -1118,7 +1120,9 @@ class TextBox(Drawable):
     if draw & (Drawable.DRAW_TEXT_PG if is_pg else Drawable.DRAW_TEXT):
       # halve the right margin to account for character spacing
       wrapwidth = Param(lambda s, m: s[0] - m[0] - m[2] / 2, size, margins)
-      unwrapped = Param(lambda t: variables.expand(subcontext, t), raw_text)
+      unwrapped = Param(
+        lambda t: variables.expand(subcontext, Variables.unescape(t)), raw_text
+      )
       textwidth = Param(
         op.mul, args.get("textsize", 0), args.get("textscale", 1)
       )
@@ -1299,7 +1303,10 @@ class Field(Drawable):
     else:
       textcolor = "fields"
     text = Param(
-      lambda t, s: f"{prop}: " * s + variables.expand(context + (self,), t),
+      lambda t, s: (
+        f"{prop}: " * s
+        + variables.expand(context + (self,), Variables.unescape(t))
+      ),
       raw_text,
       show_name,
     )
