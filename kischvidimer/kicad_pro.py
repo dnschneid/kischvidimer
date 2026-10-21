@@ -62,6 +62,13 @@ class KicadPro(Comparable):
     )
 
   @property
+  def subpart_format(self):
+    """Returns the separator and first ID of unit suffixes in references"""
+    schematic = self.json.get("schematic", {})
+    sep = schematic.get("subpart_id_separator", 0)
+    return chr(sep) if sep else "", chr(schematic.get("subpart_first_id", 65))
+
+  @property
   def variables(self):
     return self.json.get("text_variables", {})
 

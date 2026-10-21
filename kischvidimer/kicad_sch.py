@@ -655,7 +655,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   """An instance of a symbol in a schematic"""
 
   def fillvars(self, variables, diffs, context):
-    unit = self.unit(diffs, context, as_alpha=True).v
+    unit = self.sub_reference(self.unit(diffs, context).v, context)
     variables.define(context + (self,), "UNIT", unit)
     variables.define(context + (self,), "OP", "--")
     define_flag_vars(self, variables, context)
@@ -889,6 +889,32 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       context + (self,) if context else None,
       default=Field.getprop(self, "Reference", diffs, default="?"),
     )
+
+  def reference(self, diffs, context):
+    """Returns the reference designator, with the unit if there are several,
+    like KiCad's GetRef(path, true)"""
+    return Param(
+      lambda r, u, s: r + self.sub_reference(u, context) if s else r,
+      self.refdes(diffs, context),
+      self.unit(diffs, context),
+      self.show_unit(diffs, context),
+    )
+
+  def sub_reference(self, unit, context):
+    """Returns the suffix of a unit, like KiCad's SubReference"""
+    sep, first = "", "A"
+    for c in context:
+      if hasattr(c, "kicad_pro"):
+        sep, first = c.kicad_pro.subpart_format
+    lib = context[-1].get_symbol_lib(None, context)
+    sym = lib.symbol(self.lib_id(None, context).v)
+    for body in sym.getsubs("symbol") if sym else ():
+      if body.unit == unit and "unit_name" in body:
+        return sep + body["unit_name"][0][0]
+    if first.isdigit():
+      return f"{sep}{unit}"
+    alpha = unit_to_alpha(unit)
+    return sep + (alpha.lower() if first.islower() else alpha)
 
   def unit(self, diffs, context, as_alpha=False):
     unit = HasInstanceData.lookup(

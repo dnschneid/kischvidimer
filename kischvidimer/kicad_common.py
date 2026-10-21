@@ -1244,6 +1244,8 @@ class Field(Drawable):
 
   def fillvars(self, variables, diffs, context):
     value = self.variant_override(None, context).v
+    if self.name == "Reference" and hasattr(context[-1], "reference"):
+      value = context[-1].reference(None, context[:-1]).v
     variables.define(
       context + (self,), self.name, self.value if value is None else value
     )
@@ -1271,12 +1273,8 @@ class Field(Drawable):
     #        (sheet/sym/globallabel)
     if prop == "Reference":
       textcolor = "referencepart"
-      raw_text = Param(
-        lambda r, u, s: r + unit_to_alpha(u) if s else r,
-        HasInstanceData.lookup("reference", diffs, context, raw_text),
-        HasInstanceData.lookup("unit", diffs, context, 0),
-        context[-1].show_unit(diffs, context),
-      )
+      if hasattr(context[-1], "reference"):
+        raw_text = context[-1].reference(diffs, context[:-1])
     elif prop == "Value":
       textcolor = "valuepart"
       for i, c in enumerate(reversed(context)):
