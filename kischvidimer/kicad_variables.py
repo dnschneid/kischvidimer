@@ -245,6 +245,12 @@ class Variables:
     hist = set() if hist is None else hist
     orig_variable = None
     orig_context_text = None
+    # Custom ERC/DRC messages are hidden
+    token = variable[0][2:-1] if isinstance(variable, re.Match) else variable
+    if token.startswith(
+      ("ERC_WARNING", "ERC_ERROR", "DRC_WARNING", "DRC_ERROR")
+    ):
+      return ""
     if isinstance(variable, re.Match):
       orig_variable = variable[0]
       if variable[1]:
@@ -254,13 +260,6 @@ class Variables:
       context, _, variable = variable.partition(":")
       context = orig_context_text = context.strip()
       variable = variable.strip()
-    if variable.partition(" ")[0] in (
-      "ERC_WARNING",
-      "ERC_ERROR",
-      "DRC_WARNING",
-      "DRC_ERROR",
-    ):
-      return ""
     context = self._resolve_context(context)
     while True:
       hist_entry = (context, variable)
