@@ -73,6 +73,26 @@ def wks_only_vars(context):
   }
 
 
+def increment_label(text, delta):
+  """Increments the last number or same-case letters in text, carrying within
+  that type (z -> aa), like KiCad's STRING_INCREMENTER."""
+  m = re.search(r"(\d+|[a-z]+|[A-Z]+)[^a-zA-Z0-9]*$", text)
+  if not m or not delta:
+    return text
+  part = m[1]
+  if part.isdigit():
+    num = int(part) + delta
+    new = f"{num:0{len(part)}}" if part[0] == "0" else str(num)
+  else:
+    num = -1  # A is 0, AA is 26
+    for c in part.upper():
+      num = (num + 1) * 26 + ord(c) - ord("A")
+    num += delta
+    new = unit_to_alpha(num + 1)
+    new = new if part.isupper() else new.lower()
+  return text if num < 0 else text[: m.start(1)] + new + text[m.end(1) :]
+
+
 @sexp.uses("ltcorner", "lbcorner", "rbcorner", "rtcorner")
 def xy_from_corners(xy, gravity, corners=None):
   corners = corners or Param((0, 0, 0, 0))
@@ -274,14 +294,8 @@ class TBText(Repeatable):
 
   @sexp.uses("incrlabel", "rotate")
   def fillsvginst(self, svg, i, params, expandfunc):
-    text = self[0]
     incr = self.get("incrlabel", default=[1])[0]
-    if text == "1":
-      text = f"{i * incr + 1}"
-    elif text == "A":
-      text = unit_to_alpha(i * incr + 1)
-    else:
-      text = expandfunc(text)
+    text = expandfunc(increment_label(self[0], i * incr))
     lr, tb = self.justify
     bold, italic = self.style()
     svg.text(
