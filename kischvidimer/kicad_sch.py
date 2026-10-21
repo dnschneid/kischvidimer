@@ -228,7 +228,7 @@ class Label(HasUUID, Drawable):
       context, self.pts(diffs).v[0], bool(self.bus(diffs, context).v)
     )
     variables.define(context, "NET_NAME", net.name())
-    short_name = self.net(diffs, context, display=False)  # {SLASH} is shown
+    short_name = self.net(diffs, context, display=False).v  # {SLASH} is shown
     variables.define(context, "SHORT_NET_NAME", short_name)  # TODO: specificity
     # FIXME: ${NET_CLASS} -> net class
     if self.type == "global_label":
@@ -681,7 +681,8 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
   """An instance of a symbol in a schematic"""
 
   def fillvars(self, variables, diffs, context):
-    variables.define(context + (self,), "UNIT", self.unit(diffs, context, True))
+    unit = self.unit(diffs, context, as_alpha=True).v
+    variables.define(context + (self,), "UNIT", unit)
     variables.define(context + (self,), "OP", "--")
     define_flag_vars(self, variables, context)
     footprint = self.field_text("Footprint", context).partition(":")
