@@ -96,7 +96,6 @@ class Variables:
   PAGECOUNT = "##"
   # FIXME: handle backslash escapes better
   RE_VAR = re.compile(r"(?<!\\)\${([^}:]+:)?([^}]+)}")
-  RE_EXPR = re.compile(r"(?<!\\)@{(?:" + RE_VAR.pattern + r"|[^}])*}")
   ESCAPES = {
     "dblquote": '"',
     "quote": "'",
@@ -114,50 +113,6 @@ class Variables:
     "brace": "{",
   }
   RE_ESCAPE = re.compile(r"(?<![$~^_]){(" + "|".join(ESCAPES) + ")}")
-  RE_IF = re.compile(r"(?<![a-zA-Z0-9_{])if(?![a-zA-Z0-9_])")
-  UNITS = {
-    "mm": 1,
-    "cm": 10,
-    "in": 25.4,
-    "mil": 0.0254,
-    "mils": 0.0254,
-    "thou": 0.0254,
-    "um": 0.001,
-    "deg": 1,
-    "°": 1,
-    "ps": 1,
-    "fs": 1,
-    "a": 1e-18,
-    "f": 1e-15,
-    "p": 1e-12,
-    "n": 1e-9,
-    "u": 1e-6,
-    "µ": 1e-6,
-    "μ": 1e-6,
-    "m": 1e-3,
-    "k": 1e3,
-    "K": 1e3,
-    "M": 1e6,
-    "G": 1e9,
-    "T": 1e12,
-    "P": 1e15,
-    "E": 1e18,
-  }
-  RE_NUM = re.compile(r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
-  # A number with an optional unit or SI prefix
-  RE_UNITS = re.compile(
-    rf"(?<![\w.])({RE_NUM.pattern})(?:\s*({'|'.join(UNITS)})(?!\w))?"
-  )
-  STRING = r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
-  RE_STRING = re.compile(f"({STRING})")
-  # A number followed by an inch mark, outside of string literals
-  RE_INCH = re.compile(rf"({STRING})|(?<![\w.])({RE_NUM.pattern})\s*\"")
-  # Python features that aren't part of KiCad's grammar, including anything
-  # that could reach beyond the functions in evaluation_context. String
-  # literals are replaced by "" before matching.
-  RE_UNSAFE = re.compile(
-    r"__|\[|\.\s*[^\W\d]|\w\"|\b(?:lambda|and|or|not|is|in|for|else)\b"
-  )
 
   def __init__(self):
     # Maps a uuid to a dict of variable definitions. If a variable isn't defined
@@ -224,7 +179,7 @@ class Variables:
 
   def expand(self, context, text, hist=None):
     text = Variables.RE_VAR.sub(lambda m: self.resolve(context, m, hist), text)
-    text = Variables.RE_EXPR.sub(lambda m: self.evaluate(context, m[0]), text)
+    text = self.evaluate_all(context, text)
     if hist is None:
       # Escaped references are shown without the backslash
       text = text.replace("\\${", "${").replace("\\@{", "@{")
@@ -276,41 +231,50 @@ class Variables:
         return orig_variable
       context = context.rpartition("/")[0]
 
+  def evaluate_all(self, context, text):
+    """Evaluates each @{...} in text, except escaped ones"""
+    out = []
+    i = 0
+    while True:
+      start = text.find("@{", i)
+      end = start >= 0 and expression_end(text, start + 2)
+      if not end:
+        break
+      out.append(text[i:start])
+      if text[start - 1 : start] == "\\":
+        out.append(text[start:end])
+      else:
+        out.append(self.evaluate(context, text[start:end]))
+      i = end
+    return "".join(out) + text[i:]
+
   def evaluate(self, context, expr):
-    """Evaluates an arbitrary string expression, including the @{}"""
-    orig_expr = expr
-    expr = expr[2:-1]  # remove @{}
-
-    # Rewrite everything outside of string literals into Python. All numbers
-    # become floats so that ^ can't create huge integers.
-    # FIXME: numbers can be added to strings (becomes concat), not vice-versa
-    expr = Variables.RE_INCH.sub(lambda m: m[1] or f"{m[2]}in", expr)
-    parts = Variables.RE_STRING.split(expr)
-    for i in range(0, len(parts), 2):
-      parts[i] = Variables.RE_UNITS.sub(
-        lambda m: repr(float(m[1]) * Variables.UNITS.get(m[2], 1)), parts[i]
-      )
-    if Variables.RE_UNSAFE.search('""'.join(parts[::2])):
-      return orig_expr
-    for i in range(0, len(parts), 2):
-      parts[i] = Variables.RE_IF.sub("__if__", parts[i].replace("^", "**"))
-    expr = "".join(parts)
-
-    g = evaluation_context()
+    """Evaluates an expression, including the @{}. Like KiCad, expressions
+    that fail to evaluate are left as-is."""
+    if expr == "@{}":
+      return ""
+    if len(expr) > 4096:
+      return expr
     try:
-      ret = eval(expr, g, g)
+      return text(Expression(expr[2:-1]).evaluate())
     except Exception:
-      # Like KiCad, leave expressions that fail to evaluate as-is
-      return orig_expr
+      return expr
 
-    if isinstance(ret, (bool, int, float)):
-      # Booleans are output as 1 or 0
-      ret = format_number(float(ret))
-    elif not isinstance(ret, str):
-      # Weird types suggest an eval issue (e.g., a function object returned)
-      ret = orig_expr
 
-    return str(ret)
+def expression_end(text, i):
+  """Returns the index after the } that closes an expression starting at i,
+  skipping over string literals, or None if the expression isn't closed."""
+  depth = 1
+  while i < len(text):
+    m = RE_STRING.match(text, i)
+    if m:
+      i = m.end()
+      continue
+    depth += {"{": 1, "}": -1}.get(text[i], 0)
+    i += 1
+    if not depth:
+      return i
+  return None
 
 
 def format_number(x):
@@ -318,6 +282,8 @@ def format_number(x):
   with the shortest representation that round-trips."""
   if math.isfinite(x) and abs(x - round(x)) < 1e-10 and abs(round(x)) < 1e15:
     return str(round(x))
+  if math.isnan(x):
+    return "-nan" if math.copysign(1, x) < 0 else "nan"
   return repr(x).removesuffix(".0")
 
 
@@ -380,133 +346,452 @@ def eseries(mode, value, series):
   return found / 100 * math.pow(10, decade)
 
 
-def evaluation_context():
-  """Defines all available symbols/functions for the string evaluator"""
-  if hasattr(evaluation_context, "g"):
-    return evaluation_context.g
-  g = evaluation_context.g = {}
+# Expression evaluation for @{...}, following KiCad's text_eval: values are
+# floats or strings, and any error leaves the expression as-is.
 
-  def text(x):
-    """Converts a value to a string like the result of an expression"""
-    return x if isinstance(x, str) else format_number(float(x))
+# Units convert to mm
+UNITS = {
+  "mm": 1,
+  "cm": 10,
+  "in": 25.4,
+  '"': 25.4,
+  "mil": 0.0254,
+  "mils": 0.0254,
+  "thou": 0.0254,
+  "um": 0.001,
+  "deg": 1,
+  "°": 1,
+  "ps": 1,
+  "fs": 1,
+}
+# R and F are only markers for RKM notation (4R7)
+PREFIXES = {
+  "a": 1e-18,
+  "f": 1e-15,
+  "p": 1e-12,
+  "n": 1e-9,
+  "u": 1e-6,
+  "µ": 1e-6,
+  "μ": 1e-6,
+  "m": 1e-3,
+  "R": 1,
+  "F": 1,
+  "k": 1e3,
+  "K": 1e3,
+  "M": 1e6,
+  "G": 1e9,
+  "T": 1e12,
+  "P": 1e15,
+  "E": 1e18,
+}
+# Longest first
+OPERATORS = "<= >= == != ( ) + - * / % ^ , < >".split()
+STRING_ESCAPES = {
+  "n": "\n",
+  "t": "\t",
+  "r": "\r",
+  "\\": "\\",
+  '"': '"',
+  "'": "'",
+  "0": "\0",
+}
+RE_EXPONENT = re.compile(r"[eE][+-]?[0-9]+")
+RE_STRING = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'")
+RE_HEX = re.compile(r"[0-9a-fA-F]{1,2}")
+# What KiCad accepts when converting a string to a number
+RE_FLOAT = re.compile(
+  r"-?(?:(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|inf(?:inity)?|nan)",
+  re.IGNORECASE,
+)
 
-  def total(x, *a):
-    for y in a:
-      x += y
-    return x
 
-  def kround(x, n=0):
-    # Round half away from zero, unlike Python
-    m = math.pow(10, int(n))
-    return math.copysign(math.floor(abs(x * m) + 0.5), x) / m
+def is_alpha(c):
+  """KiCad treats every non-ASCII, non-space character as a letter"""
+  return c.isalpha() if c.isascii() else c != "\ufffd" and not c.isspace()
 
-  g["abs"] = abs
-  g["sqrt"] = math.sqrt
-  g["pow"] = math.pow
-  g["floor"] = math.floor
-  g["ceil"] = math.ceil
-  g["round"] = kround
-  g["min"] = lambda x, *a: min((x, *a))
-  g["max"] = lambda x, *a: max((x, *a))
-  g["sum"] = total
-  g["avg"] = lambda *a: total(*a) / len(a)
-  g["shunt"] = lambda x, y: x * y / (x + y) if x + y > 0 else 0
-  g["db"] = lambda x: 10 * math.log10(x)
-  g["dbv"] = lambda x: 20 * math.log10(x)
-  g["fromdb"] = lambda x: math.pow(10, x / 10)
-  g["fromdbv"] = lambda x: math.pow(10, x / 20)
 
-  g["enearest"] = lambda x, s="E24": eseries(0, x, s)
-  g["edown"] = lambda x, s="E24": eseries(-1, x, s)
-  g["eup"] = lambda x, s="E24": eseries(1, x, s)
+def is_digit(c):
+  return "0" <= c <= "9"
 
-  g["today"] = lambda: int(time.time() / (24 * 3600))
-  g["now"] = lambda: int(time.time())
-  g["random"] = lambda: random.uniform(0, 1)
 
-  g["upper"] = lambda a: text(a).upper()
-  g["lower"] = lambda a: text(a).lower()
-  g["concat"] = lambda a, b, *c: "".join(map(text, (a, b, *c)))
-  g["beforefirst"] = lambda a, c: text(a).partition((text(c) or " ")[0])[0]
-  g["beforelast"] = lambda a, c: text(a).rpartition((text(c) or " ")[0])[0]
-  g["afterfirst"] = lambda a, c: text(a).partition((text(c) or " ")[0])[2]
-  g["afterlast"] = lambda a, c: text(a).rpartition((text(c) or " ")[0])[2]
-  g["replace"] = lambda a, b, c: (
-    text(a).replace(text(b), text(c)) if text(b) else text(a)
-  )
-
-  g["format"] = lambda x, decimals=2: f"{float(x):.{int(decimals)}f}"
-  g["fixed"] = g["format"]
-  g["currency"] = lambda x, symbol="$": f"{text(symbol)}{float(x):.2f}"
-
-  weekdays = "Monday Tuesday Wednesday Thursday Friday Saturday Sunday".split()
-  g["weekdayname"] = lambda d: weekdays[(int(d) + 3) % 7]
-
-  def days(y, m, d):
-    epoch = datetime.date(1970, 1, 1).toordinal()
-    return float(datetime.date(y, m, 1).toordinal() - epoch + d - 1)
-
-  def datestring(s):
-    s = text(s)
-    cjk = re.search(r"(\d+)\s*[年년]\s*(\d+)\s*[月월]\s*(\d+)\s*[日일]", s)
-    sep = next((c for c in "-/." if c in s), None)
-    if cjk:
-      p = [int(x) for x in cjk.groups()]
-    elif sep:
-      p = [int(x) for x in s.split(sep)]
-    elif len(s) == 8:
-      return days(int(s[:4]), int(s[4:6]), int(s[6:]))
+def tokenize(text):
+  """Returns a list of (kind, value) tuples, where kind is "num", "str", "id",
+  or "op". Raises ValueError on invalid input."""
+  tokens = []
+  i = 0
+  while i < len(text):
+    c = text[i]
+    nxt = text[i + 1 : i + 2]
+    if c.isspace():
+      i += 1
+    elif c in "\"'":
+      value, i = tokenize_string(text, i)
+      tokens.append(("str", value))
+    elif is_digit(c) or c == "." and is_digit(nxt):
+      value, i = tokenize_number(text, i)
+      tokens.append(("num", value))
+    elif is_alpha(c) or c == "_":
+      start = i
+      while i < len(text) and (is_alpha(text[i]) or text[i] in "0123456789_"):
+        i += 1
+      tokens.append(("id", text[start:i]))
     else:
-      raise ValueError("invalid date")
-    p += [1] * (3 - len(p))
-    if not cjk and sep == "/" and p[0] <= 12 and p[1] <= 31:
-      p = [p[2], p[0], p[1]]
-    elif not cjk and sep == "/" and p[1] <= 12:
-      p = p[::-1]
-    datetime.date(*p)  # validate
-    return days(*p)
+      op = next((op for op in OPERATORS if text.startswith(op, i)), None)
+      if not op:
+        raise ValueError(f"unexpected {c!r}")
+      tokens.append(("op", op))
+      i += len(op)
+  return tokens
 
-  months = (
-    "January February March April May June July August September October "
-    "November December"
-  ).split()
 
-  def dateformat(d, fmt="ISO"):
-    date = datetime.date(1970, 1, 1) + datetime.timedelta(days=int(d))
-    y, m, d = date.year, date.month, date.day
-    fmt = text(fmt)
-    if fmt in ("US", "us"):
-      return f"{m:02}/{d:02}/{y:04}"
-    if fmt in ("EU", "european"):
-      return f"{d:02}/{m:02}/{y:04}"
-    if fmt in ("long", "short"):
-      month = months[m - 1] if fmt == "long" else months[m - 1][:3]
-      return f"{month} {d}, {y}"
-    if fmt in (
-      "Chinese chinese CN cn 中文 Japanese japanese JP jp 日本語".split()
-    ):
-      return f"{y}年{m:02}月{d:02}日"
-    if fmt in ("Korean", "korean", "KR", "kr", "한국어"):
-      return f"{y}년 {m:02}월 {d:02}일"
-    return f"{y:04}-{m:02}-{d:02}"
+def tokenize_string(text, i):
+  quote = text[i]
+  value = ""
+  i += 1
+  while i < len(text) and text[i] not in (quote, "\n"):
+    if text[i] == "\\" and i + 1 < len(text):
+      escape = text[i + 1]
+      i += 2
+      if escape == "x":
+        m = RE_HEX.match(text, i)
+        value += chr(int(m[0], 16)) if m else "\\x"
+        i += len(m[0]) if m else 0
+      else:
+        value += STRING_ESCAPES.get(escape, "\\" + escape)
+    else:
+      value += text[i]
+      i += 1
+  if text[i : i + 1] != quote:
+    raise ValueError("unterminated string")
+  return value, i + 1
 
-  def timeformat(t, fmt="ISO"):
-    t = time.localtime(int(t))
-    h, m, s = t.tm_hour, t.tm_min, t.tm_sec
-    fmt = text(fmt)
-    if fmt == "12h":
-      return f"{h % 12 or 12}:{m:02}:{s:02} {'PM' if h >= 12 else 'AM'}"
-    if fmt in ("HH_MM_SS", "filename"):
-      return f"{h:02}h{m:02}m{s:02}s"
-    if fmt == "short":
-      return f"{h:02}:{m:02}"
-    return f"{h:02}:{m:02}:{s:02}"
 
-  g["datestring"] = datestring
-  g["dateformat"] = dateformat
-  g["timeformat"] = timeformat
+def tokenize_number(text, i):
+  """Parses a number with an optional SI prefix, RKM notation (4k7) and unit"""
 
-  g["__if__"] = lambda c, t, f: t if float(c) else f
-  g["__builtins__"] = {}
+  def at(i):
+    return text[i : i + 1]
 
-  return g
+  def digits(i):
+    while is_digit(at(i)):
+      i += 1
+    return i
+
+  def word(i):
+    end = i
+    while is_alpha(at(end)) or at(end) and at(end) in "\"'":
+      end += 1
+    return text[i:end]
+
+  def prefix(i):
+    """Returns the multiplier if text[i] is a prefix rather than a unit"""
+    c = at(i)
+    if c not in PREFIXES or word(i) in UNITS:
+      return None
+    if c in "RF" and (is_alpha(at(i + 1)) or at(i + 1) == "_"):
+      return None
+    return PREFIXES[c]
+
+  end = digits(i)
+  num = text[i:end]
+  multiplier = None
+  if at(end) == ".":
+    num += "."
+    end += 1
+  elif not RE_EXPONENT.match(text, end):
+    multiplier = prefix(end)
+    if multiplier is not None:
+      end += 1
+      if is_digit(at(end)):
+        num += "."  # RKM: the prefix takes the place of the decimal point
+  i, end = end, digits(end)
+  num += text[i:end]
+  m = RE_EXPONENT.match(text, end)
+  if m:
+    num += m[0]
+    end = m.end()
+  if multiplier is None:
+    multiplier = prefix(end)
+    end += multiplier is not None
+  value = float(num) * (multiplier or 1)
+  if not math.isfinite(value):
+    raise ValueError("number out of range")
+  # A unit may follow after whitespace
+  i = end
+  while at(i).isspace():
+    i += 1
+  unit = word(i)
+  if unit in UNITS:
+    return value * UNITS[unit], i + len(unit)
+  return value, end
+
+
+class Expression:
+  """Recursive descent parser for KiCad's expression grammar, evaluating as it
+  goes. Both arguments of if() are evaluated, like in KiCad."""
+
+  # Binary operators by increasing precedence; ^ is handled in unary()
+  BINARY = (("<", ">", "<=", ">=", "==", "!="), ("+", "-"), ("*", "/", "%"))
+
+  def __init__(self, text):
+    self.tokens = tokenize(text)
+    self.pos = 0
+
+  def evaluate(self):
+    value = self.binary(0)
+    if self.pos != len(self.tokens):
+      raise SyntaxError("trailing tokens")
+    return value
+
+  def peek(self):
+    return self.tokens[self.pos] if self.pos < len(self.tokens) else ("", "")
+
+  def accept(self, op):
+    if self.peek() == ("op", op):
+      self.pos += 1
+      return True
+    return False
+
+  def expect(self, op):
+    if not self.accept(op):
+      raise SyntaxError(f"expected {op}")
+
+  def binary(self, level):
+    if level == len(self.BINARY):
+      return self.unary()
+    value = self.binary(level + 1)
+    while True:
+      kind, op = self.peek()
+      if kind != "op" or op not in self.BINARY[level]:
+        return value
+      self.pos += 1
+      value = binop(op, value, self.binary(level + 1))
+
+  def unary(self):
+    if self.accept("-"):
+      return binop("-", 0.0, self.unary())
+    if self.accept("+"):
+      return self.unary()
+    value = self.primary()
+    if self.accept("^"):  # right-associative, and binds tighter than unary -
+      return binop("^", value, self.unary())
+    return value
+
+  def primary(self):
+    kind, value = self.peek()
+    self.pos += 1
+    if kind in ("num", "str"):
+      return value
+    if (kind, value) == ("op", "("):
+      value = self.binary(0)
+      self.expect(")")
+      return value
+    if kind != "id":
+      raise SyntaxError(f"unexpected {value or 'end'}")
+    self.expect("(")
+    args = []
+    if not self.accept(")"):
+      args.append(self.binary(0))
+      while self.accept(","):
+        args.append(self.binary(0))
+      self.expect(")")
+    return call(value, args)
+
+
+def number(x):
+  """Converts a value to a number like KiCad, which only accepts plain numbers
+  in strings"""
+  if isinstance(x, str) and not RE_FLOAT.fullmatch(x):
+    raise ValueError(f"not a number: {x}")
+  return float(x)
+
+
+def text(x):
+  """Converts a value to a string like the result of an expression"""
+  return x if isinstance(x, str) else format_number(x)
+
+
+def power(a, b):
+  """Like C's pow(), returning infinity or NaN rather than raising"""
+  try:
+    return math.pow(a, b)
+  except (OverflowError, ValueError):
+    if a < 0 and b != int(b):
+      return -math.nan
+    return math.copysign(math.inf, a) if b % 2 == 1 else math.inf
+
+
+BINOPS = {
+  "+": lambda a, b: a + b,
+  "-": lambda a, b: a - b,
+  "*": lambda a, b: a * b,
+  "/": lambda a, b: a / b,
+  "%": math.fmod,
+  "^": power,
+  "<": lambda a, b: float(a < b),
+  ">": lambda a, b: float(a > b),
+  "<=": lambda a, b: float(a <= b),
+  ">=": lambda a, b: float(a >= b),
+  "==": lambda a, b: float(a == b),
+  "!=": lambda a, b: float(a != b),
+}
+
+
+def binop(op, a, b):
+  if op == "+" and (isinstance(a, str) or isinstance(b, str)):
+    return text(a) + text(b)
+  if op in ("==", "!=") and isinstance(a, str) and isinstance(b, str):
+    return BINOPS[op](a, b)
+  return BINOPS[op](number(a), number(b))
+
+
+def call(name, args):
+  """Calls a function, checking its number of arguments. Numeric functions
+  get their arguments converted to numbers."""
+  if name not in FUNCTIONS:
+    raise NameError(f"unknown function {name}")
+  low, high, numeric, func = FUNCTIONS[name]
+  if not low <= len(args) <= high:
+    raise TypeError(f"wrong number of arguments for {name}")
+  value = func(*(number(a) for a in args) if numeric else args)
+  return value if isinstance(value, str) else float(value)
+
+
+def kround(x, n=0):
+  # Round half away from zero, unlike Python
+  m = math.pow(10, int(n))
+  return math.copysign(math.floor(abs(x * m) + 0.5), x) / m
+
+
+def total(*a):
+  t = 0.0
+  for x in a:
+    t += x
+  return t
+
+
+def decimals(x, n=2):
+  """Formats with n decimals; like KiCad, ignores an n that isn't a number"""
+  try:
+    n = int(number(n))
+  except (ValueError, OverflowError):
+    n = 2
+  if n > 1000:
+    raise ValueError("too many decimals")
+  return f"{number(x):.{n}f}"
+
+
+def days(y, m, d):
+  epoch = datetime.date(1970, 1, 1).toordinal()
+  return datetime.date(y, m, 1).toordinal() - epoch + d - 1
+
+
+def datestring(s):
+  s = text(s)
+  cjk = re.search(r"(\d+)\s*[年년]\s*(\d+)\s*[月월]\s*(\d+)\s*[日일]", s)
+  sep = next((c for c in "-/." if c in s), None)
+  if cjk:
+    p = [int(x) for x in cjk.groups()]
+  elif sep:
+    p = [int(x) for x in s.split(sep)]
+  elif len(s) == 8:
+    return days(int(s[:4]), int(s[4:6]), int(s[6:]))
+  else:
+    raise ValueError("invalid date")
+  p += [1] * (3 - len(p))
+  if not cjk and sep == "/" and p[0] <= 12 and p[1] <= 31:
+    p = [p[2], p[0], p[1]]
+  elif not cjk and sep == "/" and p[1] <= 12:
+    p = p[::-1]
+  datetime.date(*p)  # validate
+  return days(*p)
+
+
+MONTHS = (
+  "January February March April May June July August September October "
+  "November December"
+).split()
+WEEKDAYS = "Monday Tuesday Wednesday Thursday Friday Saturday Sunday".split()
+
+
+def dateformat(d, fmt="ISO", *_):
+  date = datetime.date(1970, 1, 1) + datetime.timedelta(days=int(number(d)))
+  y, m, d = date.year, date.month, date.day
+  fmt = text(fmt)
+  if fmt in ("US", "us"):
+    return f"{m:02}/{d:02}/{y:04}"
+  if fmt in ("EU", "european"):
+    return f"{d:02}/{m:02}/{y:04}"
+  if fmt in ("long", "short"):
+    month = MONTHS[m - 1] if fmt == "long" else MONTHS[m - 1][:3]
+    return f"{month} {d}, {y}"
+  if fmt in "Chinese chinese CN cn 中文 Japanese japanese JP jp 日本語".split():
+    return f"{y}年{m:02}月{d:02}日"
+  if fmt in ("Korean", "korean", "KR", "kr", "한국어"):
+    return f"{y}년 {m:02}월 {d:02}일"
+  return f"{y:04}-{m:02}-{d:02}"
+
+
+def timeformat(t, fmt="ISO", *_):
+  t = time.localtime(int(number(t)))
+  h, m, s = t.tm_hour, t.tm_min, t.tm_sec
+  fmt = text(fmt)
+  if fmt == "12h":
+    return f"{h % 12 or 12}:{m:02}:{s:02} {'PM' if h >= 12 else 'AM'}"
+  if fmt in ("HH_MM_SS", "filename"):
+    return f"{h:02}h{m:02}m{s:02}s"
+  if fmt == "short":
+    return f"{h:02}:{m:02}"
+  return f"{h:02}:{m:02}:{s:02}"
+
+
+def char(c):
+  """The first character of a value, or a space"""
+  return (text(c) or " ")[0]
+
+
+def replace(a, b, c):
+  return text(a).replace(text(b), text(c)) if text(b) else text(a)
+
+
+ANY = math.inf
+# name: (min args, max args, numeric args, function)
+FUNCTIONS = {
+  "abs": (1, 1, True, abs),
+  "sqrt": (1, 1, True, math.sqrt),
+  "pow": (2, 2, True, power),
+  "floor": (1, 1, True, math.floor),
+  "ceil": (1, 1, True, math.ceil),
+  "round": (1, ANY, True, lambda x, n=0, *_: kround(x, n)),
+  "min": (1, ANY, True, min),
+  "max": (1, ANY, True, max),
+  "sum": (1, ANY, True, total),
+  "avg": (1, ANY, True, lambda *a: total(*a) / len(a)),
+  "shunt": (2, 2, True, lambda x, y: x * y / (x + y) if x + y > 0 else 0),
+  "db": (1, 1, True, lambda x: 10 * math.log10(x)),
+  "dbv": (1, 1, True, lambda x: 20 * math.log10(x)),
+  "fromdb": (1, 1, True, lambda x: power(10, x / 10)),
+  "fromdbv": (1, 1, True, lambda x: power(10, x / 20)),
+  "enearest": (1, 2, False, lambda x, s="E24": eseries(0, number(x), text(s))),
+  "eup": (1, 2, False, lambda x, s="E24": eseries(1, number(x), text(s))),
+  "edown": (1, 2, False, lambda x, s="E24": eseries(-1, number(x), text(s))),
+  "today": (0, 0, False, lambda: time.time() // (24 * 3600)),
+  "now": (0, 0, False, lambda: time.time() // 1),
+  "random": (0, 0, False, random.random),
+  "upper": (1, 1, False, lambda a: text(a).upper()),
+  "lower": (1, 1, False, lambda a: text(a).lower()),
+  "concat": (2, ANY, False, lambda *a: "".join(map(text, a))),
+  "beforefirst": (2, 2, False, lambda a, c: text(a).partition(char(c))[0]),
+  "beforelast": (2, 2, False, lambda a, c: text(a).rpartition(char(c))[0]),
+  "afterfirst": (2, 2, False, lambda a, c: text(a).partition(char(c))[2]),
+  "afterlast": (2, 2, False, lambda a, c: text(a).rpartition(char(c))[2]),
+  "replace": (3, 3, False, replace),
+  "if": (3, 3, False, lambda c, a, b: a if number(c) else b),
+  "format": (1, ANY, False, lambda x, n=2, *_: decimals(x, n)),
+  "fixed": (1, ANY, False, lambda x, n=2, *_: decimals(x, n)),
+  "currency": (1, ANY, False, lambda x, s="$", *_: text(s) + decimals(x)),
+  "datestring": (1, 1, False, datestring),
+  "dateformat": (1, ANY, False, dateformat),
+  "weekdayname": (1, 1, False, lambda d: WEEKDAYS[(int(number(d)) + 3) % 7]),
+  "timeformat": (1, ANY, False, timeformat),
+}
