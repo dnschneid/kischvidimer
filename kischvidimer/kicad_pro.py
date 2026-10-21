@@ -146,7 +146,14 @@ class KicadPro(Comparable):
     netlister.resolve()
 
   def fillvars(self, variables, diffs, pages=None, netlister=None, p=None):
-    variables.define(variables.GLOBAL, "CURRENT_DATE", datetime.date.today())
+    now = datetime.datetime.now()
+    variables.define(variables.GLOBAL, "CURRENT_DATE", now.date())
+    variables.define(
+      variables.GLOBAL, "CURRENT_TIME_HH_MM_SS", now.strftime("%Hh%Mm%Ss")
+    )
+    variables.define(
+      variables.GLOBAL, "CURRENT_TIME_LOCALE", now.strftime("%X")
+    )
     variables.define(variables.GLOBAL, "PROJECTNAME", self.project)
     for key, value in self.variables.items():
       variables.define(variables.GLOBAL, key, value)
