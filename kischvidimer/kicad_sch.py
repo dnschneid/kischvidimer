@@ -686,15 +686,33 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     footprint = self.field_text("Footprint", context).partition(":")
     variables.define(context + (self,), "FOOTPRINT_LIBRARY", footprint[0])
     variables.define(context + (self,), "FOOTPRINT_NAME", footprint[2])
+    refdes = self.refdes(diffs, context).v
+    variables.define(context + (self,), "SHORT_REFERENCE", refdes)
+    lib_id = self.getparam("lib_id", diffs, default="").v
+    library, _, name = lib_id.rpartition(":")
+    variables.define(context + (self,), "SYMBOL_LIBRARY", library)
+    variables.define(context + (self,), "SYMBOL_NAME", name)
+    lib = context[-1].get_symbol_lib(diffs, context)
+    sym = lib.symbol(self.lib_id(diffs, context), diffs).v
+    for var, prop in (
+      ("SYMBOL_DESCRIPTION", "Description"),
+      ("SYMBOL_KEYWORDS", "ki_keywords"),
+    ):
+      text = sym and Field.getprop(sym, prop, diffs)
+      variables.define(context + (self,), var, text.v if text else "")
+    power = sym and sym.getparam("power", diffs).v
+    power_text = "Power Symbol" if power else ""
+    variables.define(context + (self,), "SYMBOL_IS_POWER", power_text)
+    power_text = "Local Power Symbol" if power == "local" else ""
+    variables.define(context + (self,), "SYMBOL_IS_LOCAL_POWER", power_text)
+    # Missing simulation fields are empty rather than unresolved
+    for var in ("DEVICE", "TYPE", "PINS", "PARAMS", "LIBRARY", "NAME"):
+      variables.define(context + (self,), f"SIM.{var}", "")
     """ FIXME:
     ${ref:NET_CLASS(<pin_number>)} -> net class of attached net to pin
     ${ref:NET_NAME(<pin_number>)} -> connection name of net attached to pin
     ${ref:PIN_NAME(<pin_number>)} -> name of the pin
     ${ref:SHORT_NET_NAME(<pin_number>)} -> local name of the net attached to pin
-    ${ref:SYMBOL_DESCRIPTION} -> description from the library cache
-    ${ref:SYMBOL_KEYWORDS} -> keywords from the library cache
-    ${ref:SYMBOL_LIBRARY} -> library name
-    ${ref:SYMBOL_NAME} -> symbol name
     """
     super().fillvars(variables, diffs, context)
 
