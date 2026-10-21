@@ -215,11 +215,9 @@ class Label(HasUUID, Drawable):
   def fillvars(self, variables, diffs, context):
     shape = self.shape(diffs).v
     if shape is not None:
-      variables.define(
-        context + (self,),
-        "CONNECTION_TYPE",
-        "-".join(s.capitalize() for s in shape.split("-")),
-      )
+      # tri_state -> Tri-State
+      ctype = shape.replace("_", "-").title()
+      variables.define(context + (self,), "CONNECTION_TYPE", ctype)
     super().fillvars(variables, diffs, context)
     context += (self,)
     variables.define(context, "OP", "--")
