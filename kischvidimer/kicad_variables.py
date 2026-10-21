@@ -282,17 +282,22 @@ class Variables:
       # Like KiCad, leave expressions that fail to evaluate as-is
       return orig_expr
 
-    if isinstance(ret, (bool, int)):
+    if isinstance(ret, (bool, int, float)):
       # Booleans are output as 1 or 0
-      ret = int(ret)
-    elif isinstance(ret, float):
-      # Floats should avoid having ".0" if possible
-      ret = f"{ret:g}"
+      ret = format_number(float(ret))
     elif not isinstance(ret, str):
       # Weird types suggest an eval issue (e.g., a function object returned)
       ret = orig_expr
 
     return str(ret)
+
+
+def format_number(x):
+  """Formats a number like KiCad: as an integer if it's close to one, otherwise
+  with the shortest representation that round-trips."""
+  if math.isfinite(x) and abs(x - round(x)) < 1e-10 and abs(round(x)) < 1e15:
+    return str(round(x))
+  return repr(x).removesuffix(".0")
 
 
 def page_sort_key(page):
@@ -356,7 +361,7 @@ def evaluation_context():
 
   def text(x):
     """Converts a value to a string like the result of an expression"""
-    return x if isinstance(x, str) else f"{x:g}"
+    return x if isinstance(x, str) else format_number(float(x))
 
   g["abs"] = abs
   g["sqrt"] = math.sqrt
