@@ -243,10 +243,8 @@ class Variables:
           expanded = self.expand(context, resolved, hist)
           # Ensure the final page list for INTERSHEET_REFS is unique and sorted
           if variable == "INTERSHEET_REFS":
-            try:
-              return ",".join(sorted(set(expanded.split(",")), key=int))
-            except ValueError:
-              return ""
+            pages = sorted(set(expanded.split(",")), key=page_sort_key)
+            return ",".join(pages)
           return expanded
       if not context:
         if orig_context_text:
@@ -292,6 +290,11 @@ class Variables:
       ret = orig_expr
 
     return str(ret)
+
+
+def page_sort_key(page):
+  """Sort key for page numbers, which are strings that are usually numeric."""
+  return [int(s) if s.isdigit() else s for s in re.split(r"(\d+)", str(page))]
 
 
 # fmt: off

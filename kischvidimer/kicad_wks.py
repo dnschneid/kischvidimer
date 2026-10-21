@@ -78,9 +78,9 @@ class Setup(sexp.SExp):
     return (sexp.Decimal(x * 254) / 10, sexp.Decimal(y * 254) / 10)
 
   def is_pgone(self, context):
-    pn = int(Variables.v(context).resolve(context, Variables.PAGENO) or 0)
+    pn = Variables.v(context).resolve(context, Variables.PAGENO)
     if pn:
-      return pn == 1
+      return pn == "1"
     for c in reversed(context):
       if c.type == "kicad_sch" and hasattr(c, "root_path"):
         return bool(c.root_path)

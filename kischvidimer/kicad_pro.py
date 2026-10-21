@@ -20,6 +20,7 @@ import sys
 from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
 from .kicad_common import variant_context
+from .kicad_variables import page_sort_key
 
 DEFAULT_LICENSE_HEADER = (
   "Proprietary to its author and all rights are reserved to that "
@@ -163,7 +164,7 @@ class KicadPro(Comparable):
       for path, sheet in instances:
         pgcontext = context + (path, sheet)
         variables.define(
-          pgcontext, variables.PAGENO, int(path.get("page", [0])[0])
+          pgcontext, variables.PAGENO, path.get("page", [None])[0]
         )
         sch.fillvars(variables, diffs, context=pgcontext)
     if p:
@@ -227,9 +228,9 @@ class KicadPro(Comparable):
       # Handle the root page, whose path is self-defined by uuid
       if relpath not in pages:
         assert sch.is_root()
-        pages[relpath] = (
-          [(kicad_sch.Path.new(""), kicad_sch.Sheet.fake(sch))],
-        )
+        page = sch.root_path.get("page", default=["1"])[0]
+        root = kicad_sch.Path.new("", sexp.SExp.init([sexp.Atom("page"), page]))
+        pages[relpath] = ([(root, kicad_sch.Sheet.fake(sch))],)
       assert len(pages[relpath]) == 1
       pages[relpath] += (sch,)
       for path, sheet in sch.get_sheets(self.project):
@@ -307,9 +308,8 @@ class KicadPro(Comparable):
     for filepath, (instances, sch) in pages.items():
       for path, sheet in instances:
         uuid = path.uuid(sheet)
-        pageno = path.get("page", [0])[0]
-        if isinstance(pageno, str):
-          pageno = int(pageno.strip("#") or 0)
+        pageno = str(path.get("page", [0])[0]).strip("#")
+        pageno = int(pageno) if pageno.isdigit() else pageno or 0
         inst = {
           "page": pageno,
           "name": self.uuid_to_name(pages, uuid),
@@ -331,7 +331,9 @@ class KicadPro(Comparable):
           "children" if k == "hier" else k: to_list(v) if k == "hier" else v
           for k, v in inst.items()
         }
-        for inst in sorted(hier.values(), key=lambda i: (i["page"], i["name"]))
+        for inst in sorted(
+          hier.values(), key=lambda i: (page_sort_key(i["page"]), i["name"])
+        )
       ]
 
     return to_list(hier)
