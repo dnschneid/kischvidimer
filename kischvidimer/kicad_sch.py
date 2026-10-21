@@ -680,6 +680,8 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       variables.define(context + (self,), var, text.v if text else "")
     power = sym and sym.getparam("power", diffs).v
     power_text = "Power Symbol" if power else ""
+    if not power:
+      variables.define_refdes(context + (self,), refdes)
     variables.define(context + (self,), "SYMBOL_IS_POWER", power_text)
     power_text = "Local Power Symbol" if power == "local" else ""
     variables.define(context + (self,), "SYMBOL_IS_LOCAL_POWER", power_text)

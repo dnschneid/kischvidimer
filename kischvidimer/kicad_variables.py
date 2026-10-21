@@ -119,6 +119,8 @@ class Variables:
     # in a uuid's dict, go a step up the hierarchy. "" is a special context that
     # is global.
     self._contexts = {}
+    # Maps a reference designator to the context of its first instance
+    self._refdes = {}
 
   def context(self):
     s = sexp.SExp.init(
@@ -138,7 +140,9 @@ class Variables:
         return min(
           (c for c in self._contexts if c.endswith(context)), default=None
         )
-      return context
+      if context.startswith("/"):
+        return context
+      return self._refdes.get(context)
     elements = [""]
     for c in context:
       if c.type == "path":
@@ -176,6 +180,10 @@ class Variables:
     vardict[variable] = value
     # For case-insensitive fallback matching
     vardict.setdefault(variable.upper(), value)
+
+  def define_refdes(self, context, refdes):
+    """Makes ${refdes:VAR} resolve in context, unless refdes is taken"""
+    self._refdes.setdefault(refdes, self._resolve_context(context))
 
   def expand(self, context, text, hist=None):
     text = Variables.RE_VAR.sub(lambda m: self.resolve(context, m, hist), text)
@@ -226,6 +234,8 @@ class Variables:
         if resolved is not None:
           return self.expand(context, resolved, hist)
       if not context:
+        if orig_context_text and orig_context_text in self._refdes:
+          return f"<Unresolved: {orig_context_text}:{variable}>"
         if orig_context_text:
           return f"<Unresolved: {orig_context_text}>"
         return orig_variable
