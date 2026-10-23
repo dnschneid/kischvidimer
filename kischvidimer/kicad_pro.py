@@ -15,12 +15,19 @@
 import datetime
 import json
 import os
+import re
 import sys
 
 from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
 from .kicad_common import variant_context
 from .kicad_variables import page_sort_key
+
+# ${VAR}, $(VAR) or $VAR, and %VAR% on Windows, or an escaped $ or %
+ENV_VAR_RE = re.compile(
+  r"\\[$%]|\$\{([\w:]+)\}|\$\(([\w:]+)\)|\$([\w:]+)"
+  + (r"|%([\w:]+)%" if os.name == "nt" else "")
+)
 
 DEFAULT_LICENSE_HEADER = (
   "Proprietary to its author and all rights are reserved to that "
@@ -294,6 +301,28 @@ class KicadPro(Comparable):
     self._sheet_flag_cache = {}
     return pages
 
+  def expand_path(self, path):
+    """Expands variables in a path like KiCad's ExpandEnvVarSubstitutions:
+    project text variables first, then the environment, which KiCad populates
+    with ${KIPRJMOD} and with the variables in kicad_common.json that the
+    system environment doesn't define. Undefined variables are left as-is.
+    ${KIPRJMOD} expands to ".", so that the path stays relative to the project
+    directory and can be read from git."""
+    env = {**config_env_vars(), **os.environ, "KIPRJMOD": "."}
+    textvars = {"PROJECTNAME": self.project, **self.variables}
+
+    def lookup(m):
+      name = next((g for g in m.groups() if g), None)
+      if name is None:
+        return m[0]
+      return textvars.get(name, env.get(name, m[0]))
+
+    seen = set()
+    while path not in seen:
+      seen.add(path)
+      path = ENV_VAR_RE.sub(lookup, path)
+    return os.path.expanduser(path)
+
   def get_worksheet(self, rev, p):
     """Returns a kicad_wks instance."""
     default_wks = kicad_wks.kicad_wks(None)
@@ -302,16 +331,15 @@ class KicadPro(Comparable):
       return default_wks
     if p:
       p.incr_max().set_text(f"Loading {wks_path}").write().incr()
-    os.environ.update(config_env_vars())
-    wks_path_expanded = os.path.expandvars(wks_path)
-    if any(c in wks_path_expanded for c in "$%~"):
+    wks_path_expanded = self.expand_path(wks_path)
+    if any(c in wks_path_expanded for c in "$%" if c == "$" or os.name == "nt"):
       if p:
         p.clear()
       print(
         "WARNING: unable to expand worksheet path", wks_path, file=sys.stderr
       )
       return default_wks
-    if wks_path_expanded.startswith("/"):
+    if os.path.isabs(wks_path_expanded):
       if not os.path.isfile(wks_path_expanded):
         if p:
           p.clear()
@@ -324,8 +352,9 @@ class KicadPro(Comparable):
       wks = kicad_wks.kicad_wks(open(wks_path_expanded), wks_path_expanded)
     else:
       projdir = os.path.dirname(self._fname or "")
-      if projdir:
-        wks_path_expanded = f"{projdir}/{wks_path_expanded}"
+      wks_path_expanded = os.path.normpath(
+        os.path.join(projdir, wks_path_expanded)
+      )
       wks = kicad_wks.kicad_wks(
         git.open_rb(wks_path_expanded, rev), wks_path_expanded
       )
@@ -400,31 +429,38 @@ def config_env_vars():
   """Searches kicad configuration directories for environment variable defines
   and returns a dictionary of all the assignments.
   """
-  configdirs = []
-  for basedir in (
-    "$HOME/.config/kicad",  # Linux
-    "%AppData%/kicad",  # Windows
-    "$HOME/Library/Preferences/kicad",  # macOS
-  ):
-    basedir = os.path.expandvars(basedir)
-    if not os.path.isdir(basedir):
-      continue
-    for subdir in os.listdir(basedir):
-      if (
-        subdir.partition(".")[0].isdecimal()
-        and subdir.partition(".")[2].isdecimal()
-      ):
-        configdirs.append(os.path.join(basedir, subdir))
 
-  # Parse files oldest to newest
-  def sortkey(p):
-    base = os.path.basename(p).partition(".")
-    return (int(base[0]), int(base[2]), p)
+  def versioned_dirs(basedirs):
+    """Returns the version subdirectories of basedirs, oldest to newest."""
+    configdirs = []
+    for basedir in basedirs:
+      basedir = os.path.expandvars(basedir)
+      if not os.path.isdir(basedir):
+        continue
+      for subdir in os.listdir(basedir):
+        if (
+          subdir.partition(".")[0].isdecimal()
+          and subdir.partition(".")[2].isdecimal()
+        ):
+          configdirs.append(os.path.join(basedir, subdir))
 
-  configdirs = sorted(configdirs, key=sortkey)
-  # varibales in KICAD_CONFIG_HOME override all
-  if "KICAD_CONFIG_HOME" in os.environ:
-    configdirs.append(os.environ["KICAD_CONFIG_PATH"])
+    def sortkey(p):
+      base = os.path.basename(p).partition(".")
+      return (int(base[0]), int(base[2]), p)
+
+    return sorted(configdirs, key=sortkey)
+
+  configdirs = versioned_dirs(
+    (
+      "$HOME/.config/kicad",  # Linux
+      "%AppData%/kicad",  # Windows
+      "$HOME/Library/Preferences/kicad",  # macOS
+    )
+  )
+  # variables in KICAD_CONFIG_HOME, which replaces the default base directory,
+  # override all
+  if os.environ.get("KICAD_CONFIG_HOME"):
+    configdirs += versioned_dirs((os.environ["KICAD_CONFIG_HOME"],))
   envvars = {}
   for configdir in configdirs:
     for configfile in os.listdir(configdir):
