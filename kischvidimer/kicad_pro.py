@@ -139,8 +139,9 @@ class KicadPro(Comparable):
     for _filename, (_instances, sch) in pages.items():
       for ba in sch.getsubs("bus_alias"):
         context[0].add(ba)
-    # Starting with v10, bus aliases are stored in the kicad_pro
-    pro_aliases = self.json.get("schematic", {}).get("bus_aliases", {})
+    # Starting with v10, bus aliases are stored in the kicad_pro; KiCad writes
+    # null when there are none
+    pro_aliases = self.json.get("schematic", {}).get("bus_aliases") or {}
     for name, members in pro_aliases.items():
       context[0].add(
         sexp.SExp(
