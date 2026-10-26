@@ -641,6 +641,15 @@ class SymLib(sexp.SExp):
         return s
     return None
 
+  def variant_symbol(self, base_name, alt_name, diffs=None):
+    """Returns the symbol alt_name, which a design variant selects in place of
+    base_name, or None if this library doesn't have it. Like KiCad, an
+    alternate naming the base symbol is ignored.
+    """
+    if not alt_name or alt_name == base_name:
+      return None
+    return self.symbol(alt_name, diffs)
+
   def sym_hash(self, name, diffs, cache=True):
     """calculates and returns the hash for a symbol, keeping track of the hash
     for later lookup. The hash is an integer.

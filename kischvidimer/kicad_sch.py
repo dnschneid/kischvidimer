@@ -709,6 +709,35 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     p = Param(p, default=p.reduce(max))
     return p
 
+  def variant_symbol(self, diffs, context):
+    """Returns a Param of the library symbol that the active variant draws in
+    place of this one, or None. It must be stored in the page's lib_symbols,
+    where newer KiCad versions save alternate symbols.
+    """
+    if not self.variant_sensitive(diffs, context):
+      return Param(None)
+    page = next((c for c in reversed(context) if c.type == "kicad_sch"), None)
+    if page is None:
+      return Param(None)
+    lib = page.get_symbol_lib(diffs, context)
+    return Param(
+      lambda alt, base: lib.variant_symbol(base, alt, diffs),
+      self.variant_lookup(
+        lambda v, d: v.symbol_override(d), diffs, context + (self,)
+      ),
+      self.lib_id(diffs, context),
+    )
+
+  def drawn_lib_id(self, diffs, context):
+    """Returns a Param of the ID of the library symbol to draw, which is the
+    active variant's alternate symbol, if any.
+    """
+    return Param(
+      lambda alt, base: alt.libname if alt else base,
+      self.variant_symbol(diffs, context),
+      self.lib_id(diffs, context),
+    )
+
   def get_alternates(self, diffs, context):
     # TODO: redo alternates system.  SymbolInst.get_alternates is only used by
     # svg.instantiate (to generate the instance hash) and by PinDef.alternate
@@ -762,6 +791,8 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
 
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
+    # Like KiCad, connect the base symbol's pins even if the variant draws an
+    # alternate symbol.
     lib = context[-1]["lib_symbols"][0]
     lib_id = self.lib_id(diffs, context).v
     sym = lib.symbol(lib_id)
@@ -801,7 +832,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     if subdraw:
       # FIXME: diffs, of course
       lib = context[-1].get_symbol_lib(diffs, context)
-      lib_id = self.lib_id(diffs, context)
+      lib_id = self.drawn_lib_id(diffs, context)
       rot = self.rot(diffs)
       mirror = self.mirror(diffs)
       unit = self.unit(diffs, context)
@@ -950,9 +981,14 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     netprefix = power_type.map(
       lambda t, n: n.rstrip("/") + "/" if t == "local" else "", netprefix
     )
-    # Power symbols use the Value as the net
+    # Power symbols use the Value as the net, as the active variant sets it
     variables = Variables.v(context)
     value = Field.getprop(self, "Value", diffs)
+    for prop in self.getsubs("property"):
+      if prop.name == "Value":
+        value = Param(
+          prop.variant_override(diffs, context + (self,)), default=value
+        )
     power_net = value.map(
       lambda v, n, lib_id: (
         n + variables.expand(context + (self,), v)
@@ -986,7 +1022,10 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       if self.inherited_flag(flag, context):
         props[key] = True
     variables = Variables.v(context)
-    raw = {prop.name: prop.value for prop in self.getsubs("property")}
+    raw = {
+      prop.name: self.field_text(prop.name, context)
+      for prop in self.getsubs("property")
+    }
     variant = self.variant_lookup(lambda v, d: v, None, context).v
     if variant is not None:
       # Overrides of fields the symbol lacks are still part of the BOM
@@ -997,7 +1036,8 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
       )
       alt_symbol = variant.symbol_override().v
       if alt_symbol:
-        raw["Variant symbol (not shown)"] = alt_symbol
+        shown = self.variant_symbol(None, context).v
+        raw["Variant symbol" + " (not shown)" * (not shown)] = alt_symbol
     for name, text in raw.items():
       value = variables.expand(context + (self,), text)
       if (
@@ -1288,14 +1328,17 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
     return names
 
   def variant_symbol_overrides(self, variant):
-    """Returns a list of (reference, lib_id) for symbol instances that use an
-    alternate library symbol in the variant. Ignores diffs."""
+    """Returns a list of (reference, lib_id) for symbol instances whose
+    alternate library symbol in the variant isn't stored in lib_symbols, so
+    can't be drawn. Ignores diffs."""
     overrides = []
+    lib = self.get_symbol_lib(None, (self,))
     for sym in self.getsubs("symbol"):
+      base = sym.lib_id(None, None).v
       for path in sym.paths().values():
         for v in path.getsubs("variant"):
           alt = v.symbol_override().v if v.name == variant else None
-          if alt:
+          if alt and alt != base and not lib.variant_symbol(base, alt):
             ref = path.get("reference")
             overrides.append((ref[0] if ref else "?", alt))
     return overrides

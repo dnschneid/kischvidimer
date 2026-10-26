@@ -1285,16 +1285,33 @@ class Field(Drawable):
   def variant_override(self, diffs, context):
     """Returns a Param of the active variant's override of this field's text
     for the instance in context (which should end with the field's parent), or
-    Param(None) if there isn't one.
+    Param(None) if there isn't one. Like KiCad, a field the variant doesn't
+    override takes its text from the variant's alternate symbol, if any and
+    not empty.
     """
     parent = context[-1] if context else None
     if not isinstance(parent, HasInstanceData) or (
       self.name in Field.VARIANT_IMMUTABLE
     ):
       return Param(None)
-    return parent.variant_lookup(
+    override = parent.variant_lookup(
       lambda v, d: v.field(self.name, d), diffs, context
     )
+    if not hasattr(parent, "variant_symbol"):
+      return override
+    alt_text = parent.variant_symbol(diffs, context[:-1]).map(
+      lambda alt: next(
+        (
+          p.value
+          for p in alt.getsubs("property")
+          if p.name == self.name and p.value
+        ),
+        None,
+      )
+      if alt
+      else None
+    )
+    return Param(override, default=alt_text)
 
   def fillvars(self, variables, diffs, context):
     value = self.variant_override(None, context).v

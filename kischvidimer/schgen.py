@@ -184,7 +184,6 @@ class Schematic:
             f"WARNING: variant '{variant}' is not defined in "
             f"{rev or 'the working tree'}; rendering its base design"
           )
-      # Alternate symbols live in libraries, which kischvidimer doesn't load
       overrides = sorted(
         {
           o
@@ -192,11 +191,13 @@ class Schematic:
           for o in sch.variant_symbol_overrides(variant)
         }
       )
+      # Alternate symbols that the schematic doesn't store live in libraries,
+      # which kischvidimer doesn't load
       if overrides:
         p.msg(
-          f"WARNING: variant '{variant}' uses alternate library symbols for "
+          f"WARNING: variant '{variant}' uses alternate symbols that aren't "
+          "in the schematic, so shows the base symbols instead: "
           + ", ".join(f"{ref} ({lib_id})" for ref, lib_id in overrides)
-          + "; showing the base symbols instead"
         )
 
     if p:

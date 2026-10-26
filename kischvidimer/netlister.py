@@ -38,8 +38,14 @@ class NetBus:
   CAT_SYMPIN_UNNAMED = 4
   CAT_SYMPIN_PWR = 5
   CAT_SHEETPIN = 6
+  CAT_SYMPIN_NODRIVE = 7  # pins of symbols excluded from the board
 
-  CATS_SYMPIN = (CAT_SYMPIN, CAT_SYMPIN_UNNAMED, CAT_SYMPIN_PWR)
+  CATS_SYMPIN = (
+    CAT_SYMPIN,
+    CAT_SYMPIN_UNNAMED,
+    CAT_SYMPIN_PWR,
+    CAT_SYMPIN_NODRIVE,
+  )
 
   NAME_ENTRY = namedtuple("NameEntry", ["category", "depth", "key", "name"])
   PIN_NAME = namedtuple("PinInfo", ["ref", "name", "number", "is_unique"])
@@ -122,6 +128,9 @@ class NetBus:
     if not self._names:
       return None
     name = min(self._names)
+    # Like KiCad, pins of symbols excluded from the board don't name a net
+    if name.category == NetBus.CAT_SYMPIN_NODRIVE:
+      return None
     if name.category in NetBus.CATS_SYMPIN:
       pre = (
         "Net"
@@ -558,6 +567,7 @@ class Netlister:
     is_unique = False
     symuuid = None
     power_net = None
+    no_drive = False
     jumper_dupe_pins = None
     jumper_pin_groups = None
     for i, c in enumerate(reversed(context)):
@@ -573,6 +583,7 @@ class Netlister:
         show_unit = c.show_unit(None, sym_context).v
         body_style = c.body_style(None, sym_context).v
         power_net = c.power_net(None, sym_context, self.netprefix).v
+        no_drive = c.flag("exclude_from_board", None, sym_context).v
         nonunique_pins = symbol_def.get_nonunique_pins(
           None, context, body_style=body_style
         )
@@ -619,7 +630,12 @@ class Netlister:
         netbus = pinnets.setrep(number, netbus)
     netbus.add_node(ic.instance, self, (symuuid, number))
     netbus.add_name(
-      pinnet, category=NetBus.CAT_POWER if is_pwr else NetBus.CAT_SYMPIN
+      pinnet,
+      category=NetBus.CAT_POWER
+      if is_pwr
+      else NetBus.CAT_SYMPIN_NODRIVE
+      if no_drive
+      else NetBus.CAT_SYMPIN,
     )
     return netbus
 
