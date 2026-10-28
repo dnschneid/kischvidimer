@@ -437,6 +437,10 @@ class Variant(sexp.SExp):
     """Returns a Param of the alternate library symbol's ID, or None."""
     return self.getparam("symbol_override", diffs)
 
+  def pin_map_override(self):
+    """Returns the variant's PinMapOverride, or None. Ignores diffs."""
+    return self.get("pin_map_override")
+
 
 @sexp.handler("field")
 class VariantField(sexp.SExp):
@@ -460,6 +464,35 @@ class VariantField(sexp.SExp):
 
 Value = sexp.SExp.basic("value")  # variant field value, legacy instance value
 SymbolOverride = sexp.SExp.basic("symbol_override")  # variant alternate symbol
+
+
+@sexp.handler("pin_map_override")
+class PinMapOverride(sexp.SExp):
+  """A symbol's or design variant's choice of pin-to-pad map:
+  (pin_map_override (mode named_map) (map "NAME") (edit "PIN" "PAD") ...)
+  """
+
+  LITERAL_MAP = {}
+
+  def __str__(self):
+    return f"pin map override {self.mode}"
+
+  @property
+  @sexp.uses("mode", "library_default", "named_map", "identity", "delegate")
+  def mode(self):
+    """library_default, named_map, identity, or delegate (to unit 1)"""
+    return self["mode"][0].data[0] if "mode" in self else "library_default"
+
+  @property
+  @sexp.uses("map")
+  def map_name(self):
+    return self["map"][0].data[0] if "map" in self else ""
+
+  @property
+  @sexp.uses("edit")
+  def edits(self):
+    """Returns a dict of pin numbers to the pad numbers the instance sets."""
+    return {e.data[0]: e.data[1] for e in self.getsubs("edit")}
 
 
 @sexp.handler("version")

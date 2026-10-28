@@ -48,7 +48,9 @@ class NetBus:
   )
 
   NAME_ENTRY = namedtuple("NameEntry", ["category", "depth", "key", "name"])
-  PIN_NAME = namedtuple("PinInfo", ["ref", "name", "number", "is_unique"])
+  PIN_NAME = namedtuple(
+    "PinInfo", ["ref", "name", "number", "is_unique", "pad"]
+  )
 
   @staticmethod
   def new(is_bus):
@@ -137,12 +139,13 @@ class NetBus:
         if sum(1 for n in self._names if n.category in NetBus.CATS_SYMPIN) > 1
         else "unconnected"
       )
-      pinname = list(name.name)
-      if pinname[3] and (pinname[1] or "~") != "~":  # is_unique
-        del pinname[-1:]  # no pin number when name is unique
-      else:
-        pinname[2] = f"Pad{pinname[2]}"
-      pinname = "-".join(p for p in pinname[:-1] if p and p != "~")
+      pin = name.name
+      pinname = [pin.ref, pin.name]
+      # No pin number when the name is unique. Like KiCad, this is the pin
+      # number even if the pin maps to another pad.
+      if not pin.is_unique or (pin.name or "~") == "~":
+        pinname.append(f"Pad{pin.number}")
+      pinname = "-".join(p for p in pinname if p and p != "~")
       return f"{pre}-({pinname})"
     return name[-1]
 
@@ -187,8 +190,9 @@ class Net(NetBus):
   TEL_QUOTE_RE = re.compile("[^a-zA-Z0-9_/]")
 
   def _get_pins(self):
+    # Pins are listed by the pads they connect to
     return {
-      (Net.REMOVE_UNIT_RE.sub("", n[0]),) + n[1:-1]
+      (Net.REMOVE_UNIT_RE.sub("", n.ref), n.name, n.pad)
       for c, _, _, n in self._names
       if c in NetBus.CATS_SYMPIN
     }
@@ -590,6 +594,7 @@ class Netlister:
         break
     name = pin.getparam("name", None).v
     number = pin.num(None, context).v
+    pad = pin.pad(None, context).v
     # pintype reflects the alternate's type if one is selected
     pintype = pin.get_type_style(None, context)[0].v
     is_unique = name not in nonunique_pins
@@ -604,7 +609,7 @@ class Netlister:
       power_net or name
       if is_pwr
       else NetBus.PIN_NAME(
-        ref=ref, name=name, number=number, is_unique=is_unique
+        ref=ref, name=name, number=number, is_unique=is_unique, pad=pad
       )
     )
     netbus = Net()

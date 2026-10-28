@@ -101,6 +101,16 @@ class PinDef(Drawable):
   def num(self, diffs, context):
     return self.getparam("number", diffs)
 
+  def pad(self, diffs, context):
+    """Returns a Param of the footprint pad the pin connects to, which is the
+    pin number unless the symbol instance maps it to another pad."""
+    num = self.num(diffs, context)
+    for i, c in enumerate(reversed(context)):
+      if hasattr(c, "get_pad_map"):
+        pad_map = c.get_pad_map(diffs, context[: len(context) - i - 1])
+        return Param(lambda n, m: m.get(n, n), num, pad_map)
+    return num
+
   def get_type_style(self, diffs, context):
     alternate = self.alternate(diffs, context)
     added, removed = self.added_and_removed(diffs, AlternateDef)
@@ -186,6 +196,8 @@ class PinDef(Drawable):
 
     name = self.name(diffs, context)
     num = self.num(diffs, context)
+    # Like KiCad, show the pad that the pin maps to in place of the number
+    pad = self.pad(diffs, context)
     pos = self["at"][0].pos(diffs, relative=True)
     rot = self["at"][0].rot(diffs)
     semiunrot = Param(lambda r: r % 180 - r, rot)  # restricts to 0 or 90
@@ -348,7 +360,7 @@ class PinDef(Drawable):
       # FIXME: save the metadata
       text = Param(
         lambda t, h: "" if h or t == "~" else t,
-        name if is_name else num,
+        name if is_name else pad,
         pin_config[part]["hide"],
       )
       xoffset = Param(lambda x: (x, 0), pin_config[part]["xoffset"])
@@ -549,6 +561,42 @@ class SymbolDef(sexp.SExp):
       assert "xoffset" not in self["pin_numbers"][0]
       cfg["number"]["hide"] = self["pin_numbers"][0].has_yes("hide", diffs)
     return cfg
+
+  @sexp.uses(
+    "pin_maps", "pin_map", "entry", "associated_footprints", "footprint", "map"
+  )
+  def pad_map(self, override, footprint, context):
+    """Returns a dict of pin numbers to the pads that they connect to, for an
+    instance with the PinMapOverride (None for the library default) and the
+    footprint, like SCH_PIN::GetEffectivePadNumber without the footprint's
+    pads. Pins that aren't in the dict connect to the pad of their number.
+    Ignores diffs.
+    """
+    # FIXME: diffs
+    # Derived symbols inherit pin maps and associated footprints together
+    sym = self
+    if "pin_maps" not in self and "associated_footprints" not in self:
+      sym = self._sym(None, context).v
+    maps = {
+      m.data[0]: {e.data[0]: e.data[1] for e in m.getsubs("entry")}
+      for pin_maps in sym.getsubs("pin_maps")
+      for m in pin_maps.getsubs("pin_map")
+    }
+    mode = override.mode if override else "library_default"
+    pads = None
+    if mode == "named_map":
+      pads = maps.get(override.map_name)
+    # A named map that doesn't exist falls back to the footprint's map
+    if pads is None and mode != "identity":
+      fps = sym.get("associated_footprints")
+      for fp in fps.getsubs("footprint") if fps else ():
+        if fp.data[0] == footprint:
+          pads = maps.get(fp["map"][0].data[0] if "map" in fp else "")
+          break
+    pads = dict(pads or {})
+    if override and mode != "identity":
+      pads.update(override.edits)
+    return pads
 
   @sexp.uses("duplicate_pin_numbers_are_jumpers", "jumper_pin_groups")
   def jumpers(self, diffs=None):

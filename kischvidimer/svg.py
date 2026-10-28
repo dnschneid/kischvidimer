@@ -27,14 +27,18 @@ from .kicad_common import Drawable
 
 
 class AlternateContext(sexp.SExp):
-  """Context entry providing a fixed alternates dict."""
+  """Context entry providing fixed alternates and pad map dicts."""
 
-  def __init__(self, alternates_param):
+  def __init__(self, alternates_param, pad_map_param):
     super().__init__([])
     self._alternates = alternates_param
+    self._pad_map = pad_map_param
 
   def get_alternates(self, diffs, context):
     return self._alternates
+
+  def get_pad_map(self, diffs, context):
+    return self._pad_map
 
 
 class Svg:
@@ -1446,8 +1450,10 @@ class Svg:
     body_style=None,
     diffs=None,
     context=None,
+    pad_map=None,
   ):
     """Instantiates a symbol. lib must contain a definition of lib_id.
+    pad_map is a dict of pin numbers to the pads to show instead.
     Returns a Param of the bounds if the symbol was successfully instantiated;
     otherwise you should draw something yourself.
     """
@@ -1460,6 +1466,11 @@ class Svg:
     else:
       alternates_param = Param({})
       alternates_hash = Param("")
+    # FIXME: diffs
+    pad_map = pad_map or {}
+    if pad_map:
+      pad_map_hash = f"p{hash(tuple(sorted(pad_map.items()))):x}"
+      alternates_hash = alternates_hash.map(lambda a: a + pad_map_hash)
     lib = Param(lib)
     lib_id = Param(lib_id)
     unit = Param(unit, default=1)
@@ -1513,9 +1524,9 @@ class Svg:
       # Inject this version's alternates into the context
       version_alts = alternates_param.get(i).v
       version_context = context or ()
-      if version_alts is not None:
+      if version_alts is not None or pad_map:
         version_context = version_context + (
-          AlternateContext(Param(version_alts)),
+          AlternateContext(Param(version_alts or {}), Param(pad_map)),
         )
       sym.fillsvg(
         symsvg,

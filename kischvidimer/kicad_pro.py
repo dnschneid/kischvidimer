@@ -47,6 +47,8 @@ class KicadPro(Comparable):
     self.variant = ""  # active design variant; "" is the base design
     self._sheet_insts = {}  # page instance uuid -> (path, sheet)
     self._sheet_flag_cache = {}
+    self._pages = {}
+    self._unit1_pin_map_overrides = {}  # variant -> {refdes: PinMapOverride}
 
   @property
   def project(self):
@@ -299,7 +301,30 @@ class KicadPro(Comparable):
       for path, sheet in instances
     }
     self._sheet_flag_cache = {}
+    self._pages = pages
+    self._unit1_pin_map_overrides = {}
     return pages
+
+  def unit1_pin_map_override(self, ref):
+    """Returns the PinMapOverride of unit 1 of the symbol with the reference
+    designator, for the active variant, which its other units can delegate to.
+    None if there is none. Ignores diffs."""
+    overrides = self._unit1_pin_map_overrides.get(self.variant)
+    if overrides is None:
+      overrides = self._unit1_pin_map_overrides[self.variant] = {}
+      context = self.context()
+      for instances, sch in self._pages.values():
+        for path, sheet in instances:
+          pgcontext = context + (path, sheet, sch)
+          for sym in sch.getsubs("symbol"):
+            if sym.unit(None, pgcontext).v != 1:
+              continue
+            override = sym.pin_map_override(pgcontext)
+            # Like KiCad, unit 1 can't delegate in turn
+            if override is not None and override.mode == "delegate":
+              override = None
+            overrides.setdefault(sym.refdes(None, pgcontext).v, override)
+    return overrides.get(ref)
 
   def expand_path(self, path):
     """Expands variables in a path like KiCad's ExpandEnvVarSubstitutions:

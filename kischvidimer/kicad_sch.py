@@ -789,6 +789,38 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
     self._get_alternates_cache[cache_key] = result
     return result
 
+  @sexp.uses("pin_map_override")
+  def pin_map_override(self, context):
+    """Returns the PinMapOverride for the instance and variant in context, or
+    None for the library default. Like KiCad, a variant without one keeps the
+    symbol's. Ignores diffs."""
+    override = self.variant_lookup(
+      lambda v, _d: v.pin_map_override(), None, context + (self,)
+    ).v
+    return override or self.get("pin_map_override")
+
+  def get_pad_map(self, diffs, context):
+    """Returns a Param of a dict of pin numbers to the pads they connect to,
+    for the instance and variant in context. Ignores diffs."""
+    # FIXME: diffs
+    override = self.pin_map_override(context)
+    if override is not None and override.mode == "delegate":
+      # Units after the first follow unit 1's pin map
+      override = None
+      for c in context:
+        if hasattr(c, "kicad_pro"):
+          ref = self.refdes(None, context).v
+          override = c.kicad_pro.unit1_pin_map_override(ref)
+          break
+    lib = context[-1].get_symbol_lib(None, context)
+    sym = lib.symbol(self.lib_id(None, context).v)
+    if sym is None:
+      return Param({})
+    footprint = Variables.v(context).expand(
+      context + (self,), self.field_text("Footprint", context)
+    )
+    return Param(sym.pad_map(override, footprint, context + (lib,)))
+
   def fillnetlist(self, netlister, diffs, context):
     # Fill in all pins. Use Svg's transformation implementation
     # Like KiCad, connect the base symbol's pins even if the variant draws an
@@ -847,6 +879,7 @@ class SymbolInst(HasUUID, HasInstanceData, Drawable):
         body_style=body_style,
         diffs=diffs,
         context=(self,),
+        pad_map=self.get_pad_map(diffs, context).v,
       )
       # Draw unconnected circles
       if subdraw & Drawable.DRAW_PINS:  # FIXME: should this be DRAW_FG_PG?
