@@ -69,6 +69,7 @@ def embedded_file(sexp_parent, name):
         return zstd_decompress(base64.b64decode(data)) or False
   return None
 
+
 JUST_FLIP = {"left": "right", "right": "left"}
 VJUST_FLIP = {"top": "bottom", "bottom": "top"}
 
