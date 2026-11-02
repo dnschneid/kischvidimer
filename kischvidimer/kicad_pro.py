@@ -13,6 +13,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import datetime
+import io
 import json
 import os
 import re
@@ -20,10 +21,11 @@ import sys
 
 from . import git, kicad_sch, kicad_wks, progress, sexp
 from .diff import Comparable
-from .kicad_common import variant_context
+from .kicad_common import embedded_file, variant_context
 from .kicad_variables import page_sort_key
 
 # ${VAR}, $(VAR) or $VAR, and %VAR% on Windows, or an escaped $ or %
+EMBED_PREFIX = "kicad-embed://"
 ENV_VAR_RE = re.compile(
   r"\\[$%]|\$\{([\w:]+)\}|\$\(([\w:]+)\)|\$([\w:]+)"
   + (r"|%([\w:]+)%" if os.name == "nt" else "")
@@ -348,7 +350,7 @@ class KicadPro(Comparable):
       path = ENV_VAR_RE.sub(lookup, path)
     return os.path.expanduser(path)
 
-  def get_worksheet(self, rev, p):
+  def get_worksheet(self, rev, p, pages):
     """Returns a kicad_wks instance."""
     default_wks = kicad_wks.kicad_wks(None)
     wks_path = self.json.get("schematic", {}).get("page_layout_descr_file")
@@ -356,6 +358,22 @@ class KicadPro(Comparable):
       return default_wks
     if p:
       p.incr_max().set_text(f"Loading {wks_path}").write().incr()
+    if wks_path.startswith(EMBED_PREFIX):
+      name = wks_path[len(EMBED_PREFIX) :]
+      root = next((s for _, s in pages.values() if s.is_root()), None)
+      data = embedded_file(root, name) if root else None
+      if not data:
+        if p:
+          p.clear()
+        print(
+          "WARNING: unable to",
+          "find" if data is None else "decompress (no zstd available)",
+          "embedded worksheet",
+          name,
+          file=sys.stderr,
+        )
+        return default_wks
+      return kicad_wks.kicad_wks(io.BytesIO(data), wks_path) or default_wks
     wks_path_expanded = self.expand_path(wks_path)
     if any(c in wks_path_expanded for c in "$%" if c == "$" or os.name == "nt"):
       if p:

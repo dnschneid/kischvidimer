@@ -168,7 +168,7 @@ class Schematic:
       f = git.open_rb(self._proj, rev)
       projs.append(kicad_pro.kicad_pro(f, fname=self._proj))
       pagesets.append(projs[-1].get_pages(self._proj, rev, p))
-      worksheets.append(projs[-1].get_worksheet(rev, p))
+      worksheets.append(projs[-1].get_worksheet(rev, p, pagesets[-1]))
       p.set_incr_max_mult(2)
 
     # Use the same variant for all revisions, so that diffs compare like with

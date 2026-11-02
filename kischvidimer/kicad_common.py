@@ -16,10 +16,12 @@
 Common classes and routines for handling sexp-based kicad files
 """
 
+import base64
 import math
 import operator as op
 import os
 import re
+import subprocess
 import sys
 from decimal import Decimal
 from uuid import uuid4
@@ -33,6 +35,39 @@ if __name__ == "__main__":
   sexp.handler._handlers.clear()
 
 from .kicad_modifiers import ModifierRoot
+
+
+def zstd_decompress(data):
+  """Decompresses zstd data, or returns None if no decompressor is found."""
+  try:
+    from compression import zstd  # Python 3.14+
+  except ImportError:
+    pass
+  else:
+    return zstd.decompress(data)
+  try:
+    import zstandard
+  except ImportError:
+    pass
+  else:
+    return zstandard.ZstdDecompressor().decompressobj().decompress(data)
+  try:
+    return subprocess.run(
+      ["zstd", "-dc"], input=data, capture_output=True, check=True
+    ).stdout
+  except (OSError, subprocess.CalledProcessError):
+    return None
+
+
+def embedded_file(sexp_parent, name):
+  """Returns the contents of a file in sexp_parent's embedded_files, None if
+  the file is not present, or False if it cannot be decompressed."""
+  for files in sexp_parent.getsubs("embedded_files"):
+    for f in files.getsubs("file"):
+      if "name" in f and f["name"][0][0] == name and "data" in f:
+        data = "".join(f["data"][0].data).strip("|")
+        return zstd_decompress(base64.b64decode(data)) or False
+  return None
 
 JUST_FLIP = {"left": "right", "right": "left"}
 VJUST_FLIP = {"top": "bottom", "bottom": "top"}
