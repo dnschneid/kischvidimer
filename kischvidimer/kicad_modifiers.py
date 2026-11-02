@@ -222,7 +222,7 @@ class Type(Modifier):
         # resolved by the shape; see Drawable.fillsvgargs
         **dict.fromkeys(Type.HATCHES, "hatch"),
       }
-    else:
+    elif new_parent.type != "file":  # embedded_files: not rendered
       raise NotImplementedError(f"unexpected type parent {new_parent.type}")
 
   def fillsvgargs(self, args, diffs, context):
