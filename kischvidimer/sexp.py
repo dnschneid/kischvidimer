@@ -492,7 +492,8 @@ class SExp(Comparable):
       # Raw atom
       options = Diff.Group(True)
     elif item is None:
-      options = Diff.Group(False)
+      # None lets Param fall back to the default
+      options = Diff.Group(False if default is None else None)
     else:
       options = Diff.Group(
         *(FakeDiff(dp.c, new=dp.v) if dp.c else dp.v for dp in item.yes(diffs))
