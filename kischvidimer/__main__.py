@@ -47,5 +47,4 @@ if __name__ == "__main__":
   # there's lots of objects to clean up; just flush files and hard quit
   sys.stdout.flush()
   sys.stderr.flush()
-  os.sync()
   os._exit(ret or 0)
