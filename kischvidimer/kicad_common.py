@@ -1544,7 +1544,10 @@ def rotated(pos, deg):
     x, y = pos
   else:
     x, y = pos, 0
+  # A Decimal's remainder takes the dividend's sign: -270.0 % 360 is -270.0
   deg = (deg or 0) % 360
+  if deg < 0:
+    deg += 360
   if not deg:
     return pos
   elif deg == 90:
