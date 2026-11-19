@@ -1405,6 +1405,9 @@ class Field(Drawable):
     )
     if not draw & (Drawable.DRAW_PROPS_PG if is_pg else Drawable.DRAW_PROPS):
       return
+    # A field without a position (in a file KiCad didn't write) isn't drawn
+    if "at" not in self:
+      return
     variables = Variables.v(context)
     show_name = self.has_yes("show_name", diffs)
     url = None
