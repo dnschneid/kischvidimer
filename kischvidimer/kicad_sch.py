@@ -1253,15 +1253,22 @@ class KicadSch(Drawable):  # ignore the uuid for the most part
   @sexp.uses("sheet_instances")
   def root_path(self):
     # Returns the path element if this is a root sheet; None otherwise
-    # NOTE: if this ever stops working (eg sheet_instances is removed), a
-    # potential heuristic is to look at the various instances fields on the
-    # page and see if the page's UUID is featured first.
-    if (
-      "sheet_instances" in self
-      and "path" in self["sheet_instances"][0]
-      and self["sheet_instances"][0]["path"][0][0] == "/"
-    ):
-      return self["sheet_instances"][0]["path"][0]
+    if "sheet_instances" in self:
+      if (
+        "path" in self["sheet_instances"][0]
+        and self["sheet_instances"][0]["path"][0][0] == "/"
+      ):
+        return self["sheet_instances"][0]["path"][0]
+      return None
+    # Files not written by KiCad (eg generated ones) can lack sheet_instances.
+    # A root page instances its own symbols and sheets under its own UUID.
+    own = HasUUID.uuid(self)
+    if own is None:
+      return None
+    for typ in "symbol", "sheet":
+      for obj in self.getsubs(typ):
+        if f"/{own}" in obj.paths():
+          return Path.new("/")
     return None
 
   def is_root(self, context=None):
