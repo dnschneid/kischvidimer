@@ -115,6 +115,7 @@ class Schematic:
     self._license_header = None
     self._worksheet = None
     self._proj = proj
+    self._title = None  # None: the project's path
     self._revs = []
 
   def add_rev(self, rev):
@@ -261,7 +262,7 @@ class Schematic:
     )
     if variant:
       ver += f" · Variant: {variant}"
-    title = self._proj.lstrip("./\\")
+    title = self._title or self._proj.lstrip("./\\")
     if self.diff:
       title += " (only diffs)"
     p.set_text("Rendering " + self._proj).write()
@@ -363,6 +364,10 @@ def main(argv):
     help="remove any matching schematic data prior to processing the file",
   )
   parser.add_argument(
+    "--title",
+    help="title the schematic with TITLE instead of the project's path",
+  )
+  parser.add_argument(
     "-w",
     "--worksheet",
     help="override the page border specified in the project",
@@ -399,6 +404,8 @@ def main(argv):
     sch._license = open(args.license).read() if args.license else ""
   if args.license_header:
     sch._license_header = args.license_header
+  if args.title:
+    sch._title = args.title
   if args.scrub is not None:
     s_re = re.compile("|".join(args.scrub))
     kicad_pro.kicad_pro.data_filter_func = lambda d: s_re.sub("", d)
